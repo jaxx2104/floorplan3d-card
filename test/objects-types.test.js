@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor } from '../src/objects/types.js';
+import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.js';
 
 const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null };
 
@@ -309,5 +309,36 @@ describe('cover mounts', () => {
     expect(lampPart.anchor.y).toBeCloseTo(1.4);
     TYPES.cover.dispose(part);
     TYPES.light.dispose(lampPart);
+  });
+});
+
+describe('curtain on a bent rail', () => {
+  it('measures and walks the rail', () => {
+    const r = railOf([[0, 0], [2, 0], [2, 1]]);
+    expect(r.total).toBeCloseTo(3);
+    expect(railAt(r, 2.5)).toMatchObject({ x: 2, z: 0.5, dx: 0, dz: 1 });
+    expect(railAt(r, 9)).toMatchObject({ x: 2, z: 1 });
+    expect(railDistance(r, 1, 0.1)).toBeCloseTo(1);
+    expect(railDistance(r, 2.1, 0.6)).toBeCloseTo(2.6);
+    expect(railOf([[0, 0]])).toBeNull();
+    expect(railOf('x')).toBeNull();
+  });
+  it('slides pleats towards the start and turns them with the rail', () => {
+    const root = new THREE.Group(), node = new THREE.Group(), moving = new THREE.Group();
+    moving.name = 'moving';
+    node.add(moving);
+    root.add(node);
+    const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2, 0.04));
+    pleat.position.set(2.05, 1, 0.8); // on the bent leg, 0.05 off the rail
+    moving.add(pleat);
+    const part = TYPES.cover.prepare({ node, hints: { path: [[0, 0], [2, 0], [2, 1]], min: 0.5 } }, { root });
+    TYPES.cover.update(part, {}, { entity: 'cover.c', states: { 'cover.c': { state: 'open', attributes: { current_position: 100 } } } });
+    // 2.8 m along -> 1.4 m, on the straight leg; the 0.05 offset turns from +x to -z
+    expect(pleat.position.x).toBeCloseTo(1.4);
+    expect(pleat.position.z).toBeCloseTo(-0.05);
+    expect(pleat.position.y).toBeCloseTo(1);
+    TYPES.cover.dispose(part);
+    expect(pleat.position.x).toBeCloseTo(2.05);
+    expect(pleat.position.z).toBeCloseTo(0.8);
   });
 });

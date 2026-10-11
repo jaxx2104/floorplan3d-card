@@ -302,7 +302,47 @@ function disposeMower(part) {
 // curtain gathers to. hints.motion 'lift': the moving part rises hints.range[0] metres at 0 % and
 // hints.range[1] at 100 % above its modelled pose (negative: lower). The moving part is the child named
 // hints.part (default 'moving'), else the whole node. No position (unknown, unavailable): the modelled pose.
+// A curtain on a bent rail: hints.path, the rail as [[x, z], ...] metres in the moving part's frame from the
+// gathered end. Each child of the moving part (a pleat) keeps its offset from the rail and slides along it to
+// scale × its distance from the start, turning with the rail.
 const AXES = { x: 0, y: 1, z: 2 };
+
+// Rail helpers for hints.path: valid [[x, z], ...] (2+ points) or null; the point and direction at a
+// distance along it (clamped to its ends); the distance of the closest point to (x, z).
+export function railOf(path) {
+  if (!Array.isArray(path) || path.length < 2 || !path.every((q) => Array.isArray(q) && q.length === 2 && q.every(fin))) return null;
+  const segs = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const [x0, z0] = path[i - 1], [x1, z1] = path[i];
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len <= 0) continue;
+    segs.push({ x0, z0, dx: (x1 - x0) / len, dz: (z1 - z0) / len, len, at: total });
+    total += len;
+  }
+  return segs.length ? { segs, total } : null;
+}
+
+export function railAt(rail, dist) {
+  const d = Math.min(rail.total, Math.max(0, dist));
+  let s = rail.segs[0];
+  for (const g of rail.segs) if (d >= g.at) s = g;
+  const t = Math.min(s.len, d - s.at);
+  return { x: s.x0 + s.dx * t, z: s.z0 + s.dz * t, dx: s.dx, dz: s.dz };
+}
+
+export function railDistance(rail, x, z) {
+  let best = Infinity, out = 0;
+  for (const g of rail.segs) {
+    const t = Math.min(g.len, Math.max(0, (x - g.x0) * g.dx + (z - g.z0) * g.dz));
+    const e = Math.hypot(g.x0 + g.dx * t - x, g.z0 + g.dz * t - z);
+    if (e < best) { best = e; out = g.at + t; }
+  }
+  return out;
+}
+
+// Turn about +y (three.js) from direction a to direction b, both (dx, dz).
+const yawBetween = (a, b) => Math.atan2(-b.dz, b.dx) - Math.atan2(-a.dz, a.dx);
 export function coverPose(hints, position) {
   const h = hints && typeof hints === 'object' ? hints : {};
   const pos = num(position);
@@ -320,7 +360,16 @@ function prepareCover(obj, ctx) {
   const name = (obj.hints && typeof obj.hints.part === 'string' && obj.hints.part) || 'moving';
   let moving = null;
   if (obj.node) obj.node.traverse((n) => { if (!moving && n !== obj.node && nameOf(n) === name) moving = n; });
-  return { ...generic.prepare(obj, ctx), root: ctx.root, view: ctx.view, moving: moving || obj.node, origin: null, pose: undefined };
+  const part = { ...generic.prepare(obj, ctx), root: ctx.root, view: ctx.view, moving: moving || obj.node, origin: null, pose: undefined };
+  part.rail = railOf(obj.hints && obj.hints.path);
+  if (part.rail && part.moving) {
+    // each pleat: its rest pose, distance along the rail and offset from it
+    part.pleats = part.moving.children.map((n) => {
+      const dist = railDistance(part.rail, n.position.x, n.position.z), at = railAt(part.rail, dist);
+      return { node: n, dist, at, position: n.position.clone(), quaternion: n.quaternion.clone() };
+    });
+  }
+  return part;
 }
 
 function updateCover(part, chain, ctx) {
@@ -342,7 +391,15 @@ function placeCover(part, pose) {
   if (!part.origin) part.origin = { position: n.position.clone(), scale: n.scale.clone() };
   n.position.copy(part.origin.position);
   n.scale.copy(part.origin.scale);
-  if (pose && pose.scale !== undefined) n.scale.setComponent(AXES[pose.axis], part.origin.scale.getComponent(AXES[pose.axis]) * pose.scale);
+  if (part.pleats) {
+    const k = pose && pose.scale !== undefined ? pose.scale : 1, up = new THREE.Vector3(0, 1, 0);
+    for (const q of part.pleats) {
+      const to = railAt(part.rail, q.dist * k), turn = new THREE.Quaternion().setFromAxisAngle(up, yawBetween(q.at, to));
+      const off = q.position.clone().sub(new THREE.Vector3(q.at.x, q.position.y, q.at.z)).applyQuaternion(turn);
+      q.node.position.set(to.x, q.position.y, to.z).add(off);
+      q.node.quaternion.copy(turn).multiply(q.quaternion);
+    }
+  } else if (pose && pose.scale !== undefined) n.scale.setComponent(AXES[pose.axis], part.origin.scale.getComponent(AXES[pose.axis]) * pose.scale);
   if (pose && pose.lift && n.parent) {
     // world up by lift metres, in the parent's frame (the model may be scaled and turned)
     n.parent.updateWorldMatrix(true, false);
