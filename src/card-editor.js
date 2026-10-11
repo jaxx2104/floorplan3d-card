@@ -22,6 +22,7 @@ export const SCHEMA = [
   { name: 'sky_bodies', selector: { boolean: {} } },
   { name: 'clouds', selector: { boolean: {} } },
   { name: 'weather', selector: { entity: { domain: 'weather' } } },
+  { name: 'idle_reset', selector: { number: { min: 0, max: 3600, step: 5, mode: 'box', unit_of_measurement: 's' } } },
   { name: 'debug', selector: { boolean: {} } },
   { name: 'layout_key', selector: { text: {} } },
   {
@@ -48,6 +49,7 @@ const LABELS = {
   sky_bodies: 'Sun and moon in the sky',
   clouds: 'Clouds in the sky',
   weather: 'Weather entity',
+  idle_reset: 'Return to the start view when idle',
   debug: 'Performance overlay (debug)',
   group_by: 'Markers',
   room_labels: 'Room labels',
@@ -70,6 +72,7 @@ const HELPERS = {
   clouds: 'With a 3D model: clouds from the weather entity\'s cloud coverage (the light follows the weather either way)',
   weather: 'Empty: the first weather entity. In YAML, weather: none ignores the weather.',
   floor: 'Empty: the first floor that has rooms',
+  idle_reset: 'Seconds without a touch before the card returns to its start view and camera (wall tablets). Empty or 0: off',
   zoom_to: 'Centre: zoom and rotate around the view\'s rotation centre (Edit → Views)',
   lights: 'With a 3D model: lamps light the house (auto) or only glow (off)',
   render: 'With a 3D model: use its render recipe (exposure, camera, shadows, day / night light) or ignore it',

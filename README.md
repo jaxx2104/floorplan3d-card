@@ -79,6 +79,7 @@ The options below can be set in the visual editor or in YAML.
 | `weather` | first `weather.*` entity | Weather entity for clouds and light, or `none`. |
 | `clouds` | `true` | With a model: cloud sprites on the sky dome. `false` hides only the clouds; the light still follows the weather. |
 | `background` | dark grey / near black | With a model: the sky colour behind the house, `#rrggbb` for day and night, or `{ day: '#ebedf2', night: '#0e0f10' }`. Blends between the two with the day / night state. Defaults: `#2a2d30` by day, `#0e0f10` at night. |
+| `idle_reset` | off | Seconds without a touch, wheel or key on the card before it returns to how it opened: start view and mode, the view's saved camera, live sun time; an open popup closes. For wall tablets. Not while editing. |
 | `view` | `3d` | Start in `3d` or `top` view. |
 | `floor` | first floor with rooms | Floor id (or view id) to show first, or `all`. |
 | `view_id` | | View to show first (with a model: a view id such as `ground`). Wins over `floor`. |

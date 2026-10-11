@@ -540,6 +540,7 @@ class Floorplan3dCard extends HTMLElement {
       this._loadModel();
       this._updateObjects(); // lights: auto | off
       this._syncDebug();
+      if (this._idleTimer) this._armIdleReset(); // idle_reset may have changed
     }
   }
 
@@ -820,9 +821,15 @@ class Floorplan3dCard extends HTMLElement {
     if (this._built) this._built.states = undefined;
     this._schedule();
     this._scheduleSurfaces();
+    // idle_reset: any touch, wheel or key on the card restarts the countdown
+    if (!this._onActivity) this._onActivity = () => this._armIdleReset();
+    for (const t of ['pointerdown', 'wheel', 'keydown']) this.addEventListener(t, this._onActivity, { capture: true, passive: true });
   }
 
   disconnectedCallback() {
+    for (const t of ['pointerdown', 'wheel', 'keydown']) if (this._onActivity) this.removeEventListener(t, this._onActivity, { capture: true });
+    clearTimeout(this._idleTimer);
+    this._idleTimer = null;
     if (this._view) this._view.stop();
     if (this._loadUI) this._loadUI.dispose();
     this._endGesture();
@@ -2368,6 +2375,32 @@ class Floorplan3dCard extends HTMLElement {
       this._view.fit({ instant: true });
       if (v && v.camera_top && this._mode === 'top') this._view.setTopCamera(this.viewTopCamera(v), { instant: true });
     }
+  }
+
+  // Option idle_reset (seconds, 0 / unset = off): after that long without a touch, wheel or key on the
+  // card it returns to how it opened (start view, start mode, its camera, live sun time). For wall tablets
+  // where someone leaves the plan zoomed into a corner. Never while editing.
+  _armIdleReset() {
+    clearTimeout(this._idleTimer);
+    this._idleTimer = null;
+    const sec = Number(this._config && this._config.idle_reset);
+    if (!(sec > 0) || !this.isConnected) return;
+    this._idleTimer = setTimeout(() => this._idleReset(), sec * 1000);
+  }
+
+  _idleReset() {
+    this._idleTimer = null;
+    if (!this._view || !this._views) return;
+    if (this._editing) { this._armIdleReset(); return; }
+    this._popup.close();
+    if (this._sunTime !== null) this.setSunTime(null);
+    const startId = defaultViewId(this._views, {
+      viewId: this._config.view_id, floor: this._config.floor, fallback: this._viewId,
+    }, (v) => this._stateFor(v).floors);
+    if (startId && startId !== this._viewId) this._setView(startId);
+    const startMode = this._config.view === 'top' ? 'top' : '3d';
+    if (startMode !== this._mode) this._setMode(startMode);
+    this._resetCamera();
   }
 
   // Reset view: the view's saved camera (3D incl. its rotation centre; top: camera_top), else frame it.
