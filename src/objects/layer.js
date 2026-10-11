@@ -7,7 +7,7 @@
 // fixture or position changed, or all lit ones when the casters changed (shadowsStale).
 import * as THREE from 'three';
 import { chainState, lightBudget, controllersOf, budgetGroup } from './logic.js';
-import { typeOf } from './types.js';
+import { typeOf, reanchor } from './types.js';
 import { badTargets, aimPoint, aimsUp } from './aim.js';
 import { dockFrontAxis, dockPose } from '../mower-track.js';
 import { WashLayer, resolveWash, washSize, placeWashes, washOpacity, clearOfWall, washSetting } from './wash.js';
@@ -297,6 +297,7 @@ export class ObjectLayer {
     const recolour = [];
     const mw = this._mower();
     const mowerEntity = mw ? mw.entity : null;
+    const movedParts = []; // nodes a cover moved this update: objects mounted on them follow
     for (const [id, p] of this.parts) {
       const binding = this.bindings.get(id);
       const hidden = !!(binding && binding.hidden); // hidden = ignored as a control: dark, no pool light
@@ -316,6 +317,7 @@ export class ObjectLayer {
           : chainState(p.obj, binding, this.groups, states);
         p.result = p.type.update(p.part, p.chain, { ...ctx, states, entity: hidden ? null : (binding && binding.entity) || null, mowerEntity });
         changed = true;
+        if (p.result.moved) movedParts.push(p.part.moving);
         if (prev && (prev.level !== p.result.level || colorKey(prev.color) !== colorKey(p.result.color))) recolour.push(id);
       }
       if (p.part.label) p.part.label.visible = !!p.part.text && !hidden && visibleLevel(p.obj.level) && shown(p.obj.node);
@@ -327,6 +329,7 @@ export class ObjectLayer {
         wash: h.beam !== 'spot' && this._setWash(id),
       });
     }
+    if (movedParts.length) this._reanchorUnder(movedParts);
     // the model was placed elsewhere: pool positions move with it
     const root = this.model.root;
     root.updateWorldMatrix(true, false);
@@ -529,6 +532,24 @@ export class ObjectLayer {
   _darken() {
     for (const l of [...this.pool.points, ...this.pool.spots]) l.intensity = 0;
     this._slots.clear();
+  }
+
+  // Objects mounted on a moved part (monitors and their lamps on a desk top): new anchors, and the pools,
+  // washes and labels are placed again.
+  _reanchorUnder(nodes) {
+    const under = (n) => { for (let x = n; x; x = x.parent) if (nodes.includes(x)) return true; return false; };
+    let any = false;
+    for (const p of this.parts.values()) {
+      if (!p.obj.node || nodes.includes(p.obj.node) || !under(p.obj.node)) continue;
+      reanchor(p.part, this.model.root);
+      if (p.wash) p.wash.sig = null; // the wall wash is placed again from the new anchor
+      p.wallHit = null;
+      any = true;
+    }
+    if (!any) return;
+    this._budgetSig = null;
+    this._washSig = null;
+    this._labelSig = null;
   }
 
   // World positions of every object's anchor (card world).

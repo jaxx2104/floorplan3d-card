@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose } from '../src/objects/types.js';
+import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor } from '../src/objects/types.js';
 
 const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null };
 
@@ -285,5 +285,29 @@ describe('cover', () => {
     expect(top.position.y).toBeCloseTo(0.7);
     expect(curtain.scale.x).toBe(1);
     expect(typeOf('cover').defaults.tap_action).toEqual({ action: 'toggle' });
+  });
+});
+
+describe('cover mounts', () => {
+  it('reports a move once and an object on the moving part gets a new anchor', () => {
+    const root = new THREE.Group();
+    const desk = new THREE.Group();
+    const top = new THREE.Group();
+    top.name = 'desk_moving';
+    desk.add(top);
+    root.add(desk);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1));
+    lamp.position.set(0, 0.9, 0);
+    top.add(lamp);
+    const part = TYPES.cover.prepare({ node: desk, hints: { part: 'desk_moving', motion: 'lift', range: [0, 0.5] } }, { root });
+    const lampPart = TYPES.light.prepare({ node: lamp, hints: {} }, { root });
+    expect(lampPart.anchor.y).toBeCloseTo(0.9);
+    const ctx = { entity: 'cover.d', states: { 'cover.d': { state: 'open', attributes: { current_position: 100 } } } };
+    expect(TYPES.cover.update(part, {}, ctx).moved).toBe(true);
+    expect(TYPES.cover.update(part, {}, ctx).moved).toBeUndefined();
+    reanchor(lampPart, root);
+    expect(lampPart.anchor.y).toBeCloseTo(1.4);
+    TYPES.cover.dispose(part);
+    TYPES.light.dispose(lampPart);
   });
 });

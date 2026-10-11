@@ -331,6 +331,7 @@ function updateCover(part, chain, ctx) {
     part.pose = key;
     placeCover(part, pose);
     if (part.view && part.view._shadowDirty) part.view._shadowDirty(); // the curtain / desk casts elsewhere now
+    return { lit: false, level: 0, color: null, moved: true }; // the layer re-anchors objects mounted on it
   }
   return { lit: false, level: 0, color: null };
 }
@@ -349,6 +350,13 @@ function placeCover(part, pose) {
     n.position.copy(n.parent.worldToLocal(at.add(new THREE.Vector3(0, pose.lift, 0))));
   }
   n.updateMatrixWorld(true);
+}
+
+// A part's anchor again after its node moved (mounted on a cover).
+export function reanchor(part, root) {
+  if (!part.obj || !part.obj.node) return;
+  part.anchor = anchorOf(part.obj, part.glow, root, part.hints ? part.hints.offset : null);
+  if (part.label && part.root) relayout(part);
 }
 
 function disposeCover(part) {
