@@ -824,6 +824,7 @@ class Floorplan3dCard extends HTMLElement {
     // idle_reset: any touch, wheel or key on the card restarts the countdown
     if (!this._onActivity) this._onActivity = () => this._armIdleReset();
     for (const t of ['pointerdown', 'wheel', 'keydown']) this.addEventListener(t, this._onActivity, { capture: true, passive: true });
+    this._armIdleReset(); // counting from when the card is shown, so an untouched tablet starts turning too
   }
 
   disconnectedCallback() {
