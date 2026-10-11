@@ -155,6 +155,12 @@ describe('popupRows', () => {
     expect(rows[1].value).toBe('87 %');
   });
 
+  it('a vacuum standing in for the mower gets the start/dock row too', () => {
+    const states = { 'vacuum.v': st('docked', { battery_level: 100 }) };
+    const obj = { id: 'v', type: 'mower' };
+    expect(kinds(popupRows(obj, chainState(obj, { entity: 'vacuum.v' }, {}, states), states))).toContain('start_dock');
+  });
+
   it('climate: temperature and mode', () => {
     const states = { 'climate.c': st('heat', { current_temperature: 20.5, temperature_unit: '°C' }) };
     const obj = { id: 'c', type: 'climate' };

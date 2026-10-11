@@ -200,6 +200,7 @@ describe('statusColor', () => {
     expect(statusColor('mower', 'mowing')).toEqual([76, 175, 80]);
     expect(statusColor('mower', 'returning')).toEqual([255, 179, 0]);
     expect(statusColor('mower', 'error')).toEqual([244, 67, 54]);
+    expect(statusColor('mower', 'cleaning')).toEqual([76, 175, 80]); // vacuum
     for (const s of ['docked', 'paused', 'unavailable', '', null, undefined, 'toString']) expect(statusColor('mower', s)).toBeNull();
   });
   it('ev_charger: charging green, ready / available blue, error red, else null', () => {

@@ -36,6 +36,26 @@ export function readSource(stateObj, cfg) {
   return { lat, lon, raw: [lat, lon] };
 }
 
+// The path driven so far, from an xy source's track_attr: [[[u, v], ...], ...] (one list per segment,
+// a flat [[u, v], ...] is one segment) -> segments of readings for the transform, or null.
+export function readTrack(stateObj, cfg) {
+  if (!stateObj || cfg.source !== 'xy' || !cfg.track_attr) return null;
+  const raw = (stateObj.attributes || {})[cfg.track_attr];
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const segs = Array.isArray(raw[0]) && Array.isArray(raw[0][0]) ? raw : [raw];
+  const out = [];
+  for (const seg of segs) {
+    if (!Array.isArray(seg)) continue;
+    const pts = [];
+    for (const p of seg) {
+      const u = Array.isArray(p) ? num(p[0]) : NaN, v = Array.isArray(p) ? num(p[1]) : NaN;
+      if (Number.isFinite(u) && Number.isFinite(v)) pts.push({ u, v });
+    }
+    if (pts.length > 1) out.push(pts);
+  }
+  return out.length ? out : null;
+}
+
 // Convert a reading to planar (u, v) metres. For gps, origin = first calibration point.
 export function toPlanar(reading, origin) {
   if (!reading) return null;

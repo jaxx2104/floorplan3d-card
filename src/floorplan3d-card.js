@@ -16,7 +16,7 @@ import {
   nodeIndex, resolveViews, resolveVisibility, shownHere, primaryLevel, defaultFloors, levelOrders, isOverview, floorLevels, deviceState,
   defaultViewId, viewCut, orderViews, unmatchedSelectors, sectionPlane, sectionCamera, zoomToFor, roomAt, exteriorShown, cameraToCard, topCameraToCard,
 } from './views.js';
-import { readSource, mowerTransform, overlayUrl } from './mower.js';
+import { readSource, readTrack, mowerTransform, overlayUrl } from './mower.js';
 import { badgeOptions, badgeInfo } from './badges.js';
 import { applyBadges } from './badge-dom.js';
 import { errorKind, errorText, stuckStep, stuckDueIn, STUCK_DEFAULT_MIN } from './mower-warning.js';
@@ -1218,6 +1218,20 @@ class Floorplan3dCard extends HTMLElement {
     else if (this._editing) this._edit.onStates();
   }
 
+  // The driven path on the floor (xy source with track_attr). Hidden while docked unless track_show: always.
+  // Rebuilt only when the attribute, the transform or the floor changed (states update far more often).
+  _refreshMowerTrack(cfg, floorId = null, docked = false) {
+    const st = cfg && cfg.track_attr && this._hass ? this._hass.states[cfg.entity] : null;
+    const show = !!st && this._mowerFn && (cfg.track_show === 'always' || !docked);
+    const raw = show ? st.attributes[cfg.track_attr] : null;
+    const key = this._trackKey;
+    if (key && key.raw === raw && key.fn === this._mowerFn && key.floorId === floorId && key.cfg === cfg) return;
+    this._trackKey = { raw, fn: this._mowerFn, floorId, cfg };
+    const segs = raw ? readTrack(st, cfg) : null;
+    const segments = segs ? segs.map((s) => s.map((r) => this._mowerFn(r)).filter(Boolean)) : null;
+    this._view.setMowerTrack(segments ? { segments, floorId, color: cfg.track_color, width: cfg.track_width, opacity: cfg.track_opacity } : null);
+  }
+
   _mowerFloor() {
     const m = this._layout.mower;
     return m && this._floors.some((f) => f.id === m.floor_id) ? m.floor_id : this._floors[0].id;
@@ -1229,11 +1243,14 @@ class Floorplan3dCard extends HTMLElement {
     if (!cfg || !cfg.entity) {
       this._mowerLive = null;
       this._view.setMapOverlay(null);
+      this._view.mowerOnFloor = false;
+      this._refreshMowerTrack(null);
       this._setCameraTimer(0);
       this._setImageTimer(0);
       return;
     }
     const floorId = this._mowerFloor();
+    this._view.mowerOnFloor = cfg.ground === 'floor';
     let reading = null, p;
     if (cfg.source === 'image') p = this._imageMowerPos(cfg);
     else {
@@ -1259,6 +1276,7 @@ class Floorplan3dCard extends HTMLElement {
       if (last && last.entity === cfg.entity) { p = [last.x, last.y]; fixed = { heading: last.heading }; this._mowerAt = 'last'; } else if (dock) { p = [dock.x, dock.y]; fixed = dock; this._mowerAt = 'dock-start'; }
     }
     this._mowerLive = p ? { x: p[0], y: p[1], floorId, reading } : (reading ? { reading } : null);
+    this._refreshMowerTrack(cfg, floorId, dk.docked);
     this._poseMowerObject(p, floorId, fixed);
     if (p && this._mowerAt !== 'dock-start') {
       const ib = this._imageBlob && this._imageBlob.matched ? this._imageBlob : null, was = lastPosition(key);

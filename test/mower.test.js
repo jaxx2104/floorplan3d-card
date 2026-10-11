@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readSource, toPlanar, fitTransform, overlayUrl, calibrationError, mowerTransform } from '../src/mower.js';
+import { readSource, readTrack, toPlanar, fitTransform, overlayUrl, calibrationError, mowerTransform } from '../src/mower.js';
 
 const close = (a, b, digits = 6) => {
   expect(a[0]).toBeCloseTo(b[0], digits);
@@ -171,5 +171,28 @@ describe('mowerTransform', () => {
     expect(mowerTransform({ source: 'gps' })).toBeNull();
     const f = mowerTransform({ calibration: [{ src: [45, 10], plan: [1, 2] }] });
     expect(f({ lat: 45, lon: 10 })).toEqual([1, 2]);
+  });
+});
+
+describe('readTrack', () => {
+  const cfg = { source: 'xy', track_attr: 'path' };
+  it('reads segments of [u, v] pairs', () => {
+    const s = { state: 'x', attributes: { path: [[[1, 2], [3, 4]], [[5, 6], [7, '8']]] } };
+    expect(readTrack(s, cfg)).toEqual([[{ u: 1, v: 2 }, { u: 3, v: 4 }], [{ u: 5, v: 6 }, { u: 7, v: 8 }]]);
+  });
+  it('takes a flat list as one segment', () => {
+    expect(readTrack({ state: 'x', attributes: { path: [[1, 2], [3, 4]] } }, cfg)).toEqual([[{ u: 1, v: 2 }, { u: 3, v: 4 }]]);
+  });
+  it('drops bad points and segments shorter than two points', () => {
+    const s = { state: 'x', attributes: { path: [[[1, 2], [null, 4], ['a', 1]], [[1, 1], [2, 2]]] } };
+    expect(readTrack(s, cfg)).toEqual([[{ u: 1, v: 1 }, { u: 2, v: 2 }]]);
+  });
+  it('null without track_attr, for gps, or when the attribute is missing / empty', () => {
+    const s = { state: 'x', attributes: { path: [[1, 2], [3, 4]] } };
+    expect(readTrack(s, { source: 'xy' })).toBeNull();
+    expect(readTrack(s, { source: 'gps', track_attr: 'path' })).toBeNull();
+    expect(readTrack({ state: 'x', attributes: { path: [] } }, cfg)).toBeNull();
+    expect(readTrack({ state: 'x', attributes: { path: null } }, cfg)).toBeNull();
+    expect(readTrack(null, cfg)).toBeNull();
   });
 });

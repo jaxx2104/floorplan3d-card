@@ -19,6 +19,8 @@ const LABELS = {
 };
 
 const domainOf = (e) => String(e).split('.')[0];
+// Start / Dock buttons: the service per domain (a robot vacuum can stand in for the mower)
+const START_DOCK = { lawn_mower: { start: 'start_mowing', dock: 'dock' }, vacuum: { start: 'start', dock: 'return_to_base' } };
 const bad = (s) => !s || s.state === 'unavailable' || s.state === 'unknown';
 const nameOf = (states, e) => (states[e] && states[e].attributes && states[e].attributes.friendly_name) || e;
 const withUnit = (v, u) => (u ? `${v} ${u}` : String(v));
@@ -157,7 +159,7 @@ export function popupRows(obj, chain, states = {}, groups = {}, popup = null, so
       if (!list.length) continue;
       rows.push({ kind, entity: light, label, value: typeof ls.attributes.effect === 'string' ? ls.attributes.effect : null, options: list });
     } else if (kind === 'start_dock') {
-      if (domainOf(main) === 'lawn_mower') rows.push({ kind, entity: main, label, value: states[main].state });
+      if (START_DOCK[domainOf(main)]) rows.push({ kind, entity: main, label, value: states[main].state });
     } else {
       const value = readValue(kind, main, states[main]);
       if (value !== null && value !== undefined) rows.push({ kind, entity: main, label, value });
@@ -351,8 +353,7 @@ export class ObjectPopup {
     if (act === 'toggle') this.onAction(...toggleCall(entity));
     else if (act === 'pct') this.onAction('light', 'turn_on', { entity_id: entity, brightness_pct: Number(b.dataset.pct) });
     else if (act === 'white') this.onAction('light', 'turn_on', { entity_id: entity, color_temp_kelvin: 2700 });
-    else if (act === 'start') this.onAction('lawn_mower', 'start_mowing', { entity_id: entity });
-    else if (act === 'dock') this.onAction('lawn_mower', 'dock', { entity_id: entity });
+    else if ((act === 'start' || act === 'dock') && START_DOCK[domainOf(entity)]) this.onAction(domainOf(entity), START_DOCK[domainOf(entity)][act], { entity_id: entity });
   }
 
   // brightness: one call when the slider is released ('change'), not per 'input' step

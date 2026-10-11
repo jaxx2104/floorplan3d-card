@@ -1457,6 +1457,7 @@ export class FloorplanView {
   // over the mower are ignored. Falls back to the ray from above the model when that finds nothing.
   mowerGround(x, y, floorId) {
     if (!this.model) return null;
+    if (this.mowerOnFloor) return this.floorElevation(floorId); // indoors: a ray would land on tables and beds
     const base = this._mapGround ?? this.floorElevation(floorId);
     const key = `${this.model.id}|${base}`;
     const g = this._mowerGround.get(x, y, key, (cx, cy) => {
@@ -1747,6 +1748,50 @@ export class FloorplanView {
 
   _warningVisible() {
     this.warning.sprite.visible = this._mowerShows(this.warning.floorId);
+  }
+
+  // Path the mower drove: { segments: [[[x, y], ...], ...] (plan metres), floorId, color, width, opacity }
+  // or null. A flat ribbon (one quad per step) 1 cm over the floor, rebuilt only when the points change.
+  setMowerTrack(t) {
+    const cur = this.mowerTrack;
+    const sig = t ? JSON.stringify([t.segments, t.floorId, t.color, t.width, t.opacity]) : null;
+    if (cur && cur.sig === sig) return;
+    if (cur) {
+      this.mowerGroup.remove(cur.mesh);
+      cur.mesh.geometry.dispose();
+      cur.mesh.material.dispose();
+      this.mowerTrack = null;
+      this.dirty = true;
+    }
+    if (!t || !t.segments || !t.segments.length) return;
+    const y = this.floorElevation(t.floorId) + 0.01, half = (t.width || 0.05) / 2;
+    const pos = [];
+    for (const seg of t.segments) {
+      for (let i = 1; i < seg.length; i++) {
+        const [x0, y0] = seg[i - 1], [x1, y1] = seg[i];
+        const len = Math.hypot(x1 - x0, y1 - y0);
+        if (len < 1e-4) continue;
+        const nx = (-(y1 - y0) / len) * half, ny = ((x1 - x0) / len) * half;
+        // world (x, h, -y); two triangles per step
+        const a = [x0 + nx, y, -(y0 + ny)], b = [x0 - nx, y, -(y0 - ny)], c = [x1 + nx, y, -(y1 + ny)], d = [x1 - nx, y, -(y1 - ny)];
+        pos.push(...a, ...b, ...c, ...c, ...b, ...d);
+      }
+    }
+    if (!pos.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(t.color || '#4fc3f7'), transparent: true, opacity: t.opacity ?? 0.7,
+      depthWrite: false, side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = -1;
+    mesh.userData.helper = true; // never picked by the model ray
+    mesh.raycast = () => {};
+    mesh.visible = this._mowerShows(t.floorId);
+    this.mowerGroup.add(mesh);
+    this.mowerTrack = { mesh, sig, floorId: t.floorId };
+    this.dirty = true;
   }
 
   // World position of the warning sprite while shown (the tap target), else null.
@@ -2222,6 +2267,7 @@ export class FloorplanView {
     }
     for (const o of this.overlayGroup.children) if (!o.isCSS2DObject) o.visible = this._shows(o.userData.floorId);
     if (this.warning) this._warningVisible();
+    if (this.mowerTrack) this.mowerTrack.mesh.visible = this._mowerShows(this.mowerTrack.floorId);
     if (this.mowerChip) this.mowerChip.obj.visible = this._mowerShows(this.mowerChip.floorId);
     if (this.model) {
       const assign = this.modelLevels || {};

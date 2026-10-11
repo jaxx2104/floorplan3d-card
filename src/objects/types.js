@@ -144,7 +144,8 @@ function disposeLight(part) {
 
 
 // ---- status looks: mower / dock / ev_charger / climate ----
-const MOWER_COLORS = { mowing: [76, 175, 80], returning: [255, 179, 0], error: [244, 67, 54] };
+// lawn_mower states, plus vacuum's cleaning (a robot vacuum can stand in for the mower)
+const MOWER_COLORS = { mowing: [76, 175, 80], cleaning: [76, 175, 80], returning: [255, 179, 0], error: [244, 67, 54] };
 const CHARGER_COLORS = { charging: [76, 175, 80], ready: [33, 150, 243], available: [33, 150, 243], error: [244, 67, 54], faulted: [244, 67, 54] };
 const CLIMATE_COLORS = { heating: [255, 120, 60], cooling: [80, 160, 255] };
 
