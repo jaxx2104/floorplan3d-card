@@ -41,6 +41,7 @@ const SHADOW_MARGIN_M = 4;
 const OCCLUSION_DELAY_MS = 150; // camera still this long -> occlusion pass
 const OCCLUSION_MAX = 300; // markers per pass
 const CLOUD_FRAME_MS = 333; // cloud drift: at most 3 frames per second
+const ORBIT_FRAME_MS = 50; // idle orbit: at most 20 frames a second (wall tablets)
 const CLOUD_NIGHT = new THREE.Color(0x4a5468); // clouds at night: dim grey-blue
 const CLOUD_DAY = new THREE.Color(0xffffff);
 const SKY_FRAME_MARGIN_M = 1; // top view: margin around a visible sun / moon disc
@@ -280,6 +281,14 @@ export function drawMoon(g, size, illumination, waxing) {
   g.fill();
 }
 
+// Turn a camera position around the target's vertical axis by angle radians (counter-clockwise from above).
+export function orbitStep(position, target, angle) {
+  const dx = position.x - target.x, dz = position.z - target.z, c = Math.cos(angle), sn = Math.sin(angle);
+  position.x = target.x + dx * c + dz * sn;
+  position.z = target.z - dx * sn + dz * c;
+  return position;
+}
+
 export class FloorplanView {
   constructor(container) {
     this.container = container;
@@ -421,7 +430,7 @@ export class FloorplanView {
       this._camMovedAt = performance.now();
       this._scheduleOcclusion();
     });
-    c.addEventListener('start', () => { this._tween = null; });
+    c.addEventListener('start', () => { this._tween = null; this.stopOrbit(); });
     if (this.controls) c.enabled = this.controls.enabled;
     if (prevTarget) c.target.copy(prevTarget);
     this.controls = c;
@@ -2680,6 +2689,7 @@ export class FloorplanView {
         this.dirty = true;
       }
       this._driftClouds();
+      this._stepOrbit();
       if (!this.dirty) return;
       this.dirty = false;
       this.stats.frames++;
@@ -2694,6 +2704,31 @@ export class FloorplanView {
     };
     this._raf = requestAnimationFrame(loop);
     this._scheduleOcclusion(0);
+  }
+
+  // Idle orbit (card option idle_orbit): the 3D camera turns around its target at speed degrees a second,
+  // after any camera tween, while the card is on screen and the page visible. A drag stops it.
+  startOrbit(speed) {
+    const v = Number(speed);
+    this._orbit = v ? { speed: v, frameAt: 0 } : null;
+  }
+
+  stopOrbit() {
+    this._orbit = null;
+  }
+
+  _stepOrbit() {
+    const o = this._orbit;
+    if (!o) return;
+    if (this.mode === 'top' || this._tween || !this.onScreen || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { o.frameAt = 0; return; }
+    const now = performance.now();
+    if (!o.frameAt) { o.frameAt = now; return; }
+    if (now - o.frameAt < ORBIT_FRAME_MS) return;
+    const dt = Math.min(0.5, (now - o.frameAt) / 1000);
+    o.frameAt = now;
+    orbitStep(this.camera.position, this.controls.target, (o.speed * dt * Math.PI) / 180);
+    this.controls.update();
+    this.dirty = true;
   }
 
   // Cloud drift: at most one frame per CLOUD_FRAME_MS, only while clouds show (3D, coverage > 0), the

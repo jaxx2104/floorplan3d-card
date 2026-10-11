@@ -57,6 +57,7 @@ describe('idle_reset', () => {
     c._setMode = vi.fn((m) => { c._mode = m; });
     c.setSunTime = vi.fn((m) => { c._sunTime = m; });
     c._resetCamera = vi.fn();
+    c._view = { startOrbit: vi.fn(), stopOrbit: vi.fn() };
     return c;
   }
   it('returns to the start view, mode and camera after the idle time', () => {
@@ -89,6 +90,26 @@ describe('idle_reset', () => {
     vi.advanceTimersByTime(5000);
     expect(c._resetCamera).toHaveBeenCalledTimes(1);
     c._armIdleReset();
+    clearTimeout(c._idleTimer);
+  });
+});
+
+describe('idle_orbit', () => {
+  afterEach(() => vi.useRealTimers());
+  it('starts after the idle reset in 3D and a touch stops it', () => {
+    vi.useFakeTimers();
+    const c = Object.create(proto);
+    Object.defineProperty(c, 'isConnected', { value: true });
+    Object.assign(c, {
+      _config: { idle_reset: 10, idle_orbit: 3 }, _views: [{ id: 'g' }], _viewId: 'g', _mode: '3d', _sunTime: null,
+      _popup: { close: vi.fn() }, _stateFor: () => ({ floors: [] }), _setView: vi.fn(), _setMode: vi.fn(), _resetCamera: vi.fn(),
+      _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
+    });
+    c._armIdleReset();
+    vi.advanceTimersByTime(10000);
+    expect(c._view.startOrbit).toHaveBeenCalledWith(3);
+    c._armIdleReset();
+    expect(c._view.stopOrbit).toHaveBeenCalled();
     clearTimeout(c._idleTimer);
   });
 });

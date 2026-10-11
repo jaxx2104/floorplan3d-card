@@ -23,6 +23,7 @@ export const SCHEMA = [
   { name: 'clouds', selector: { boolean: {} } },
   { name: 'weather', selector: { entity: { domain: 'weather' } } },
   { name: 'idle_reset', selector: { number: { min: 0, max: 3600, step: 5, mode: 'box', unit_of_measurement: 's' } } },
+  { name: 'idle_orbit', selector: { number: { min: -30, max: 30, step: 0.5, mode: 'box', unit_of_measurement: '°/s' } } },
   { name: 'debug', selector: { boolean: {} } },
   { name: 'layout_key', selector: { text: {} } },
   {
@@ -50,6 +51,7 @@ const LABELS = {
   clouds: 'Clouds in the sky',
   weather: 'Weather entity',
   idle_reset: 'Return to the start view when idle',
+  idle_orbit: 'Turn slowly after returning',
   debug: 'Performance overlay (debug)',
   group_by: 'Markers',
   room_labels: 'Room labels',
@@ -72,6 +74,7 @@ const HELPERS = {
   clouds: 'With a 3D model: clouds from the weather entity\'s cloud coverage (the light follows the weather either way)',
   weather: 'Empty: the first weather entity. In YAML, weather: none ignores the weather.',
   floor: 'Empty: the first floor that has rooms',
+  idle_orbit: 'With idle reset, in 3D: degrees a second the camera turns around the start view\'s centre until touched (negative: clockwise). Empty or 0: off',
   idle_reset: 'Seconds without a touch before the card returns to its start view and camera (wall tablets). Empty or 0: off',
   zoom_to: 'Centre: zoom and rotate around the view\'s rotation centre (Edit → Views)',
   lights: 'With a 3D model: lamps light the house (auto) or only glow (off)',

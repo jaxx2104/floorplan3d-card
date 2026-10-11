@@ -111,3 +111,14 @@ describe('manifest camera_top', () => {
     expect(m.warnings.join('\n')).toMatch(/view "b": invalid camera_top/);
   });
 });
+
+import { orbitStep } from '../src/view.js';
+describe('orbitStep', () => {
+  it('turns around the target on the ground plane, keeping height and distance', () => {
+    const pos = { x: 2, y: 5, z: 0 };
+    orbitStep(pos, { x: 1, y: 0, z: 0 }, Math.PI / 2);
+    expect(pos.x).toBeCloseTo(1);
+    expect(pos.z).toBeCloseTo(-1);
+    expect(pos.y).toBe(5);
+  });
+});

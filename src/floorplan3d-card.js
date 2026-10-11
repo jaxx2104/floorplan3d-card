@@ -828,6 +828,7 @@ class Floorplan3dCard extends HTMLElement {
 
   disconnectedCallback() {
     for (const t of ['pointerdown', 'wheel', 'keydown']) if (this._onActivity) this.removeEventListener(t, this._onActivity, { capture: true });
+    if (this._view) this._view.stopOrbit();
     clearTimeout(this._idleTimer);
     this._idleTimer = null;
     if (this._view) this._view.stop();
@@ -2383,6 +2384,7 @@ class Floorplan3dCard extends HTMLElement {
   _armIdleReset() {
     clearTimeout(this._idleTimer);
     this._idleTimer = null;
+    if (this._view && this._view.stopOrbit) this._view.stopOrbit(); // a touch ends the idle orbit
     const sec = Number(this._config && this._config.idle_reset);
     if (!(sec > 0) || !this.isConnected) return;
     this._idleTimer = setTimeout(() => this._idleReset(), sec * 1000);
@@ -2401,6 +2403,8 @@ class Floorplan3dCard extends HTMLElement {
     const startMode = this._config.view === 'top' ? 'top' : '3d';
     if (startMode !== this._mode) this._setMode(startMode);
     this._resetCamera();
+    // option idle_orbit (degrees a second): then turn slowly around the start view's target until touched
+    if (Number(this._config.idle_orbit) && startMode === '3d') this._view.startOrbit(Number(this._config.idle_orbit));
   }
 
   // Reset view: the view's saved camera (3D incl. its rotation centre; top: camera_top), else frame it.
