@@ -235,9 +235,10 @@ What the card reads (everything else in `fp` is kept for later and ignored):
 | `dock` | LED mesh lit while the mower is docked | more-info / more-info | `led`: LED mesh name (default `led`) |
 | `ev_charger` | LED green charging, blue ready, red error; a power label while charging | more-info / popup | `led` |
 | `climate` | a label with the current temperature; glow warm heating, cool cooling | more-info / popup | — |
+| `cover` | the moving part follows `current_position`: a curtain gathers (scales along `axis` about its origin, 1 closed → `min` open), a desk top lifts (`motion: "lift"`, `range` metres at 0 % / 100 % above the modelled pose) | toggle / more-info | `motion`: `gather` / `lift`, `part`: moving child name (default `moving`, else the node), `axis`: `x` / `y` / `z` local (default `x`), `min` (default 0.15), `range`: `[m at 0 %, m at 100 %]` |
 | anything else | no change in look | more-info / popup | — |
 
-Later types (`door`, `gate`, `cover`, `fan`, `vacuum`, …) can be tagged already; they behave as
+Later types (`door`, `gate`, `fan`, `vacuum`, …) can be tagged already; they behave as
 `generic` until the card supports them.
 
 ### Light hints

@@ -1380,11 +1380,11 @@ export class EditMode {
     const ids = Object.keys(states).sort();
     const DOMAINS = {
       light: ['light', 'switch'], light_strip: ['light', 'switch'], mower: ['lawn_mower'], dock: ['lawn_mower', 'binary_sensor'],
-      ev_charger: ['sensor', 'switch', 'binary_sensor'], climate: ['climate'],
+      ev_charger: ['sensor', 'switch', 'binary_sensor'], climate: ['climate'], cover: ['cover'],
     };
     const ICONS = {
       light: 'mdi:lightbulb', light_strip: 'mdi:led-strip-variant', mower: 'mdi:robot-mower', dock: 'mdi:home-lightning-bolt',
-      ev_charger: 'mdi:ev-station', climate: 'mdi:thermostat',
+      ev_charger: 'mdi:ev-station', climate: 'mdi:thermostat', cover: 'mdi:curtains',
     };
     const listFor = (type) => {
       const d = DOMAINS[type];

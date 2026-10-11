@@ -296,6 +296,65 @@ function disposeMower(part) {
   disposeStatus(part);
 }
 
+// ---- cover: a curtain gathers, a desk top lifts, following current_position (0 closed .. 100 open) ----
+// hints.motion 'gather' (default): the moving part scales along its local hints.axis ('x' | 'y' | 'z', default
+// 'x') about its own origin, from 1 at 0 % to hints.min at 100 % (default 0.15): put the origin on the side the
+// curtain gathers to. hints.motion 'lift': the moving part rises hints.range[0] metres at 0 % and
+// hints.range[1] at 100 % above its modelled pose (negative: lower). The moving part is the child named
+// hints.part (default 'moving'), else the whole node. No position (unknown, unavailable): the modelled pose.
+const AXES = { x: 0, y: 1, z: 2 };
+export function coverPose(hints, position) {
+  const h = hints && typeof hints === 'object' ? hints : {};
+  const pos = num(position);
+  if (!Number.isFinite(pos)) return null;
+  const t = Math.min(100, Math.max(0, pos)) / 100;
+  if (h.motion === 'lift') {
+    const r = Array.isArray(h.range) && h.range.length === 2 && h.range.every(fin) ? h.range : [0, 0];
+    return { lift: r[0] + (r[1] - r[0]) * t };
+  }
+  const min = fin(h.min) ? Math.min(1, Math.max(0.01, h.min)) : 0.15;
+  return { axis: Object.prototype.hasOwnProperty.call(AXES, h.axis) ? h.axis : 'x', scale: 1 - t + min * t };
+}
+
+function prepareCover(obj, ctx) {
+  const name = (obj.hints && typeof obj.hints.part === 'string' && obj.hints.part) || 'moving';
+  let moving = null;
+  if (obj.node) obj.node.traverse((n) => { if (!moving && n !== obj.node && nameOf(n) === name) moving = n; });
+  return { ...generic.prepare(obj, ctx), root: ctx.root, view: ctx.view, moving: moving || obj.node, origin: null, pose: undefined };
+}
+
+function updateCover(part, chain, ctx) {
+  const s = ctx.entity && ctx.states ? ctx.states[ctx.entity] : null;
+  const pose = coverPose(part.obj.hints, s && s.attributes ? s.attributes.current_position : null);
+  const key = pose ? JSON.stringify(pose) : null;
+  if (key !== part.pose) {
+    part.pose = key;
+    placeCover(part, pose);
+    if (part.view && part.view._shadowDirty) part.view._shadowDirty(); // the curtain / desk casts elsewhere now
+  }
+  return { lit: false, level: 0, color: null };
+}
+
+function placeCover(part, pose) {
+  const n = part.moving;
+  if (!n) return;
+  if (!part.origin) part.origin = { position: n.position.clone(), scale: n.scale.clone() };
+  n.position.copy(part.origin.position);
+  n.scale.copy(part.origin.scale);
+  if (pose && pose.scale !== undefined) n.scale.setComponent(AXES[pose.axis], part.origin.scale.getComponent(AXES[pose.axis]) * pose.scale);
+  if (pose && pose.lift && n.parent) {
+    // world up by lift metres, in the parent's frame (the model may be scaled and turned)
+    n.parent.updateWorldMatrix(true, false);
+    const at = n.parent.localToWorld(part.origin.position.clone());
+    n.position.copy(n.parent.worldToLocal(at.add(new THREE.Vector3(0, pose.lift, 0))));
+  }
+  n.updateMatrixWorld(true);
+}
+
+function disposeCover(part) {
+  if (part.origin) placeCover(part, null);
+}
+
 const generic = {
   prepare: (obj, ctx) => ({ obj, glow: null, hints: hintDefaults(obj.hints), pool: false, anchor: obj.node ? anchorOf(obj, null, ctx.root, null) : new THREE.Vector3() }),
   update: () => ({ lit: false, level: 0, color: null }),
@@ -347,6 +406,10 @@ export const TYPES = {
     },
     relayout, dispose: disposeStatus,
     defaults: { tap_action: { action: 'more-info' }, hold_action: { action: 'popup' }, popup: ['temperature', 'mode'] },
+  },
+  cover: {
+    prepare: prepareCover, update: updateCover, dispose: disposeCover,
+    defaults: { tap_action: { action: 'toggle' }, hold_action: { action: 'more-info' }, popup: ['state'] },
   },
   generic,
 };

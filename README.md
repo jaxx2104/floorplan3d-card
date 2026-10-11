@@ -489,6 +489,8 @@ has no marker: the object is the control.
 - **Mower, dock, charger, climate:** the mower model drives where the mower is; the dock LED is
   lit while docked; the charger LED shows charging / ready / error with the power as a label; a
   climate unit shows its temperature and glows warm or cool while heating or cooling.
+- **Covers:** a `cover` object follows `current_position`: a curtain gathers towards its origin as it
+  opens, a desk top (`hints.motion: "lift"`) moves up and down. Tap toggles, hold opens more-info.
 - **Spots and uplights:** `hints.beam: "spot"` is a spot aimed at `hints.target`; `beam: "up"` is a
   spot (24°, penumbra 0.6) aimed straight up from the lamp; `beam: "down"` stays a point light. A
   target farther from the lamp than `hints.distance` (8 m without one) is ignored, and so is a target

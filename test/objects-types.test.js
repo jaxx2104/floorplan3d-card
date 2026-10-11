@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel } from '../src/objects/types.js';
+import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose } from '../src/objects/types.js';
 
 const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null };
 
@@ -246,5 +246,44 @@ describe('objectLabel', () => {
     expect(objectLabel('climate', {}, 'climate.x')).toBeNull();
     expect(objectLabel('climate', {}, null)).toBeNull();
     expect(objectLabel('mower', { 'lawn_mower.m': st('mowing') }, 'lawn_mower.m')).toBeNull();
+  });
+});
+
+describe('cover', () => {
+  it('gathers a curtain to hints.min when open and keeps the modelled pose without a position', () => {
+    expect(coverPose({}, 0)).toEqual({ axis: 'x', scale: 1 });
+    expect(coverPose({ axis: 'z', min: 0.2 }, 100)).toEqual({ axis: 'z', scale: 0.2 });
+    expect(coverPose({ min: 0.2 }, 50).scale).toBeCloseTo(0.6);
+    expect(coverPose({}, '150')).toEqual({ axis: 'x', scale: 0.15 });
+    expect(coverPose({}, undefined)).toBeNull();
+    expect(coverPose({}, 'unknown')).toBeNull();
+  });
+  it('lifts a desk top between hints.range', () => {
+    expect(coverPose({ motion: 'lift', range: [-0.1, 0.5] }, 0)).toEqual({ lift: -0.1 });
+    expect(coverPose({ motion: 'lift', range: [-0.1, 0.5] }, 50).lift).toBeCloseTo(0.2);
+    expect(coverPose({ motion: 'lift', range: 'x' }, 50)).toEqual({ lift: 0 });
+  });
+  it('moves the part named moving and restores it on dispose', () => {
+    const root = new THREE.Group();
+    const node = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1));
+    top.name = 'moving';
+    top.position.set(0, 0.7, 0);
+    node.add(top);
+    root.add(node);
+    const curtain = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 0.1));
+    root.add(curtain);
+    const desk = TYPES.cover.prepare({ node, hints: { motion: 'lift', range: [0, 0.5] } }, { root });
+    const states = { 'cover.desk': { state: 'open', attributes: { current_position: 100 } } };
+    TYPES.cover.update(desk, {}, { entity: 'cover.desk', states });
+    expect(top.position.y).toBeCloseTo(1.2);
+    const c = TYPES.cover.prepare({ node: curtain, hints: {} }, { root });
+    TYPES.cover.update(c, {}, { entity: 'cover.c', states: { 'cover.c': { state: 'open', attributes: { current_position: 100 } } } });
+    expect(curtain.scale.x).toBeCloseTo(0.15);
+    TYPES.cover.dispose(desk);
+    TYPES.cover.dispose(c);
+    expect(top.position.y).toBeCloseTo(0.7);
+    expect(curtain.scale.x).toBe(1);
+    expect(typeOf('cover').defaults.tap_action).toEqual({ action: 'toggle' });
   });
 });
