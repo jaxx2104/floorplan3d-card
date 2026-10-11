@@ -146,6 +146,23 @@ const mixHex = (a, b, t) => {
   return (c(16) << 16) | (c(8) << 8) | c(0);
 };
 
+// Card option background: '#rrggbb' for both, or { day, night } -> { day, night } hex numbers.
+// Missing or invalid colours fall back to the defaults (dark grey by day, near black at night).
+export const BACKGROUND_DEFAULTS = Object.freeze({ day: 0x2a2d30, night: 0x0e0f10 });
+const parseHex = (v) => {
+  const m = typeof v === 'string' && /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+  return parseInt(h, 16);
+};
+export function backgroundColors(opt) {
+  const d = BACKGROUND_DEFAULTS, o = typeof opt === 'string' ? { day: opt, night: opt } : opt || {};
+  return { day: parseHex(o.day) ?? d.day, night: parseHex(o.night) ?? d.night };
+}
+
+// Background at night 0..1 (hex).
+export const backgroundAt = (bg, night) => mixHex(bg.day, bg.night, Math.max(0, Math.min(1, Number(night) || 0)));
+
 // Day / night blend (night 0..1) of the merged settings -> colours (hex) and intensities before weather.
 export function skyLights(render, night) {
   const t = Math.max(0, Math.min(1, Number(night) || 0)), d = render.day, n = render.night;

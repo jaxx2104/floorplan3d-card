@@ -40,7 +40,7 @@ import { resolveActions, actionCall, TapSequencer } from './actions.js';
 import { pointInPolygon, signedArea } from './placement.js';
 import { surfaceKind, surfaceKey, surfaceSearch, chooseSurface, nearPolygon, worldOf, planOf } from './surface.js';
 
-const VERSION = '0.4.9';
+const VERSION = '0.4.9-jaxx.1';
 const NONE = Object.freeze({}); // stable stand-in for a missing layout.objects / groups (binding cache key)
 // HA frontend navigation: push the path and tell the router.
 function navigate(path, replace = false) {
@@ -532,6 +532,7 @@ class Floorplan3dCard extends HTMLElement {
     else if (this._view) {
       this._view.setOcclusion(this._config.occlusion !== false);
       this._view.setRenderOption(this._config.render);
+      this._view.setBackground(this._config.background);
       if (this._view.model) this._applySky(true); // sky_bodies
       this._weatherId = undefined; // option weather may have changed
       this._applyWeather();
@@ -989,6 +990,7 @@ class Floorplan3dCard extends HTMLElement {
     this._view.onRender = () => { this._popup.position(); this._hintsNear(); };
     this._view.setOcclusion(this._config.occlusion !== false);
     this._view.setRenderOption(this._config.render);
+    this._view.setBackground(this._config.background);
     this._view.onPixelRatio = (pr) => this._hints.setPixelRatio(pr);
     this._view.setMode(this._mode);
     this._loadModel();

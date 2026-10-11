@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights } from '../src/render-recipe.js';
+import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS } from '../src/render-recipe.js';
 import { buildManifest } from '../src/manifest.js';
 
 const tree = (roots) => ({
@@ -139,5 +139,27 @@ describe('manifest render', () => {
   });
   it('is null without one', () => {
     expect(buildManifest(tree([{ name: 'a' }])).render).toBeNull();
+  });
+});
+
+describe('background', () => {
+  it('defaults to dark grey by day and near black at night', () => {
+    expect(backgroundColors(undefined)).toEqual({ day: 0x2a2d30, night: 0x0e0f10 });
+    expect(backgroundColors(null)).toEqual({ ...BACKGROUND_DEFAULTS });
+  });
+  it('takes one colour for both or { day, night }', () => {
+    expect(backgroundColors('#ebedf2')).toEqual({ day: 0xebedf2, night: 0xebedf2 });
+    expect(backgroundColors({ day: '#fff' })).toEqual({ day: 0xffffff, night: 0x0e0f10 });
+    expect(backgroundColors({ day: 'ebedf2', night: '#1A1C20' })).toEqual({ day: 0xebedf2, night: 0x1a1c20 });
+  });
+  it('ignores invalid colours', () => {
+    expect(backgroundColors({ day: 'white', night: 42 })).toEqual({ ...BACKGROUND_DEFAULTS });
+  });
+  it('blends with the night state', () => {
+    const bg = { day: 0xffffff, night: 0x000000 };
+    expect(backgroundAt(bg, 0)).toBe(0xffffff);
+    expect(backgroundAt(bg, 1)).toBe(0x000000);
+    expect(backgroundAt(bg, 0.5)).toBe(0x808080);
+    expect(backgroundAt(bg, 2)).toBe(0x000000);
   });
 });

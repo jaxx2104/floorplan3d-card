@@ -14,7 +14,7 @@ import { outdoorShown, sectionLevels, unionBox, pivotCamera, rayPlaneY, orthoZoo
 import { GroundCache } from './surface.js';
 import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
-import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize } from './render-recipe.js';
+import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
 import { cloudLight, cloudCount, coverageChanged, cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, cloudFade, cloudNear } from './weather.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
@@ -291,6 +291,7 @@ export class FloorplanView {
     this.render = mergeRender(null);
     this.renderOption = 'model'; // card option render: model | default (ignore the recipe)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
+    this.background = backgroundColors(null); // card option background: { day, night } hex
     this.renderer.setPixelRatio(this._pixelRatio());
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.localClippingEnabled = true; // model cut-away
@@ -1127,8 +1128,17 @@ export class FloorplanView {
     sun.shadow.intensity = L.shadowIntensity;
     this._applyMoonLight();
     this._cloudLook();
-    const day = new THREE.Color(0x2a2d30), night = new THREE.Color(0x0e0f10);
-    this.renderer.setClearColor(day.lerp(night, t), 1);
+    this.renderer.setClearColor(backgroundAt(this.background, t), 1);
+  }
+
+  // Card option background ('#rrggbb' or { day, night }). Re-applied now with a model loaded.
+  setBackground(opt) {
+    const next = backgroundColors(opt);
+    if (next.day === this.background.day && next.night === this.background.night) return;
+    this.background = next;
+    if (!this.model) return;
+    this._applyLights();
+    this.dirty = true;
   }
 
   // Sun / moon on a dome around the house: { sun: { dir } | null, moon: { dir, phase, illumination } | null,
