@@ -109,5 +109,30 @@ export function cloudFade(cam, centre) {
   return Math.max(0, Math.min(1, (CLOUD_FADE_FROM_DEG + CLOUD_FADE_DEG - el) / CLOUD_FADE_DEG));
 }
 
+// The dome is smaller than a typical orbit, so the camera often sits outside it and a cloud on the
+// camera's side of the dome hangs between the camera and the rooms. Per cloud: full when it lies behind
+// the dome centre as seen from the camera (offset along the centre->camera axis <= -CLOUD_FRONT_FROM of
+// its distance), gone from the plane through the centre facing the camera (>= CLOUD_FRONT_TO).
+export const CLOUD_FRONT_FROM = 0.3;
+export const CLOUD_FRONT_TO = 0;
+export function cloudFront(cam, centre, cloud) {
+  const v = [cam[0] - centre[0], cam[1] - centre[1], cam[2] - centre[2]];
+  const p = [cloud[0] - centre[0], cloud[1] - centre[1], cloud[2] - centre[2]];
+  const lv = Math.hypot(v[0], v[1], v[2]), lp = Math.hypot(p[0], p[1], p[2]);
+  if (!lv || !lp) return 0;
+  const s = (v[0] * p[0] + v[1] * p[1] + v[2] * p[2]) / (lv * lp);
+  return clamp01((CLOUD_FRONT_TO - s) / (CLOUD_FRONT_TO + CLOUD_FRONT_FROM));
+}
+
+// Day cloud colour (hex) for the background behind them: white on a dark background (the default),
+// a darker shade of a light background (luminance > 0.5) so white clouds don't vanish into it.
+export const CLOUD_ON_LIGHT = 0.8;
+export function cloudDayColor(bg) {
+  const n = Number(bg) || 0, r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 <= 0.5) return 0xffffff;
+  const k = (x) => Math.round(x * CLOUD_ON_LIGHT);
+  return (k(r) << 16) | (k(g) << 8) | k(b);
+}
+
 // A cloud the camera is (nearly) inside: hidden.
 export const cloudNear = (cam, cloud, size) => Math.hypot(cloud[0] - cam[0], cloud[1] - cam[1], cloud[2] - cam[2]) < size;

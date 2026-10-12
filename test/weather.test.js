@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cloudCoverage, weatherEntity, cloudLight, cloudCount, coverageChanged, CLOUD_MAX,
-  cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, CLOUD_DRIFT_DEG, CLOUD_DRIFT_RATE, cloudFade, cloudNear,
+  cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, CLOUD_DRIFT_DEG, CLOUD_DRIFT_RATE, cloudFade, cloudNear, cloudFront, CLOUD_FRONT_FROM, cloudDayColor,
 } from '../src/weather.js';
 
 const w = (state, attributes = {}) => ({ entity_id: 'weather.x', state, attributes });
@@ -134,5 +134,31 @@ describe('cloudFade / cloudNear', () => {
   it('near: closer than the cloud size', () => {
     expect(cloudNear([0, 0, 0], [3, 0, 0], 5)).toBe(true);
     expect(cloudNear([0, 0, 0], [30, 0, 0], 5)).toBe(false);
+  });
+});
+
+describe('cloudFront', () => {
+  const c = [0, 0, 0], cam = [20, 15, 0];
+  it('full behind the centre, gone on the camera side', () => {
+    expect(cloudFront(cam, c, [-10, 5, 0])).toBe(1); // opposite the camera
+    expect(cloudFront(cam, c, [10, 5, 0])).toBe(0); // between the camera and the house
+    expect(cloudFront(cam, c, [0, 0, 10])).toBe(0); // beside the house, on the plane through the centre
+  });
+  it('fades linearly up to CLOUD_FRONT_FROM behind the centre', () => {
+    const axis = [0.8, 0.6, 0], side = [0, 0, 1], k = -CLOUD_FRONT_FROM / 2, q = Math.sqrt(1 - k * k);
+    const p = axis.map((x, i) => 10 * (x * k + side[i] * q));
+    expect(cloudFront(cam, c, p)).toBeCloseTo(0.5);
+  });
+  it('degenerate: camera or cloud at the centre', () => {
+    expect(cloudFront(c, c, [1, 0, 0])).toBe(0);
+    expect(cloudFront(cam, c, c)).toBe(0);
+  });
+});
+
+describe('cloudDayColor', () => {
+  it('white on a dark background, a darker shade of a light one', () => {
+    expect(cloudDayColor(0x2a2d30)).toBe(0xffffff);
+    expect(cloudDayColor(0xebedf2)).toBe(0xbcbec2);
+    expect(cloudDayColor(0xffffff)).toBe(0xcccccc);
   });
 });

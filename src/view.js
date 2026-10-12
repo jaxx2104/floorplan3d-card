@@ -15,7 +15,7 @@ import { GroundCache } from './surface.js';
 import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
 import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
-import { cloudLight, cloudCount, coverageChanged, cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, cloudFade, cloudNear } from './weather.js';
+import { cloudLight, cloudCount, coverageChanged, cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, cloudFade, cloudNear, cloudFront, cloudDayColor } from './weather.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
 } from './render-rules.js';
@@ -43,7 +43,7 @@ const OCCLUSION_MAX = 300; // markers per pass
 const CLOUD_FRAME_MS = 333; // cloud drift: at most 3 frames per second
 const ORBIT_FRAME_MS = 50; // idle orbit: at most 20 frames a second (wall tablets)
 const CLOUD_NIGHT = new THREE.Color(0x4a5468); // clouds at night: dim grey-blue
-const CLOUD_DAY = new THREE.Color(0xffffff);
+const CLOUD_DAY = new THREE.Color();
 const SKY_FRAME_MARGIN_M = 1; // top view: margin around a visible sun / moon disc
 const OCCLUSION_SLICE_MS = 8; // a pass yields (setTimeout) after this long
 const PICK_LINE_M = 0.02; // raycast threshold for lines / points (three's default is 1 m)
@@ -337,7 +337,6 @@ export class FloorplanView {
     this.weather = { applied: null, show: true, t: 0, frameAt: 0, shown: 0 };
     this.onScreen = true; // the card is on screen (IntersectionObserver in the card); drift only then
     this._cloudSprites = null; // created on first coverage > 0, reused
-    this._cloudMats = null; // one SpriteMaterial per texture variant
 
     this.staticGroup = new THREE.Group();
     this.markerGroup = new THREE.Group();
@@ -1259,18 +1258,19 @@ export class FloorplanView {
     const c = (this.weather.applied || 0) / 100, t = Math.max(0, Math.min(1, this.sky.night || 0)), L = cloudLight(c * 100, t);
     if (this.skySprites.sun) this.skySprites.sun.material.opacity = L.sunDisc;
     if (this.skySprites.moon) this.skySprites.moon.material.opacity = L.moon;
-    if (this._cloudMats) {
-      for (const m of this._cloudMats) {
-        m.opacity = (0.4 + 0.55 * c) * (this._cloudFadeK ?? 1);
-        m.color.copy(CLOUD_DAY).lerp(CLOUD_NIGHT, t);
+    CLOUD_DAY.setHex(cloudDayColor(this.background.day));
+    if (this._cloudSprites) {
+      for (const s of this._cloudSprites) {
+        s.material.opacity = (0.4 + 0.55 * c) * (this._cloudFadeK ?? 1) * (s.userData.front ?? 1);
+        s.material.color.copy(CLOUD_DAY).lerp(CLOUD_NIGHT, t);
       }
     }
   }
 
   _makeClouds() {
-    this._cloudMats = [0, 1, 2].map((v) => new THREE.SpriteMaterial({ map: getCloudTexture(v), transparent: true, depthWrite: false, toneMapped: false, fog: false }));
+    // one material per cloud (own opacity: fade in front of the house), same shader program for all
     this._cloudSprites = cloudSlots().map((slot) => {
-      const s = new THREE.Sprite(this._cloudMats[slot.variant]);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: getCloudTexture(slot.variant), transparent: true, depthWrite: false, toneMapped: false, fog: false }));
       s.castShadow = s.receiveShadow = false;
       s.frustumCulled = false;
       s.visible = false;
@@ -1286,7 +1286,8 @@ export class FloorplanView {
 
   // Clouds on the dome around the visible sun (else the moon), drifting with weather.t.
   // 3D only (top view looks down on the dome); they fade out in a high orbit (50..65 deg camera
-  // elevation, one opacity for all: uniforms only), and a cloud the camera is inside is hidden.
+  // elevation) and one by one in front of the house (cloudFront), uniforms only; a cloud the camera
+  // is inside is hidden.
   _placeClouds(on) {
     const w = this.weather, d = this._dome;
     const n = on && w.show && this.mode !== 'top' ? cloudCount(w.applied || 0) : 0;
@@ -1298,7 +1299,7 @@ export class FloorplanView {
     const anchor = body ? azElFromDir(body.dir) : { az: 200, el: 35 };
     const slots = cloudSlots(), cam = this.camera.position.toArray();
     const fade = n ? cloudFade(cam, d.centre.toArray()) : 1;
-    if (fade !== this._cloudFadeK) { this._cloudFadeK = fade; this._cloudLook(); }
+    this._cloudFadeK = fade;
     this._cloudSprites.forEach((s, i) => {
       s.visible = i < n;
       if (!s.visible) return;
@@ -1306,8 +1307,10 @@ export class FloorplanView {
       s.position.copy(d.centre).addScaledVector(new THREE.Vector3(...dirFromAzEl(p.az, p.el)), d.radius * 0.985);
       const size = slots[i].size * d.radius;
       s.scale.set(size, size * 0.5, 1);
-      if (!fade || cloudNear(cam, s.position.toArray(), size)) s.visible = false;
+      s.userData.front = cloudFront(cam, d.centre.toArray(), s.position.toArray());
+      if (!fade || !s.userData.front || cloudNear(cam, s.position.toArray(), size)) s.visible = false;
     });
+    this._cloudLook(); // per-cloud opacity for this camera
   }
 
   // Sun / moon on the dome (house centre + dir x radius) as world-size discs, hidden below the horizon
@@ -2859,8 +2862,7 @@ export class FloorplanView {
       s.material.dispose();
     }
     this.skySprites = { sun: null, moon: null };
-    if (this._cloudMats) for (const m of this._cloudMats) m.dispose(); // the textures are shared per page
-    this._cloudMats = null;
+    if (this._cloudSprites) for (const c of this._cloudSprites) c.material.dispose(); // the textures are shared per page
     this._cloudSprites = null;
     if (this.skyRing) {
       this.skyRing.traverse((o) => { if (o.material && o.material.map) o.material.map.dispose(); });

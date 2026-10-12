@@ -541,7 +541,7 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   await page.evaluate('window.__setDemoSun(30, 200)');
   const wx = async (c, cond = 'partlycloudy') => { await page.evaluate(`window.__setDemoWeather(${c}, ${JSON.stringify(cond)})`); await idle(page); };
   const sky = () => page.evaluate(`(() => { const v = ${card}._view, cl = (v._cloudSprites || []).filter((x) => x.visible);
-    return { clouds: cl.length, sun: v.sun.intensity, hemi: v.hemi.intensity, shadow: v.sun.shadow.intensity, radius: v.sun.shadow.radius,
+    return { clouds: cl.length, slots: v.weather.shown, sun: v.sun.intensity, hemi: v.hemi.intensity, shadow: v.sun.shadow.intensity, radius: v.sun.shadow.radius,
       disc: v.skySprites.sun ? v.skySprites.sun.material.opacity : null, onDome: cl.every((x) => Math.abs(x.position.distanceTo(v._dome.centre) / v._dome.radius - 0.985) < 0.001),
       helpers: cl.every((x) => x.userData.helper && x.material.depthTest && !x.material.depthWrite), programs: v.renderer.info.programs.length, frames: v.stats.cloudFrames }; })()`);
   await wx(0, 'sunny');
@@ -549,15 +549,28 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   check('weather 0 %: no clouds, full sun, hard shadow', clear.clouds === 0 && clear.sun > 2.5 && clear.shadow === 1 && clear.disc === 1, JSON.stringify(clear));
   await wx(60);
   const part = await sky();
-  check('weather 60 %: 7 clouds on the dome, sun x0.55, shadow 0.61, more fill', part.clouds === 7 && part.onDome && part.helpers && Math.abs(part.sun / clear.sun - 0.55) < 0.001
+  check('weather 60 %: 7 clouds on the dome, sun x0.55, shadow 0.61, more fill', part.slots === 7 && part.clouds > 0 && part.onDome && part.helpers && Math.abs(part.sun / clear.sun - 0.55) < 0.001
     && Math.abs(part.shadow - 0.61) < 0.001 && Math.abs(part.hemi / clear.hemi - 1.21) < 0.001 && Math.abs(part.disc - 0.52) < 0.001, JSON.stringify(part));
   await wx(62);
   check('weather: a change under 5 points is not applied', (await sky()).sun === part.sun);
   await wx(100, 'cloudy');
   const over = await sky();
-  check('weather 100 %: 12 clouds, sun x0.25, shadow 0.35', over.clouds === 12 && Math.abs(over.sun / clear.sun - 0.25) < 0.001 && Math.abs(over.shadow - 0.35) < 0.001 && over.radius === 4, JSON.stringify(over));
+  check('weather 100 %: 12 clouds, sun x0.25, shadow 0.35', over.slots === 12 && Math.abs(over.sun / clear.sun - 0.25) < 0.001 && Math.abs(over.shadow - 0.35) < 0.001 && over.radius === 4, JSON.stringify(over));
   await wx(null, 'cloudy');
-  check('weather: condition only (cloudy) -> 85 %', (await sky()).clouds === 10);
+  check('weather: condition only (cloudy) -> 85 %', (await sky()).slots === 10);
+  // the dome is smaller than the orbit: clouds between the camera and the house fade out one by one
+  const front = await page.evaluate(`(() => { const v = ${card}._view, d = v._dome, saved = v.getCamera(), out = {};
+    for (const [k, az] of [['sunSide', 200], ['facingSun', 20]]) {
+      const a = az * Math.PI / 180, r = d.radius * 2;
+      v.setCamera({ position: [d.centre.x + Math.sin(a) * r, d.centre.y + r * 0.6, d.centre.z - Math.cos(a) * r], target: d.centre.toArray() }, { instant: true });
+      v._placeSkyBodies();
+      const cam = v.camera.position, axis = cam.clone().sub(d.centre).normalize();
+      const vis = v._cloudSprites.filter((x) => x.visible);
+      out[k] = { visible: vis.length, inFront: vis.filter((x) => x.position.clone().sub(d.centre).dot(axis) >= 0).length, near: vis.filter((x, i) => v._cloudSprites.indexOf(x) < 3).length };
+    }
+    v.setCamera(saved, { instant: true }); v._placeSkyBodies(); return out; })()`);
+  check('clouds in front of the house hidden: camera on the sun side hides the sun clouds, facing the sun shows them',
+    front.sunSide.inFront === 0 && front.facingSun.inFront === 0 && front.sunSide.near === 0 && front.facingSun.near === 3, JSON.stringify(front));
   await wx(60);
   await page.evaluate(`(() => { const v = ${card}._view; if (v.test) v.test.drift = true; })()`); // test mode holds the clouds still
   await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
@@ -605,7 +618,7 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   await wx(60);
   await page.evaluate('window.__setDemoSun(-20, 0)');
   await idle(page);
-  const night = await page.evaluate(`(() => { const v = ${card}._view, m = v._cloudMats[0].color; return { clouds: v._cloudSprites.filter((x) => x.visible).length, r: m.r, b: m.b }; })()`);
+  const night = await page.evaluate(`(() => { const v = ${card}._view, m = v._cloudSprites[0].material.color; return { clouds: v.weather.shown, r: m.r, b: m.b }; })()`);
   check('night: clouds stay, dim grey-blue', night.clouds === 7 && night.r < 0.5 && night.b > night.r, JSON.stringify(night));
   await page.evaluate('window.__setDemoSun(30, 200)');
   await page.evaluate(`${card}.setConfig({ ...${card}._config, clouds: false })`);
