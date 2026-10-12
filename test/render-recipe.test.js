@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS } from '../src/render-recipe.js';
+import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS, normCityLights, cityLitFor, cityLightsOn, CITY_DEFAULTS } from '../src/render-recipe.js';
 import { buildManifest } from '../src/manifest.js';
 
 const tree = (roots) => ({
@@ -177,5 +177,31 @@ describe('surround light', () => {
     expect(surroundLight(s, 1).intensity).toBeCloseTo(0.1);
     expect(surroundLight(s, 0.5).intensity).toBeCloseTo(0.3);
     expect(surroundLight(null, 0).intensity).toBe(0);
+  });
+});
+
+describe('city lights', () => {
+  it('normCityLights: off unless asked for; true: the defaults; lists and numbers checked', () => {
+    for (const v of [undefined, null, false, 'yes']) expect(normCityLights(v)).toBe(null);
+    expect(normCityLights(true)).toEqual({ ...CITY_DEFAULTS, windows: [...CITY_DEFAULTS.windows], glow: [] });
+    const c = normCityLights({ windows: 'tower', glow: ['lobby', 3], share: 2, street: -1 });
+    expect(c.windows).toEqual(['tower']);
+    expect(c.glow).toEqual(['lobby']);
+    expect(c.share).toBe(1);
+    expect(c.street).toBe(0);
+  });
+  it('cityLitFor: glow before windows, by name, material name or layer', () => {
+    const city = normCityLights({ windows: ['neighbors'], glow: ['podium_base'] });
+    expect(cityLitFor(['podium_5', 'podium_base'], [], city)).toBe('glow');
+    expect(cityLitFor(['neighbors', 'neighbor'], ['neighbors'], city)).toBe('windows');
+    expect(cityLitFor(['blk'], ['neighbors'], city)).toBe('windows');
+    expect(cityLitFor(['walls_1', 'wall'], [], city)).toBe(null);
+    expect(cityLitFor(['neighbors'], [], null)).toBe(null);
+  });
+  it('cityLightsOn: off by day, on by night, smooth at dusk', () => {
+    expect(cityLightsOn(0)).toBe(0);
+    expect(cityLightsOn(0.35)).toBe(0);
+    expect(cityLightsOn(1)).toBe(1);
+    expect(cityLightsOn(0.55)).toBeCloseTo(0.5);
   });
 });

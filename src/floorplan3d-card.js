@@ -536,6 +536,7 @@ class Floorplan3dCard extends HTMLElement {
       this._view.setAo(this._config.ao);
       this._view.setBokeh(this._config.bokeh);
       this._view.setSurroundLight(this._config.surround_light);
+      this._view.setCityLights(this._config.city_lights);
       if (this._view.model) this._applySky(true); // sky_bodies
       this._weatherId = undefined; // option weather may have changed
       this._applyWeather();
@@ -1006,6 +1007,7 @@ class Floorplan3dCard extends HTMLElement {
     this._view.setAo(this._config.ao);
     this._view.setBokeh(this._config.bokeh);
     this._view.setSurroundLight(this._config.surround_light);
+    this._view.setCityLights(this._config.city_lights);
     this._view.onPixelRatio = (pr) => this._hints.setPixelRatio(pr);
     this._view.setMode(this._mode);
     this._loadModel();

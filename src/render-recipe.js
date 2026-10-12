@@ -203,3 +203,33 @@ export function surroundLight(settings, night) {
     intensity: settings ? settings.day + (settings.night - settings.day) * t : 0,
   };
 }
+
+// Card option city_lights: lights of the city at night. true | { windows: [mesh / material names or layers
+// with lit windows], glow: [the same, lit glass: lobby, shop fronts], share (of the windows lit), strength
+// (windows), street (street lamp light), glass (lit glass) } -> settings or null (off).
+export const CITY_DEFAULTS = Object.freeze({ windows: Object.freeze(['neighbors']), glow: Object.freeze([]), share: 0.45, strength: 0.6, street: 1.2, glass: 0.35 });
+export function normCityLights(opt) {
+  if (!opt) return null;
+  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  if (!o) return null;
+  const num = (k) => {
+    const v = Number(o[k]);
+    return o[k] === undefined || !Number.isFinite(v) ? CITY_DEFAULTS[k] : Math.min(k === 'share' ? 1 : 10, Math.max(0, v));
+  };
+  const list = (k) => (o[k] === undefined ? [...CITY_DEFAULTS[k]] : [].concat(o[k]).filter((x) => typeof x === 'string' && x));
+  return { windows: list('windows'), glow: list('glow'), share: num('share'), strength: num('strength'), street: num('street'), glass: num('glass') };
+}
+
+// How a model mesh lights up at night: 'glow' or 'windows' when its name, a material's or a parent's name or
+// one of its layers is in that list (glow first), else null.
+export function cityLitFor(names, layers, city) {
+  if (!city) return null;
+  const hit = (list) => list.some((w) => names.includes(w) || layers.includes(w));
+  return hit(city.glow) ? 'glow' : hit(city.windows) ? 'windows' : null;
+}
+
+// Night 0..1 -> how much the city lights are on (after dusk, full by night).
+export const cityLightsOn = (night) => {
+  const t = Math.max(0, Math.min(1, (Number(night) - 0.35) / 0.4));
+  return t * t * (3 - 2 * t);
+};

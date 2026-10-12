@@ -14,7 +14,7 @@ import { outdoorShown, sectionLevels, unionBox, pivotCamera, rayPlaneY, orthoZoo
 import { GroundCache } from './surface.js';
 import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
-import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight } from './render-recipe.js';
+import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from './render-recipe.js';
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from './weather.js';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from './precip.js';
 import { AmbientOcclusion, normAo } from './ao.js';
@@ -1122,7 +1122,39 @@ export class FloorplanView {
     const out = surroundLight(this._surround, t), U = this._cloudU;
     U.fpOutSky.value.setHex(out.sky).multiplyScalar(out.intensity * L.hemi);
     U.fpOutGround.value.setHex(out.ground).multiplyScalar(out.intensity * L.hemi);
+    const city = this._city;
+    U.fpCity.value = city ? cityLightsOn(t) : 0;
+    if (city) U.fpCityParams.value.set(city.share, city.strength, city.street, city.glass);
     this.renderer.setClearColor(backgroundAt(this.background, t), 1);
+  }
+
+  // Card option city_lights (true or { windows, glow, share, strength, street, glass }): lit windows, lit
+  // glass and street light at night, see cloud-shadow.js.
+  setCityLights(opt) {
+    const next = normCityLights(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._city || null)) return;
+    this._city = next;
+    if (!this.model) return;
+    this._cityWindows();
+    this._applyLights();
+    this.dirty = true;
+  }
+
+  // Which model materials draw lit windows or lit glass (a shader define: recompiled only when it changes),
+  // and the site's ground height for the street light.
+  _cityWindows() {
+    this.model.root.traverse((o) => {
+      if (!o.isMesh) return;
+      const info = shadowInfo(o);
+      const lit = cityLitFor(info.names, info.layers, this._city);
+      for (const m of [].concat(o.material)) {
+        if (!m || !m.userData.fpCloud || (m.userData.fpCityLit || null) === lit) continue;
+        m.userData.fpCityLit = lit;
+        m.needsUpdate = true;
+      }
+    });
+    const box = new THREE.Box3().setFromObject(this.model.root);
+    this._cloudU.fpCityGround.value = box.isEmpty() ? 0 : box.min.y;
   }
 
   // Card option surround_light (true or { day, night }): ambient light around the house, not in the rooms.
@@ -1470,6 +1502,7 @@ export class FloorplanView {
     const r = this.renderer, day = this.model ? this.daylight : true, sun = this.sun, hemi = this.hemi;
     this._modelLook = !!this.model;
     if (this.model) {
+      if (this._cityModel !== this.model) { this._cityModel = this.model; this._cityWindows(); } // once per model
       const rd = this.render;
       r.toneMapping = TONE[rd.toneMapping] ?? THREE.ACESFilmicToneMapping;
       r.toneMappingExposure = rd.exposure;

@@ -58,6 +58,11 @@ export function makeCloudUniforms() {
     // surroundings light (card option surround_light): sky / ground irradiance outside the rooms only
     fpOutSky: { value: new THREE.Color(0, 0, 0) },
     fpOutGround: { value: new THREE.Color(0, 0, 0) },
+    // city lights at night (card option city_lights): 0..1, the site's ground height, and
+    // [share of lit windows, window strength, street lamp strength, strength of the lit glass]
+    fpCity: { value: 0 },
+    fpCityGround: { value: 0 },
+    fpCityParams: { value: new THREE.Vector4(0.45, 0.6, 1.2, 0.35) },
   };
 }
 
@@ -82,6 +87,18 @@ uniform vec4 fpRoomFrame;
 uniform float fpRoomFloor;
 uniform vec3 fpOutSky;
 uniform vec3 fpOutGround;
+uniform float fpCity;
+uniform float fpCityGround;
+uniform vec4 fpCityParams;
+float fpHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+// 1 inside [lo, hi], antialiased over a pixel
+float fpBand( float x, float lo, float hi ) {
+  float w = max( fwidth( x ), 1e-4 );
+  return clamp( ( x - lo ) / w + 0.5, 0.0, 1.0 ) * clamp( ( hi - x ) / w + 0.5, 0.0, 1.0 );
+}
+vec3 fpWindowTint( float h ) {
+  return h < 0.6 ? vec3( 1.0, 0.66, 0.36 ) : h < 0.88 ? vec3( 1.0, 0.8, 0.58 ) : vec3( 0.8, 0.86, 1.0 );
+}
 float fpRoom() {
   if ( fpRoomFrame.z <= 0.0 || vFpCloudW.y < fpRoomFloor ) return 0.0;
   vec2 m = ( vFpCloudW.xz - fpRoomFrame.xy ) / fpRoomFrame.zw;
@@ -112,6 +129,45 @@ const OUT_LIGHT = `
 #endif
 `;
 
+// city lights at night: lit windows on the walls of the neighbouring flats (materials with FP_WINDOWS), lit
+// glass such as a lobby or shop front (FP_GLOW, bays a little uneven), and pools of street light near the ground
+const CITY_LIGHTS = `
+if ( fpCity > 0.0 ) {
+  vec3 fpN = normalize( ( vec4( geometryNormal, 0.0 ) * viewMatrix ).xyz );
+  float fpOut = 1.0 - fpRoom();
+  #if defined( FP_WINDOWS ) || defined( FP_GLOW )
+  if ( abs( fpN.y ) < 0.3 ) {
+    float fpU = dot( vFpCloudW.xz, normalize( vec2( -fpN.z, fpN.x ) ) );
+    float fpFace = floor( dot( vFpCloudW.xz, fpN.xz ) * 2.0 ) * 17.0; // parallel faces differ
+    #ifdef FP_WINDOWS
+    vec2 fpG = vec2( fpU / 1.8, ( vFpCloudW.y - fpCityGround ) / 3.0 );
+    vec2 fpC = floor( fpG ) + fpFace, fpF = fract( fpG );
+    float fpWin = fpBand( fpF.x, 0.18, 0.82 ) * fpBand( fpF.y, 0.3, 0.78 ) * step( fpHash( fpC ), fpCityParams.x );
+    totalEmissiveRadiance += fpOut * fpWin * fpWindowTint( fpHash( fpC + 3.1 ) ) * ( 0.55 + 0.45 * fpHash( fpC + 7.7 ) ) * fpCityParams.y * fpCity;
+    #else
+    vec2 fpC = vec2( floor( fpU / 3.0 ), fpFace );
+    totalEmissiveRadiance += fpOut * vec3( 1.0, 0.76, 0.5 ) * ( 0.45 + 0.55 * fpHash( fpC + 9.1 ) ) * fpCityParams.w * fpCity;
+    #endif
+  }
+  #endif
+  #if defined( RE_IndirectDiffuse )
+  float fpH = vFpCloudW.y - fpCityGround;
+  if ( fpCityParams.z > 0.0 && fpH < 6.0 ) {
+    vec2 fpG = vFpCloudW.xz / 9.0, fpC0 = floor( fpG );
+    float fpL = 0.0;
+    for ( int i = -1; i <= 1; i ++ ) for ( int j = -1; j <= 1; j ++ ) {
+      vec2 fpC = fpC0 + vec2( i, j );
+      if ( fpHash( fpC + 5.0 ) > 0.7 ) continue;
+      vec2 fpP = ( fpC + 0.2 + 0.6 * vec2( fpHash( fpC + 1.3 ), fpHash( fpC + 2.7 ) ) ) * 9.0;
+      vec2 fpD = vFpCloudW.xz - fpP;
+      fpL += exp( -dot( fpD, fpD ) / 9.7 );
+    }
+    irradiance += fpOut * vec3( 1.0, 0.68, 0.38 ) * fpL * fpCityParams.z * fpCity * ( 1.0 - smoothstep( 1.0, 6.0, fpH ) );
+  }
+  #endif
+}
+`;
+
 // Lit materials only (the ones with direct light to shade).
 export const shadable = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial));
 
@@ -126,10 +182,11 @@ export function patchCloudShadow(mat, uniforms) {
     sh.vertexShader = VERT_HEAD + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
     const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
-    sh.fragmentShader = FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT);
+    const city = mat.userData.fpCityLit, head = city === 'windows' ? '#define FP_WINDOWS\n' : city === 'glow' ? '#define FP_GLOW\n' : '';
+    sh.fragmentShader = head + FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
   };
   const key = mat.customProgramCacheKey;
-  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud`;
+  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}`;
   mat.needsUpdate = true;
   return true;
 }
