@@ -75,9 +75,9 @@ The options below can be set in the visual editor or in YAML.
 | `wall_height` | `1.0` | Height of the cut-away drawn walls in metres (rooms drawn on the card; a model is cut at its storey height instead). |
 | `occlusion` | `true` | With a model: markers hidden behind a wall from the current camera angle are shown faint (25 %) and can't be tapped; in edit mode they stay half visible and draggable. Checked once the camera has been still for 150 ms; not in top view. `false` turns it off. |
 | `merge` | `true` | With a model: static parts that share a room / zone / level / layer group and a material are merged into one mesh when the model loads (far fewer draw calls; Edit → Model shows "Draw calls: before → after"). Objects, glass and other transparent parts, `<room>_floor` pieces and parts named by a `node:` view rule stay separate. `false` keeps every part (reloads the model). |
-| `sky_bodies` | `true` | With a model: sun and moon discs on a dome around the house with a compass ring (moon position and phase from the HA location) and faint moonlight at night. `false` hides the discs and the ring. Hides the clouds too. |
-| `weather` | first `weather.*` entity | Weather entity for clouds and light, or `none`. |
-| `clouds` | `true` | With a model: cloud sprites on the sky dome. `false` hides only the clouds; the light still follows the weather. |
+| `sky_bodies` | `true` | With a model: sun and moon discs on a dome around the house with a compass ring (moon position and phase from the HA location) and faint moonlight at night. `false` hides the discs and the ring. Turns the cloud shadows, rain and snow off too. |
+| `weather` | first `weather.*` entity | Weather entity for the cloud shadows, rain / snow and light, or `none`. |
+| `clouds` | `true` | With a model: cloud shadows drifting over the surroundings and rain / snow around the house, never over the rooms. `false` turns them off; the light still follows the weather. |
 | `background` | dark grey / near black | With a model: the sky colour behind the house, `#rrggbb` for day and night, or `{ day: '#ebedf2', night: '#0e0f10' }`. Blends between the two with the day / night state. Defaults: `#2a2d30` by day, `#0e0f10` at night. |
 | `idle_reset` | off | Seconds without a touch, wheel or key on the card before it returns to how it opened: start view and mode, the view's saved camera, live sun time; an open popup closes. For wall tablets. Not while editing. |
 | `idle_orbit` | off | With `idle_reset`, in 3D: after returning, the camera turns around the view's rotation centre at this many degrees a second (negative: clockwise) until the next touch, wheel or key or a drag. At most 20 frames a second, only while the card is on screen. |
@@ -465,15 +465,21 @@ has no marker: the object is the control.
 - **Clouds and weather:** the cloud coverage comes from the weather entity (option `weather`, default
   the first `weather.*` entity; `weather: none` ignores it): its `cloud_coverage` attribute, else the
   condition (sunny / clear-night 0 %, partlycloudy 40 %, cloudy 85 %, fog / rain / snow / lightning /
-  hail 100 %, windy 30 %, exceptional 50 %). Up to 12 soft clouds sit on the sky dome (the first
-  ones around the sun, so a partly cloudy sky half-covers it) and drift slowly (at most 3 frames per
-  second, only in 3D while the card is on screen, the tab visible and a cloud in view). Top view has
-  no clouds, and they fade out as the camera orbits high over the house (50–65° up); at night they are dim grey-blue and cover the moon too. Under
-  coverage c the sun is × (1 − 0.75 c), its shadow fainter (intensity 1 → 0.35), the daytime sky fill
-  × (1 + 0.35 c), the sun disc × (1 − 0.8 c) and the moon and moonlight × (1 − 0.7 c); lamps are not
-  affected. Changes under 5 points are ignored. `clouds: false` hides the clouds only. (The shadow
-  radius is set too, but three.js ignores it with soft PCF shadows, so the softening is the fainter
-  shadow.)
+  hail 100 %, windy 30 %, exceptional 50 %). A 3D camera framing the rooms looks down past the
+  horizon, so the weather is shown on the model rather than in the sky:
+  - Cloud shadows: the lit model materials shade the sun and moon (not the lamps) with a soft pattern
+    in world x / z that drifts with the wind (at most 3 frames a second, only while the card is on
+    screen and the tab visible); about a share c of the ground is in shade at coverage c, a cloud
+    leaving 10 % of the sun. Between the patches the sun keeps its clear-sky strength. The rooms
+    (their polygons, from the floor up) get no patches but the average dimming: the sun there is
+    × (1 − 0.75 c).
+  - Rain (rainy, pouring, lightning-rainy, hail) and snow (snowy; snowy-rainy both) fall around the
+    house from above the rooms to the bottom of the model, at up to 20 frames a second while they
+    fall. No drop starts over a room, and nothing is drawn over the rooms on screen.
+  - The sun's shadow gets fainter (intensity 1 → 0.35), the daytime sky fill × (1 + 0.35 c), the sun
+    disc × (1 − 0.8 c) and the moon and moonlight × (1 − 0.7 c). The sun / moon discs never cover
+    the rooms on screen and in 3D sit behind the surroundings. Changes under 5 points are ignored.
+    `clouds: false` turns the shadows, rain and snow off; the light still follows the coverage.
 - **Tap** a lamp to toggle it, **hold** (500 ms) for a small popup: on / off, brightness, colour,
   and a row per tag controller and why a lamp is dark ("Facade switch is off"). A tap on an object
   that can't act does nothing but say why: "Not reachable (offline)" or "Turn on first: <controller>"
