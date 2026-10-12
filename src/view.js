@@ -15,7 +15,7 @@ import { GroundCache } from './surface.js';
 import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
 import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
-import { cloudLight, cloudCount, coverageChanged, cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, cloudFade, cloudNear, cloudFront, cloudDayColor } from './weather.js';
+import { cloudLight, cloudCount, coverageChanged, cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, cloudFade, cloudNear, cloudDayColor, convexHull, hullDistance, skyKeepOut } from './weather.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
 } from './render-rules.js';
@@ -44,6 +44,7 @@ const CLOUD_FRAME_MS = 333; // cloud drift: at most 3 frames per second
 const ORBIT_FRAME_MS = 50; // idle orbit: at most 20 frames a second (wall tablets)
 const CLOUD_NIGHT = new THREE.Color(0x4a5468); // clouds at night: dim grey-blue
 const CLOUD_DAY = new THREE.Color();
+const CLOUD_BLOB = 0.3; // visible radius of a cloud sprite (soft blobs) as a fraction of its width
 const SKY_FRAME_MARGIN_M = 1; // top view: margin around a visible sun / moon disc
 const OCCLUSION_SLICE_MS = 8; // a pass yields (setTimeout) after this long
 const PICK_LINE_M = 0.02; // raycast threshold for lines / points (three's default is 1 m)
@@ -1256,19 +1257,19 @@ export class FloorplanView {
   // Disc and cloud opacity / tint for the coverage and night (uniforms only, no shader change).
   _cloudLook() {
     const c = (this.weather.applied || 0) / 100, t = Math.max(0, Math.min(1, this.sky.night || 0)), L = cloudLight(c * 100, t);
-    if (this.skySprites.sun) this.skySprites.sun.material.opacity = L.sunDisc;
-    if (this.skySprites.moon) this.skySprites.moon.material.opacity = L.moon;
+    if (this.skySprites.sun) this.skySprites.sun.material.opacity = L.sunDisc * (this.skySprites.sun.userData.clear ?? 1);
+    if (this.skySprites.moon) this.skySprites.moon.material.opacity = L.moon * (this.skySprites.moon.userData.clear ?? 1);
     CLOUD_DAY.setHex(cloudDayColor(this.background.day));
     if (this._cloudSprites) {
       for (const s of this._cloudSprites) {
-        s.material.opacity = (0.4 + 0.55 * c) * (this._cloudFadeK ?? 1) * (s.userData.front ?? 1);
+        s.material.opacity = (0.4 + 0.55 * c) * (this._cloudFadeK ?? 1) * (s.userData.clear ?? 1);
         s.material.color.copy(CLOUD_DAY).lerp(CLOUD_NIGHT, t);
       }
     }
   }
 
   _makeClouds() {
-    // one material per cloud (own opacity: fade in front of the house), same shader program for all
+    // one material per cloud (own opacity: the rooms keep-out), same shader program for all
     this._cloudSprites = cloudSlots().map((slot) => {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: getCloudTexture(slot.variant), transparent: true, depthWrite: false, toneMapped: false, fog: false }));
       s.castShadow = s.receiveShadow = false;
@@ -1286,9 +1287,9 @@ export class FloorplanView {
 
   // Clouds on the dome around the visible sun (else the moon), drifting with weather.t.
   // 3D only (top view looks down on the dome); they fade out in a high orbit (50..65 deg camera
-  // elevation) and one by one in front of the house (cloudFront), uniforms only; a cloud the camera
-  // is inside is hidden.
-  _placeClouds(on) {
+  // elevation) and one by one where they would cover the rooms on screen (hull: _roomHull), uniforms
+  // only; a cloud the camera is inside is hidden.
+  _placeClouds(on, hull) {
     const w = this.weather, d = this._dome;
     const n = on && w.show && this.mode !== 'top' ? cloudCount(w.applied || 0) : 0;
     if (n && !this._cloudSprites) this._makeClouds();
@@ -1307,27 +1308,81 @@ export class FloorplanView {
       s.position.copy(d.centre).addScaledVector(new THREE.Vector3(...dirFromAzEl(p.az, p.el)), d.radius * 0.985);
       const size = slots[i].size * d.radius;
       s.scale.set(size, size * 0.5, 1);
-      s.userData.front = cloudFront(cam, d.centre.toArray(), s.position.toArray());
-      if (!fade || !s.userData.front || cloudNear(cam, s.position.toArray(), size)) s.visible = false;
+      s.userData.clear = this._skyClear(hull, s.position, size * CLOUD_BLOB);
+      if (!fade || !s.userData.clear || cloudNear(cam, s.position.toArray(), size)) s.visible = false;
     });
-    this._cloudLook(); // per-cloud opacity for this camera
+  }
+
+  // The rooms' box (as fit(): room polygons on the visible floors, floor to ceiling), else the house.
+  _roomBox() {
+    const box = new THREE.Box3();
+    for (const { room, floorId } of this._rooms || []) {
+      if (!this._shows(floorId) || !room.polygon || room.polygon.length < 3) continue;
+      const f = this.floors.find((x) => x.id === floorId);
+      const y0 = f ? f.elevation : 0, y1 = y0 + ((f && f.height) || 2.7);
+      for (const [x, y] of room.polygon) {
+        box.expandByPoint(new THREE.Vector3(x, y0, -y));
+        box.expandByPoint(new THREE.Vector3(x, y1, -y));
+      }
+    }
+    if (box.isEmpty() && this._houseBox) box.copy(this._houseBox);
+    return box.isEmpty() ? null : box;
+  }
+
+  // The rooms on screen: convex hull of the room box corners (px from the centre, y up); [] without
+  // rooms, null when a corner is behind the camera (the camera is in or right over the rooms: no sky).
+  _roomHull() {
+    const box = this._roomBox();
+    if (!box) return [];
+    const cam = this.camera, size = this.renderer.getSize(new THREE.Vector2()), v = new THREE.Vector3(), pts = [];
+    cam.updateMatrixWorld();
+    for (let i = 0; i < 8; i++) {
+      v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
+      if (cam.isPerspectiveCamera && v.clone().applyMatrix4(cam.matrixWorldInverse).z > -cam.near) return null;
+      v.project(cam);
+      pts.push([v.x * size.x / 2, v.y * size.y / 2]);
+    }
+    return convexHull(pts);
+  }
+
+  // Screen distance (px, < 0 inside) of a world point from the rooms' hull, and the screen size (px)
+  // of a world length there.
+  _skyScreen(hull, pos, radius) {
+    const cam = this.camera, size = this.renderer.getSize(new THREE.Vector2());
+    const c = pos.clone().project(cam);
+    const e = pos.clone().addScaledVector(new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), radius).project(cam);
+    const px = [c.x * size.x / 2, c.y * size.y / 2];
+    return { dist: hullDistance(hull, px), r: Math.hypot(e.x * size.x / 2 - px[0], e.y * size.y / 2 - px[1]) };
+  }
+
+  // Opacity factor 0..1 of a sky sprite (world centre, world radius): gone where it covers the rooms.
+  _skyClear(hull, pos, radius) {
+    if (hull === null) return 0;
+    if (!hull.length) return 1;
+    const { dist, r } = this._skyScreen(hull, pos, radius);
+    return skyKeepOut(dist, r);
   }
 
   // Sun / moon on the dome (house centre + dir x radius) as world-size discs, hidden below the horizon
-  // (sun < -2 deg, moon < 0); the ring and both discs need a model and sky_bodies.
+  // (sun < -2 deg, moon < 0); the ring and both discs need a model and sky_bodies. Like the clouds,
+  // a disc fades out where it would cover the rooms on screen (the dome is smaller than the orbit).
   _placeSkyBodies() {
     const d = this._dome, on = !!this.model && this._skyOn && !!d && !this.sectionClip; // the section's global plane would cut them
-    const put = (sprite, body, minY, size) => {
+    const hull = on ? this._roomHull() : [];
+    const put = (sprite, body, minY, size, radius) => {
       if (!sprite) return;
       const show = on && !!body && body.dir[1] > minY;
       sprite.visible = show;
       if (!show) return;
       sprite.position.copy(d.centre).addScaledVector(new THREE.Vector3(...body.dir).normalize(), d.radius);
       sprite.scale.setScalar(size);
+      sprite.userData.clear = this._skyClear(hull, sprite.position, radius);
+      if (!sprite.userData.clear) sprite.visible = false;
     };
-    put(this.skySprites.sun, this.skyBodies.sun, SUN_MIN_Y, SUN_DISC_M * 2); // disc = half the sprite
-    put(this.skySprites.moon, this.skyBodies.moon, 0, MOON_DISC_M / 0.9); // disc = 90 % of the sprite
-    this._placeClouds(on);
+    put(this.skySprites.sun, this.skyBodies.sun, SUN_MIN_Y, SUN_DISC_M * 2, SUN_DISC_M * 0.7); // disc = half the sprite, plus some glow
+    put(this.skySprites.moon, this.skyBodies.moon, 0, MOON_DISC_M / 0.9, MOON_DISC_M / 2); // disc = 90 % of the sprite
+    this._placeClouds(on, hull);
+    this._cloudLook(); // per-sprite opacity for this camera
     const ring = this.skyRing;
     if (!ring) return;
     ring.visible = on;
@@ -1411,6 +1466,7 @@ export class FloorplanView {
     const hc = box.getCenter(new THREE.Vector3());
     this._dome = { centre: new THREE.Vector3(hc.x, ground, hc.z), radius: domeRadius(Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2) };
     this._placeSkyBodies();
+    this._houseBox = box.clone(); // the sky keep-out without room polygons
     box.expandByScalar(SHADOW_MARGIN_M);
     const centre = box.getCenter(new THREE.Vector3());
     const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);

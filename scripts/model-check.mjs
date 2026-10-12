@@ -373,7 +373,9 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
     const o = (s) => { if (!s || !s.visible) return null; const p = s.position.clone().project(cam);
       const rel = s.position.clone().sub(d.centre); return { ndc: [p.x, p.y, p.z].map((x) => Math.round(x * 100) / 100), inView: Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && p.z >= -1 && p.z <= 1,
         el: Math.asin(rel.y / rel.length()) * 180 / Math.PI, az: (Math.atan2(rel.x, rel.z) * 180 / Math.PI + 360) % 360, r: rel.length() }; };
-    return { sun: o(v.skySprites.sun), moon: o(v.skySprites.moon), ring: !!v.skyRing && v.skyRing.visible, dome: d && d.radius,
+    const mp = v.skySprites.moon && v.skySprites.moon.position.clone().sub(d.centre);
+    return { sun: o(v.skySprites.sun), moon: o(v.skySprites.moon), moonEl: mp && mp.length() ? Math.asin(mp.y / mp.length()) * 180 / Math.PI : null,
+      moonKeptOut: !!v.skySprites.moon && v.skySprites.moon.userData.clear === 0, ring: !!v.skyRing && v.skyRing.visible, dome: d && d.radius,
       moonLight: v.moonLight.intensity, north: v.model.north || 0, programs: v.renderer.info.programs.length,
       lights: v.scene.children.filter((x) => x.isLight).length }; })()`);
   await page.evaluate('window.__demoNow = Date.UTC(2024, 3, 24, 0, 30)'); // full moon, up at 52 N 5 E
@@ -413,7 +415,7 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
   await page.evaluate(`${btn}.click()`); // night
   await idle(page);
   b = await bodies();
-  check('sky: manual Night -> moon at 35 deg, sun hidden, moonlight 0.17', (await mode()) === 'night' && !!b.moon && Math.abs(b.moon.el - 35) < 0.5 && !b.sun && Math.abs(b.moonLight - 0.17) < 0.001, JSON.stringify(b));
+  check('sky: manual Night -> moon at 35 deg (hidden where it would cover the rooms), sun hidden, moonlight 0.17', (await mode()) === 'night' && (!!b.moon || b.moonKeptOut) && Math.abs(b.moonEl - 35) < 0.5 && !b.sun && Math.abs(b.moonLight - 0.17) < 0.001, JSON.stringify(b));
   await sh('look-moon.png');
   await page.evaluate(`${card}.setConfig({ ...${card}._config, sky_bodies: false })`);
   await idle(page);
@@ -558,19 +560,24 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   check('weather 100 %: 12 clouds, sun x0.25, shadow 0.35', over.slots === 12 && Math.abs(over.sun / clear.sun - 0.25) < 0.001 && Math.abs(over.shadow - 0.35) < 0.001 && over.radius === 4, JSON.stringify(over));
   await wx(null, 'cloudy');
   check('weather: condition only (cloudy) -> 85 %', (await sky()).slots === 10);
-  // the dome is smaller than the orbit: clouds between the camera and the house fade out one by one
-  const front = await page.evaluate(`(() => { const v = ${card}._view, d = v._dome, saved = v.getCamera(), out = {};
-    for (const [k, az] of [['sunSide', 200], ['facingSun', 20]]) {
+  // the dome is smaller than the orbit: no cloud / disc may cover the rooms on screen, from any side
+  const keep = await page.evaluate(`(() => { const v = ${card}._view, d = v._dome, saved = v.getCamera(), out = [];
+    for (const az of [0, 60, 120, 180, 240, 300]) {
       const a = az * Math.PI / 180, r = d.radius * 2;
       v.setCamera({ position: [d.centre.x + Math.sin(a) * r, d.centre.y + r * 0.6, d.centre.z - Math.cos(a) * r], target: d.centre.toArray() }, { instant: true });
       v._placeSkyBodies();
-      const cam = v.camera.position, axis = cam.clone().sub(d.centre).normalize();
-      const vis = v._cloudSprites.filter((x) => x.visible);
-      out[k] = { visible: vis.length, inFront: vis.filter((x) => x.position.clone().sub(d.centre).dot(axis) >= 0).length, near: vis.filter((x, i) => v._cloudSprites.indexOf(x) < 3).length };
+      const hull = v._roomHull(), sprites = [...v._cloudSprites, v.skySprites.sun].filter((x) => x && x.visible && x.material.opacity > 0);
+      // the other way round: a cloud slot in use or the sun, a full radius clear of the rooms, is shown at full keep-out opacity
+      // (radius as in the view: cloud width x 0.3, sun sprite x 0.35)
+      const placed = [...v._cloudSprites.slice(0, v.weather.shown).map((x) => [x, x.scale.x * 0.3]), [v.skySprites.sun, v.skySprites.sun.scale.x * 0.35]];
+      const clear = placed.filter(([x, rad]) => { const q = v._skyScreen(hull, x.position, rad); return q.dist >= q.r; });
+      out.push({ az, shown: sprites.length, covering: sprites.filter((x) => v._skyScreen(hull, x.position, 0).dist <= 0).length,
+        clear: clear.length, clearHidden: clear.filter(([x]) => !x.visible || x.userData.clear !== 1 || !(x.material.opacity > 0)).length });
     }
     v.setCamera(saved, { instant: true }); v._placeSkyBodies(); return out; })()`);
-  check('clouds in front of the house hidden: camera on the sun side hides the sun clouds, facing the sun shows them',
-    front.sunSide.inFront === 0 && front.facingSun.inFront === 0 && front.sunSide.near === 0 && front.facingSun.near === 3, JSON.stringify(front));
+  check('sky keep-out: no cloud or sun disc over the rooms from 6 sides', keep.every((x) => x.covering === 0), JSON.stringify(keep));
+  check('sky keep-out: clouds and the sun clear of the rooms stay shown at full opacity (from 6 sides)',
+    keep.every((x) => x.clear > 0 && x.clearHidden === 0), JSON.stringify(keep));
   await wx(60);
   await page.evaluate(`(() => { const v = ${card}._view; if (v.test) v.test.drift = true; })()`); // test mode holds the clouds still
   await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);

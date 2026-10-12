@@ -109,19 +109,51 @@ export function cloudFade(cam, centre) {
   return Math.max(0, Math.min(1, (CLOUD_FADE_FROM_DEG + CLOUD_FADE_DEG - el) / CLOUD_FADE_DEG));
 }
 
-// The dome is smaller than a typical orbit, so the camera often sits outside it and a cloud on the
-// camera's side of the dome hangs between the camera and the rooms. Per cloud: full when it lies behind
-// the dome centre as seen from the camera (offset along the centre->camera axis <= -CLOUD_FRONT_FROM of
-// its distance), gone from the plane through the centre facing the camera (>= CLOUD_FRONT_TO).
-export const CLOUD_FRONT_FROM = 0.3;
-export const CLOUD_FRONT_TO = 0;
-export function cloudFront(cam, centre, cloud) {
-  const v = [cam[0] - centre[0], cam[1] - centre[1], cam[2] - centre[2]];
-  const p = [cloud[0] - centre[0], cloud[1] - centre[1], cloud[2] - centre[2]];
-  const lv = Math.hypot(v[0], v[1], v[2]), lp = Math.hypot(p[0], p[1], p[2]);
-  if (!lv || !lp) return 0;
-  const s = (v[0] * p[0] + v[1] * p[1] + v[2] * p[2]) / (lv * lp);
-  return clamp01((CLOUD_FRONT_TO - s) / (CLOUD_FRONT_TO + CLOUD_FRONT_FROM));
+// Sky keep-out: clouds and the sun / moon discs never cover the rooms. The rooms' box is projected
+// to the screen (convex hull, px); a sky sprite fades out as its centre comes within its own radius
+// of that hull: full from SKY_CLEAR x radius outside, gone from SKY_TOUCH x radius (inside < 0).
+export const SKY_CLEAR = 1;
+export const SKY_TOUCH = 0.2;
+
+// Convex hull of 2D points [[x, y], ...] (monotone chain), counter-clockwise in a y-up frame.
+export function convexHull(points) {
+  const p = points.map((q) => [q[0], q[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list) => {
+    const h = [];
+    for (const q of list) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+      h.push(q);
+    }
+    h.pop();
+    return h;
+  };
+  return [...half(p), ...half(p.slice().reverse())];
+}
+
+// Signed distance from a point to a convex polygon (from convexHull): > 0 outside, < 0 inside.
+export function hullDistance(hull, pt) {
+  if (!hull || !hull.length) return Infinity;
+  if (hull.length === 1) return Math.hypot(pt[0] - hull[0][0], pt[1] - hull[0][1]);
+  let out = -Infinity, edge = Infinity, inside = true;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const ex = b[0] - a[0], ey = b[1] - a[1], len = Math.hypot(ex, ey) || 1;
+    const side = (ex * (pt[1] - a[1]) - ey * (pt[0] - a[0])) / len; // > 0 left of the edge (inside for ccw)
+    if (side < 0) inside = false;
+    out = Math.max(out, -side);
+    const t = Math.max(0, Math.min(1, ((pt[0] - a[0]) * ex + (pt[1] - a[1]) * ey) / (len * len)));
+    edge = Math.min(edge, Math.hypot(pt[0] - a[0] - t * ex, pt[1] - a[1] - t * ey));
+  }
+  return inside && hull.length > 2 ? Math.max(out, -edge) : edge;
+}
+
+// Opacity factor 0..1 of a sky sprite with screen radius r (px) at signed distance dist from the rooms.
+export function skyKeepOut(dist, r) {
+  if (!Number.isFinite(dist)) return 1;
+  const rr = Math.max(1, Number(r) || 0);
+  return clamp01((dist - SKY_TOUCH * rr) / ((SKY_CLEAR - SKY_TOUCH) * rr));
 }
 
 // Day cloud colour (hex) for the background behind them: white on a dark background (the default),

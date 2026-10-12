@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cloudCoverage, weatherEntity, cloudLight, cloudCount, coverageChanged, CLOUD_MAX,
-  cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, CLOUD_DRIFT_DEG, CLOUD_DRIFT_RATE, cloudFade, cloudNear, cloudFront, CLOUD_FRONT_FROM, cloudDayColor,
+  cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, CLOUD_DRIFT_DEG, CLOUD_DRIFT_RATE, cloudFade, cloudNear, convexHull, hullDistance, skyKeepOut, SKY_CLEAR, cloudDayColor,
 } from '../src/weather.js';
 
 const w = (state, attributes = {}) => ({ entity_id: 'weather.x', state, attributes });
@@ -137,21 +137,27 @@ describe('cloudFade / cloudNear', () => {
   });
 });
 
-describe('cloudFront', () => {
-  const c = [0, 0, 0], cam = [20, 15, 0];
-  it('full behind the centre, gone on the camera side', () => {
-    expect(cloudFront(cam, c, [-10, 5, 0])).toBe(1); // opposite the camera
-    expect(cloudFront(cam, c, [10, 5, 0])).toBe(0); // between the camera and the house
-    expect(cloudFront(cam, c, [0, 0, 10])).toBe(0); // beside the house, on the plane through the centre
+describe('sky keep-out', () => {
+  const sq = convexHull([[0, 0], [10, 0], [10, 10], [0, 10], [5, 5], [2, 8]]);
+  it('hull drops inner points', () => {
+    expect(sq.length).toBe(4);
   });
-  it('fades linearly up to CLOUD_FRONT_FROM behind the centre', () => {
-    const axis = [0.8, 0.6, 0], side = [0, 0, 1], k = -CLOUD_FRONT_FROM / 2, q = Math.sqrt(1 - k * k);
-    const p = axis.map((x, i) => 10 * (x * k + side[i] * q));
-    expect(cloudFront(cam, c, p)).toBeCloseTo(0.5);
+  it('signed distance: outside > 0, inside < 0', () => {
+    expect(hullDistance(sq, [15, 5])).toBeCloseTo(5);
+    expect(hullDistance(sq, [13, 14])).toBeCloseTo(5); // corner
+    expect(hullDistance(sq, [5, 5])).toBeCloseTo(-5);
+    expect(hullDistance(sq, [1, 5])).toBeCloseTo(-1);
+    expect(hullDistance([], [0, 0])).toBe(Infinity);
   });
-  it('degenerate: camera or cloud at the centre', () => {
-    expect(cloudFront(c, c, [1, 0, 0])).toBe(0);
-    expect(cloudFront(cam, c, c)).toBe(0);
+  it('fade: full from SKY_CLEAR x r outside, gone when touching', () => {
+    expect(skyKeepOut(SKY_CLEAR * 50, 50)).toBe(1);
+    expect(skyKeepOut(200, 50)).toBe(1);
+    expect(skyKeepOut(0, 50)).toBe(0);
+    expect(skyKeepOut(-30, 50)).toBe(0);
+    const k = skyKeepOut(30, 50);
+    expect(k).toBeGreaterThan(0);
+    expect(k).toBeLessThan(1);
+    expect(skyKeepOut(Infinity, 50)).toBe(1); // no rooms
   });
 });
 
