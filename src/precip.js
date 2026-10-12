@@ -23,7 +23,7 @@ export const RAIN_LEN = 0.6;
 export const RAIN_SLANT = 0.12;
 // Room footprint margin (m) without drops, and the frame rate while it rains / snows.
 export const PRECIP_ROOM_MARGIN = 0.6;
-export const PRECIP_FRAME_MS = 50;
+export const PRECIP_FRAME_MS = 33;
 
 // Point in polygon ([[x, y], ...], plan coordinates) or within margin of its edges.
 export function nearPolygon(poly, x, y, margin = 0) {

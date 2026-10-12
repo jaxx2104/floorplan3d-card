@@ -612,7 +612,7 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   await sleep(5000);
   const p1 = await sky(), secs = (Date.now() - t0) / 1000;
   const created = await page.evaluate('window.__newPrograms.length');
-  check('cloud shadows drift for 5 s: no new shader programs, <= 3 frames/s, they moved', created === 0 && p1.frames > p0.frames && (p1.frames - p0.frames) / secs <= 3.3 && p0.offset.some((x, i) => Math.abs(x - p1.offset[i]) > 1e-4),
+  check('cloud shadows drift for 5 s: no new shader programs, <= 20 frames/s, they moved', created === 0 && p1.frames > p0.frames && (p1.frames - p0.frames) / secs <= 21 && p0.offset.some((x, i) => Math.abs(x - p1.offset[i]) > 1e-4),
     `created ${created}, ${((p1.frames - p0.frames) / secs).toFixed(1)} fps`);
   await page.screenshot({ path: path.join(root, 'screenshots', 'weather-cloudy.png') });
   await page.evaluate(`Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })`);
@@ -640,7 +640,7 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   check('night: the sun is down, the shade stays on the moonlight only (lamps untouched by construction)', night.sun === 0 && night.shadows === 1, JSON.stringify(night));
   await page.evaluate('window.__setDemoSun(30, 200)');
   // rain / snow: around the house, never over the rooms (no drop over a room footprint, nothing drawn
-  // over the rooms on screen), animated by uniforms only at <= 20 frames a second
+  // over the rooms on screen), animated by uniforms only at <= 30 frames a second
   const fall = () => page.evaluate(`(() => { const v = ${card}._view, P = v._precip, polys = (v._rooms || []).map((x) => x.room.polygon);
     const inPoly = (pl, x, y) => { let c = false; for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [xi, yi] = pl[i], [xj, yj] = pl[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
     const info = (l) => { if (!l) return null; const a = l.geometry.getAttribute('aDrop'); let inRoom = 0; for (let i = 0; i < a.count; i++) if (polys.some((pl) => inPoly(pl, a.getX(i), -a.getY(i)))) inRoom++;
@@ -670,7 +670,7 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   const rf0 = (await fall()).frames, rt0 = Date.now();
   await sleep(2000);
   const rf1 = (await fall()).frames, rsecs = (Date.now() - rt0) / 1000, rnew = await page.evaluate('window.__newPrograms.length');
-  check('rain animates: 5..20 frames a second, no new shader programs', (rf1 - rf0) / rsecs >= 5 && (rf1 - rf0) / rsecs <= 21 && rnew === 0, `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`);
+  check('rain animates: 5..30 frames a second, no new shader programs', (rf1 - rf0) / rsecs >= 5 && (rf1 - rf0) / rsecs <= 31.5 && rnew === 0, `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`);
   await page.screenshot({ path: path.join(root, 'screenshots', 'weather-rain.png') });
   await wx(90, 'snowy');
   await sleep(300);

@@ -468,13 +468,13 @@ has no marker: the object is the control.
   hail 100 %, windy 30 %, exceptional 50 %). A 3D camera framing the rooms looks down past the
   horizon, so the weather is shown on the model rather than in the sky:
   - Cloud shadows: the lit model materials shade the sun and moon (not the lamps) with a soft pattern
-    in world x / z that drifts with the wind (at most 3 frames a second, only while the card is on
+    in world x / z that drifts with the wind (at most 20 frames a second, only while the card is on
     screen and the tab visible); about a share c of the ground is in shade at coverage c, a cloud
     leaving 10 % of the sun. Between the patches the sun keeps its clear-sky strength. The rooms
     (their polygons, from the floor up) get no patches but the average dimming: the sun there is
     × (1 − 0.75 c).
   - Rain (rainy, pouring, lightning-rainy, hail) and snow (snowy; snowy-rainy both) fall around the
-    house from above the rooms to the bottom of the model, at up to 20 frames a second while they
+    house from above the rooms to the bottom of the model, at up to 30 frames a second while they
     fall. No drop starts over a room, and nothing is drawn over the rooms on screen.
   - The sun's shadow gets fainter (intensity 1 → 0.35), the daytime sky fill × (1 + 0.35 c), the sun
     disc × (1 − 0.8 c) and the moon and moonlight × (1 − 0.7 c). The sun / moon discs never cover
