@@ -174,3 +174,32 @@ export function skyLights(render, night) {
     sunIntensity: d.sun[1] + (n.sun[1] - d.sun[1]) * t,
   };
 }
+
+// Card option surround_light: ambient light of the city around the house, outside the rooms only (the
+// rooms keep their own light). true | { day, night } intensities -> settings or null (off).
+export const SURROUND_DEFAULTS = Object.freeze({ day: 0.25, night: 0.2 });
+// sky / ground colours: bright sky by day; by night a dim city sky above and the warm street lights below
+export const SURROUND_COLORS = Object.freeze({
+  day: Object.freeze({ sky: 0xc4d6ff, ground: 0xb0a492 }),
+  night: Object.freeze({ sky: 0x8e9ac4, ground: 0xd09060 }),
+});
+export function normSurroundLight(opt) {
+  if (!opt) return null;
+  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  if (!o) return null;
+  const val = (k) => {
+    const v = Number(o[k]);
+    return o[k] === undefined || !Number.isFinite(v) ? SURROUND_DEFAULTS[k] : Math.min(4, Math.max(0, v));
+  };
+  return { day: val('day'), night: val('night') };
+}
+
+// Settings (or null) and night 0..1 -> { sky, ground (hex), intensity }.
+export function surroundLight(settings, night) {
+  const t = Math.max(0, Math.min(1, Number(night) || 0)), C = SURROUND_COLORS;
+  return {
+    sky: mixHex(C.day.sky, C.night.sky, t),
+    ground: mixHex(C.day.ground, C.night.ground, t),
+    intensity: settings ? settings.day + (settings.night - settings.day) * t : 0,
+  };
+}

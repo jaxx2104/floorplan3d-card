@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS } from '../src/render-recipe.js';
+import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS } from '../src/render-recipe.js';
 import { buildManifest } from '../src/manifest.js';
 
 const tree = (roots) => ({
@@ -161,5 +161,21 @@ describe('background', () => {
     expect(backgroundAt(bg, 1)).toBe(0x000000);
     expect(backgroundAt(bg, 0.5)).toBe(0x808080);
     expect(backgroundAt(bg, 2)).toBe(0x000000);
+  });
+});
+
+describe('surround light', () => {
+  it('normSurroundLight: off unless asked for; true: the defaults; values clamped', () => {
+    for (const v of [undefined, null, false, 'yes']) expect(normSurroundLight(v)).toBe(null);
+    expect(normSurroundLight(true)).toEqual({ ...SURROUND_DEFAULTS });
+    expect(normSurroundLight({ day: 9, night: -1 })).toEqual({ day: 4, night: 0 });
+  });
+  it('surroundLight: day / night colours and intensity, none when off', () => {
+    const s = { day: 0.5, night: 0.1 };
+    expect(surroundLight(s, 0)).toEqual({ sky: SURROUND_COLORS.day.sky, ground: SURROUND_COLORS.day.ground, intensity: 0.5 });
+    expect(surroundLight(s, 1)).toMatchObject({ sky: SURROUND_COLORS.night.sky, ground: SURROUND_COLORS.night.ground });
+    expect(surroundLight(s, 1).intensity).toBeCloseTo(0.1);
+    expect(surroundLight(s, 0.5).intensity).toBeCloseTo(0.3);
+    expect(surroundLight(null, 0).intensity).toBe(0);
   });
 });

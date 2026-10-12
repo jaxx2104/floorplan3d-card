@@ -55,6 +55,9 @@ export function makeCloudUniforms() {
     fpRoomMask: { value: null },
     fpRoomFrame: { value: new THREE.Vector4(0, 0, 0, 0) }, // minX, minZ, sizeX, sizeZ (size 0: no rooms)
     fpRoomFloor: { value: 0 }, // world y from which the mask applies (below: facade under the flat)
+    // surroundings light (card option surround_light): sky / ground irradiance outside the rooms only
+    fpOutSky: { value: new THREE.Color(0, 0, 0) },
+    fpOutGround: { value: new THREE.Color(0, 0, 0) },
   };
 }
 
@@ -77,16 +80,19 @@ uniform float fpRoomShade;
 uniform sampler2D fpRoomMask;
 uniform vec4 fpRoomFrame;
 uniform float fpRoomFloor;
+uniform vec3 fpOutSky;
+uniform vec3 fpOutGround;
+float fpRoom() {
+  if ( fpRoomFrame.z <= 0.0 || vFpCloudW.y < fpRoomFloor ) return 0.0;
+  vec2 m = ( vFpCloudW.xz - fpRoomFrame.xy ) / fpRoomFrame.zw;
+  if ( m.x < 0.0 || m.y < 0.0 || m.x > 1.0 || m.y > 1.0 ) return 0.0;
+  return texture2D( fpRoomMask, m ).r;
+}
 float fpCloudShade() {
   if ( fpCloudStrength <= 0.0 ) return 1.0;
   float n = texture2D( fpCloudMap, vFpCloudW.xz / fpCloudTile + fpCloudOffset ).r;
   float cloud = smoothstep( fpCloudCover, fpCloudCover + 0.22, n );
-  float room = 0.0;
-  if ( fpRoomFrame.z > 0.0 && vFpCloudW.y >= fpRoomFloor ) {
-    vec2 m = ( vFpCloudW.xz - fpRoomFrame.xy ) / fpRoomFrame.zw;
-    if ( m.x >= 0.0 && m.y >= 0.0 && m.x <= 1.0 && m.y <= 1.0 ) room = texture2D( fpRoomMask, m ).r;
-  }
-  return mix( 1.0 - fpCloudStrength * cloud, fpRoomShade, room );
+  return mix( 1.0 - fpCloudStrength * cloud, fpRoomShade, fpRoom() );
 }
 `;
 // directional lights only (sun, moon): the shade multiplies their colour before the shading model
@@ -95,6 +101,16 @@ export function shadeDirectional(chunk) {
   if (!chunk.includes(DIR_INFO)) return null;
   return `float fpShade = fpCloudShade();\n${chunk.replace(DIR_INFO, `${DIR_INFO}\n\t\tdirectLight.color *= fpShade;`)}`;
 }
+
+// surroundings light: added to the indirect (ambient) irradiance outside the rooms, sky from above, ground below
+const OUT_LIGHT = `
+#if defined( RE_IndirectDiffuse )
+  if ( fpOutSky.r + fpOutSky.g + fpOutSky.b + fpOutGround.r + fpOutGround.g + fpOutGround.b > 0.0 ) {
+    float fpUp = 0.5 + 0.5 * normalize( ( vec4( geometryNormal, 0.0 ) * viewMatrix ).xyz ).y;
+    irradiance += ( 1.0 - fpRoom() ) * mix( fpOutGround, fpOutSky, fpUp );
+  }
+#endif
+`;
 
 // Lit materials only (the ones with direct light to shade).
 export const shadable = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial));
@@ -110,7 +126,7 @@ export function patchCloudShadow(mat, uniforms) {
     sh.vertexShader = VERT_HEAD + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
     const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
-    sh.fragmentShader = FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin);
+    sh.fragmentShader = FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT);
   };
   const key = mat.customProgramCacheKey;
   mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud`;

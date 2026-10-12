@@ -14,10 +14,12 @@ import { outdoorShown, sectionLevels, unionBox, pivotCamera, rayPlaneY, orthoZoo
 import { GroundCache } from './surface.js';
 import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
-import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
+import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight } from './render-recipe.js';
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from './weather.js';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from './precip.js';
 import { AmbientOcclusion, normAo } from './ao.js';
+import { DepthOfField, normBokeh } from './dof.js';
+import { DepthPrepass } from './depth-pass.js';
 import { makeCloudUniforms, patchCloudShadow, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from './cloud-shadow.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
@@ -1116,7 +1118,21 @@ export class FloorplanView {
     sun.shadow.intensity = L.shadowIntensity;
     this._applyMoonLight();
     this._cloudLook();
+    // the city around the house: its sky / ground light outside the rooms, dimmed by clouds like the sky light
+    const out = surroundLight(this._surround, t), U = this._cloudU;
+    U.fpOutSky.value.setHex(out.sky).multiplyScalar(out.intensity * L.hemi);
+    U.fpOutGround.value.setHex(out.ground).multiplyScalar(out.intensity * L.hemi);
     this.renderer.setClearColor(backgroundAt(this.background, t), 1);
+  }
+
+  // Card option surround_light (true or { day, night }): ambient light around the house, not in the rooms.
+  setSurroundLight(opt) {
+    const next = normSurroundLight(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._surround || null)) return;
+    this._surround = next;
+    if (!this.model) return;
+    this._applyLights();
+    this.dirty = true;
   }
 
   // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
@@ -1130,6 +1146,23 @@ export class FloorplanView {
       this.scene.add(this._ao.object);
     }
     this.dirty = true;
+  }
+
+  // Card option bokeh (true or { strength, start, range }): the surroundings blur with their distance from
+  // the rooms, see dof.js.
+  setBokeh(opt) {
+    const next = normBokeh(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._dof ? this._dof.settings : null)) return;
+    if (this._dof) this._dof.dispose();
+    this._dof = next ? new DepthOfField(this.renderer, next) : null;
+    this.dirty = true;
+  }
+
+  // The box the lens focuses on: the rooms on the visible floors, floor to ceiling (else the house box).
+  _focusBox() {
+    const box = new THREE.Box3();
+    for (const solid of this._roomSolids()) box.setFromPoints(solid.concat(box.isEmpty() ? [] : [box.min.clone(), box.max.clone()]));
+    return box;
   }
 
   // Card option background ('#rrggbb' or { day, night }). Re-applied now with a model loaded.
@@ -2842,13 +2875,22 @@ export class FloorplanView {
       this._updateDepth();
       this._placeSkyBodies();
       this.labelRenderer.domElement.classList.toggle('compact', this.pixelsPerMetre() < COMPACT_PPM);
-      const ao = this.model ? this._ao : null;
-      if (ao) ao.begin(this.scene, this.camera);
+      const ao = this.model ? this._ao : null, dof = this.model ? this._dof : null;
+      if (ao || dof) {
+        if (!this._depthPass) this._depthPass = new DepthPrepass(this.renderer);
+        const depth = this._depthPass.render(this.scene, this.camera, ao ? ao.settings.resolution : 0.5);
+        if (ao) ao.begin(depth, this.camera);
+        if (dof) {
+          dof.setFocus(this._focusBox());
+          dof.prepare(depth, this.camera);
+        }
+      }
       try {
         this.renderer.render(this.scene, this.camera);
       } finally {
         if (ao) ao.end();
       }
+      if (dof) dof.apply();
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
       if (this.onFrameTime) this.onFrameTime(performance.now() - t0);
@@ -2943,6 +2985,9 @@ export class FloorplanView {
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
     this.setAo(null);
+    this.setBokeh(null);
+    if (this._depthPass) this._depthPass.dispose();
+    this._depthPass = null;
     this.setMapOverlay(null);
     this.setMowerWarning(null);
     for (const s of Object.values(this.skySprites)) {

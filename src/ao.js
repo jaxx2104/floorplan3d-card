@@ -1,7 +1,6 @@
-// Screen-space ambient occlusion over the model (card option ao). Before each frame: a depth pre-pass of the
-// opaque meshes (with their own side, clipping planes and alpha test, so the cut-away stays cut), SAO
-// (scalable ambient obscurance) from that depth at a reduced resolution, and a depth-aware blur. In the frame
-// itself a full-screen quad multiplies the canvas right after the opaque pass (lowest transparent render
+// Screen-space ambient occlusion over the model (card option ao). Before each frame, from the depth pre-pass
+// of the opaque meshes (depth-pass.js: their own side, clipping planes and alpha test, so the cut-away stays
+// cut): SAO (scalable ambient obscurance) at a reduced resolution and a depth-aware blur. In the frame itself a full-screen quad multiplies the canvas right after the opaque pass (lowest transparent render
 // order), so whatever is drawn later (glows, rain, sprites, lines) is not darkened, and the main render keeps
 // its tone mapping, MSAA and background.
 import * as THREE from 'three';
@@ -24,14 +23,6 @@ export function normAo(opt) {
     out[k] = o[k] === undefined || !Number.isFinite(v) ? AO_DEFAULTS[k] : Math.min(hi, Math.max(lo, v));
   }
   return out;
-}
-
-// Objects the depth pre-pass draws: visible opaque meshes that write depth (not helpers, glass, sprites,
-// points, lines).
-export function occludes(o) {
-  if (!o.isMesh || o.isSprite || (o.userData && (o.userData.helper || o.userData.seeThrough))) return false;
-  const mats = Array.isArray(o.material) ? o.material : [o.material];
-  return mats.length > 0 && mats.every((m) => m && m.visible !== false && !m.transparent && m.depthWrite !== false && m.colorWrite !== false && !(m.transmission > 0));
 }
 
 const VERT = /* glsl */ `
@@ -115,11 +106,10 @@ export class AmbientOcclusion {
     this.renderer = renderer;
     this.settings = settings;
     this.size = new THREE.Vector2();
-    this.depthTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1), depthBuffer: true });
     const rt = () => new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
     this.aoTarget = rt();
     this.blurTarget = rt();
-    const tDepth = { value: this.depthTarget.depthTexture }, tFront = { value: this.depthTarget.texture }, invProj = { value: new THREE.Matrix4() };
+    const tDepth = { value: null }, tFront = { value: null }, invProj = { value: new THREE.Matrix4() };
     this.sao = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: SAO_FRAG, depthTest: false, depthWrite: false,
       uniforms: { tDepth, tFront, invProj, texel: { value: new THREE.Vector2() }, radius: { value: 0 }, intensity: { value: 0 }, projScale: { value: 0 }, persp: { value: 1 } },
@@ -148,66 +138,28 @@ export class AmbientOcclusion {
     this.object.visible = false; // only in the frame render (not in picking / occlusion / stats renders)
     this.object.add(quad);
     this.quad = quad;
-    this._depthMats = new WeakMap();
-  }
-
-  // depth-only stand-in for a material: same side, clipping and alpha test
-  _depthMat(m) {
-    let d = this._depthMats.get(m);
-    if (!d) {
-      // red = front face: the inside of a cut wall (its back faces) is neither shaded nor an occluder
-      d = new THREE.MeshBasicMaterial();
-      d.onBeforeCompile = (sh) => {
-        sh.fragmentShader = sh.fragmentShader.replace(/}\s*$/, '  gl_FragColor = vec4(gl_FrontFacing ? 1.0 : 0.0, 0.0, 0.0, 1.0);\n}');
-      };
-      d.customProgramCacheKey = () => 'fp-ao-depth';
-      this._depthMats.set(m, d);
-    }
-    d.side = m.side;
-    d.clippingPlanes = m.clippingPlanes;
-    d.clipIntersection = m.clipIntersection;
-    const map = m.alphaTest > 0 ? m.map || null : null, alphaMap = m.alphaTest > 0 ? m.alphaMap || null : null;
-    if (!!map !== !!d.map || !!alphaMap !== !!d.alphaMap || (m.alphaTest > 0) !== (d.alphaTest > 0)) d.needsUpdate = true; // other shader defines
-    d.alphaTest = m.alphaTest;
-    d.map = map;
-    d.alphaMap = alphaMap;
-    return d;
+    this._tDepth = tDepth;
+    this._tFront = tFront;
   }
 
   _setSize(w, h) {
     if (this.size.x === w && this.size.y === h) return;
     this.size.set(w, h);
-    this.depthTarget.setSize(w, h);
     this.aoTarget.setSize(w, h);
     this.blurTarget.setSize(w, h);
   }
 
-  // Depth pre-pass, SAO and blur for this camera; shows the quad for the next scene render (end() hides it).
-  begin(scene, camera) {
+  // SAO and blur from the depth pre-pass (depth-pass.js) for this camera; shows the quad for the next scene
+  // render (end() hides it).
+  begin(depth, camera) {
     const r = this.renderer, s = this.settings;
-    const full = r.getDrawingBufferSize(new THREE.Vector2());
-    const w = Math.max(1, Math.round(full.x * s.resolution)), h = Math.max(1, Math.round(full.y * s.resolution));
+    const w = depth.size.x, h = depth.size.y;
     this._setSize(w, h);
-
-    const swapped = [], hidden = [];
-    scene.traverseVisible((o) => {
-      if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
-      if (!occludes(o)) { o.visible = false; hidden.push(o); return; }
-      swapped.push([o, o.material]);
-      o.material = Array.isArray(o.material) ? o.material.map((m) => this._depthMat(m)) : this._depthMat(o.material);
-    });
-    const prevTarget = r.getRenderTarget(), prevAutoClear = r.autoClear, prevShadow = r.shadowMap.needsUpdate;
+    this._tDepth.value = depth.target.depthTexture;
+    this._tFront.value = depth.target.texture;
+    const prevTarget = r.getRenderTarget(), prevAutoClear = r.autoClear;
     const clear = r.getClearColor(new THREE.Color()), clearAlpha = r.getClearAlpha();
-    r.shadowMap.needsUpdate = false; // the shadow maps update in the frame render, with every caster shown
     r.autoClear = true;
-    try {
-      r.setRenderTarget(this.depthTarget);
-      r.render(scene, camera);
-    } finally {
-      for (const [o, m] of swapped) o.material = m;
-      for (const o of hidden) o.visible = true;
-      r.shadowMap.needsUpdate = prevShadow;
-    }
 
     const u = this.sao.uniforms, proj = camera.projectionMatrix;
     u.invProj.value.copy(camera.projectionMatrixInverse);
@@ -248,8 +200,6 @@ export class AmbientOcclusion {
     this.sao.dispose();
     this.blur.dispose();
     this.fsQuad.dispose();
-    this.depthTarget.depthTexture.dispose();
-    this.depthTarget.dispose();
     this.aoTarget.dispose();
     this.blurTarget.dispose();
   }
