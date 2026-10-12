@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cloudCoverage, weatherEntity, cloudLight, cloudCount, coverageChanged, CLOUD_MAX,
-  cloudSlots, cloudAzEl, dirFromAzEl, azElFromDir, CLOUD_DRIFT_DEG, CLOUD_DRIFT_RATE, cloudFade, cloudNear, convexHull, hullDistance, skyKeepOut, SKY_CLEAR, cloudDayColor,
+  cloudSlots, cloudScreen, CLOUD_CROSS_S, CLOUD_EDGE, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,
 } from '../src/weather.js';
 
 const w = (state, attributes = {}) => ({ entity_id: 'weather.x', state, attributes });
@@ -78,62 +78,33 @@ describe('cloudCount / coverageChanged', () => {
   });
 });
 
-describe('cloud placement', () => {
-  it('az / el round trip, world up = +y', () => {
-    const d = dirFromAzEl(30, 20);
-    expect(Math.hypot(...d)).toBeCloseTo(1);
-    expect(d[1]).toBeCloseTo(Math.sin(20 * Math.PI / 180));
-    const a = azElFromDir(d);
-    expect(a.az).toBeCloseTo(30);
-    expect(a.el).toBeCloseTo(20);
-  });
-  it('slots are fixed, the first ones near the anchor (the sun)', () => {
+describe('cloud layer', () => {
+  it('slots are fixed, in a band along the top edge', () => {
     const s = cloudSlots();
     expect(s.length).toBe(CLOUD_MAX);
     expect(cloudSlots()).toEqual(s); // deterministic
-    const anchor = { az: 200, el: 30 };
-    const near = s.filter((x) => x.near);
-    expect(near.length).toBeGreaterThanOrEqual(2);
-    expect(s.indexOf(near[0])).toBe(0); // a partly cloudy sky covers the sun first
-    for (const x of near) {
-      const p = cloudAzEl(x, anchor, 0);
-      const dAz = ((p.az - anchor.az + 540) % 360) - 180;
-      expect(Math.abs(dAz)).toBeLessThan(15);
-      expect(Math.abs(p.el - anchor.el)).toBeLessThan(8);
+    for (const x of s) {
+      expect(x.u).toBeGreaterThanOrEqual(0); expect(x.u).toBeLessThan(1);
+      expect(x.v).toBeGreaterThanOrEqual(0.02); expect(x.v).toBeLessThanOrEqual(0.08);
+      expect(x.size).toBeGreaterThan(0.2); expect(x.size).toBeLessThan(0.35);
     }
-    const all = s.map((x) => cloudAzEl(x, anchor, 0));
-    for (const p of all) { expect(p.el).toBeGreaterThan(5); expect(p.el).toBeLessThan(80); }
-    // the others spread around the sky
-    const far = s.filter((x) => !x.near).map((x) => cloudAzEl(x, anchor, 0).az);
-    expect(Math.max(...far) - Math.min(...far)).toBeGreaterThan(180);
+    // a partly cloudy sky (first 5) already reaches both halves of the card
+    const few = s.slice(0, 5);
+    expect(few.some((x) => x.u < 0.5) && few.some((x) => x.u >= 0.5)).toBe(true);
   });
-  it('clouds stay above the horizon with a low anchor', () => {
-    for (const x of cloudSlots()) expect(cloudAzEl(x, { az: 90, el: -10 }, 0).el).toBeGreaterThan(5);
-  });
-  it('drift is slow (<= 1 deg/s) and bounded', () => {
-    expect(CLOUD_DRIFT_DEG * CLOUD_DRIFT_RATE).toBeLessThanOrEqual(1);
-    const slot = cloudSlots()[3], anchor = { az: 10, el: 30 };
-    let prev = cloudAzEl(slot, anchor, 0);
-    for (let t = 0.1; t < 120; t += 0.1) {
-      const p = cloudAzEl(slot, anchor, t);
-      const dAz = ((p.az - prev.az + 540) % 360) - 180;
-      expect(Math.abs(dAz) / 0.1).toBeLessThanOrEqual(1.0001);
-      prev = p;
+  it('drifts right, slowly, and wraps beyond the edges', () => {
+    const slot = cloudSlots()[2];
+    expect(cloudScreen(slot, 0).u).toBeCloseTo(slot.u);
+    expect(cloudScreen(slot, 0).v).toBe(slot.v);
+    const step = cloudScreen(slot, 1).u - cloudScreen(slot, 0).u;
+    expect(step).toBeGreaterThan(0);
+    expect(step).toBeLessThan(0.01); // < 1 % of the width per second
+    for (let t = 0; t < CLOUD_CROSS_S * 2; t += 3) {
+      const u = cloudScreen(slot, t).u;
+      expect(u).toBeGreaterThanOrEqual(-CLOUD_EDGE - 1e-9);
+      expect(u).toBeLessThan(1 + CLOUD_EDGE);
     }
-  });
-});
-
-describe('cloudFade / cloudNear', () => {
-  const c = [0, 0, 0];
-  it('full up to 50 deg camera elevation, gone from 65 deg', () => {
-    expect(cloudFade([30, 20, 0], c)).toBe(1); // ~34 deg
-    expect(cloudFade([10, Math.tan(57.5 * Math.PI / 180) * 10, 0], c)).toBeCloseTo(0.5);
-    expect(cloudFade([1, 40, 1], c)).toBe(0); // high orbit
-    expect(cloudFade([0, 0, 0], c)).toBe(0);
-  });
-  it('near: closer than the cloud size', () => {
-    expect(cloudNear([0, 0, 0], [3, 0, 0], 5)).toBe(true);
-    expect(cloudNear([0, 0, 0], [30, 0, 0], 5)).toBe(false);
+    expect(cloudScreen(slot, CLOUD_CROSS_S).u).toBeCloseTo(slot.u); // one full cycle
   });
 });
 
@@ -158,13 +129,5 @@ describe('sky keep-out', () => {
     expect(k).toBeGreaterThan(0);
     expect(k).toBeLessThan(1);
     expect(skyKeepOut(Infinity, 50)).toBe(1); // no rooms
-  });
-});
-
-describe('cloudDayColor', () => {
-  it('white on a dark background, a darker shade of a light one', () => {
-    expect(cloudDayColor(0x2a2d30)).toBe(0xffffff);
-    expect(cloudDayColor(0xebedf2)).toBe(0xbcbec2);
-    expect(cloudDayColor(0xffffff)).toBe(0xcccccc);
   });
 });

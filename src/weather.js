@@ -1,6 +1,5 @@
-// Weather: cloud coverage from a weather entity, its effect on the light, cloud placement on the sky dome.
+// Weather: cloud coverage from a weather entity, its effect on the light, the cloud layer and the sky keep-out.
 
-const RAD = Math.PI / 180;
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
 // Coverage (%) per condition when the entity has no numeric cloud_coverage.
@@ -12,10 +11,10 @@ const CONDITION_COVERAGE = {
 
 // Cloud sprites at full coverage; the shown count is round(coverage / 100 x max).
 export const CLOUD_MAX = 12;
-// Drift: azimuth swings +-CLOUD_DRIFT_DEG with angular rate CLOUD_DRIFT_RATE (rad/s of the phase),
-// so the peak speed is 6 x 0.08 = 0.48 deg/s and clouds near the sun stay near it.
-export const CLOUD_DRIFT_DEG = 6;
-export const CLOUD_DRIFT_RATE = 0.08;
+// Drift: a cloud crosses the card sideways in CLOUD_CROSS_S seconds (wrapping around), and leaves /
+// enters CLOUD_EDGE (fraction of the card width) beyond the edges so it never pops in on screen.
+export const CLOUD_CROSS_S = 240;
+export const CLOUD_EDGE = 0.25;
 // Coverage change (percentage points) that re-applies light and clouds.
 export const COVERAGE_STEP = 5;
 
@@ -60,53 +59,29 @@ export function coverageChanged(last, next) {
   return Math.abs(next - last) >= COVERAGE_STEP || next === 0 || next === 100;
 }
 
-// World unit vector for an azimuth (deg, clockwise from world -z) and elevation (deg); and back.
-export function dirFromAzEl(az, el) {
-  const a = az * RAD, e = el * RAD;
-  return [Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
-}
-
-export function azElFromDir(d) {
-  const len = Math.hypot(d[0], d[1], d[2]) || 1;
-  return { az: ((Math.atan2(d[0], -d[2]) / RAD) % 360 + 360) % 360, el: Math.asin(Math.max(-1, Math.min(1, d[1] / len))) / RAD };
-}
-
-// Fixed cloud slots (deterministic): the first three sit around the anchor (sun / moon), so a partly
-// cloudy sky partially covers its disc; the rest spread around the sky (golden-angle azimuths).
-// size: sprite size as a fraction of the dome radius; variant: texture index 0..2.
+// Clouds are a screen layer, not sky on the dome: the 3D camera looks down past the horizon, so
+// clouds in the sky would never be on screen. They form a band along the top edge of the card (half
+// out of frame), where a camera framing the rooms leaves room; more clouds fill the band.
+// Fixed slots (deterministic): u: 0 left .. 1 right, v: 0 top .. 1 bottom (centre), size: width as
+// a fraction of the card's width (height half of it); variant: texture index 0..2. The rooms still
+// keep them off where they reach the top (sky keep-out below).
 let slots = null;
 export function cloudSlots() {
   if (slots) return slots;
-  const near = [[7, 1.5], [-10, -2], [3, -5.5]];
   slots = [];
   for (let i = 0; i < CLOUD_MAX; i++) {
     const r = (k) => { const x = Math.sin((i + 1) * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
-    if (i < near.length) slots.push({ near: true, dAz: near[i][0], dEl: near[i][1], size: 0.5 + 0.12 * r(1), variant: i % 3, phase: r(2) * Math.PI * 2 });
-    else slots.push({ near: false, az: (i * 137.508) % 360, el: 14 + 38 * r(3), size: 0.55 + 0.3 * r(1), variant: i % 3, phase: r(2) * Math.PI * 2 });
+    // u: golden-ratio sequence (evenly spread for any count), v: the top edge +- a little
+    slots.push({ u: (i * 0.618034 + 0.13) % 1, v: 0.025 + 0.045 * r(3), size: 0.24 + 0.1 * r(1), variant: i % 3 });
   }
   return slots;
 }
 
-// Azimuth / elevation (deg) of a slot at drift time t (s), anchor { az, el } (deg, world frame).
-export function cloudAzEl(slot, anchor, t) {
-  const a = anchor || { az: 0, el: 35 };
-  const swing = CLOUD_DRIFT_DEG * Math.sin(CLOUD_DRIFT_RATE * t + slot.phase);
-  const baseEl = Math.max(14, Math.min(60, a.el)); // near-sun clouds stay in the sky with a low / high sun
-  const az = slot.near ? a.az + slot.dAz : a.az + slot.az;
-  const el = slot.near ? (a.el < 8 ? 10 : Math.min(70, a.el)) + slot.dEl : slot.el + (baseEl - 35) * 0.2;
-  return { az: (((az + swing) % 360) + 360) % 360, el: Math.max(6, Math.min(75, el)) };
-}
-
-// Clouds fade out as the camera orbits high over the house: full up to 50 deg of camera elevation
-// (seen from the dome centre), gone from 65 deg (the camera looks down on their flat backs).
-export const CLOUD_FADE_FROM_DEG = 50;
-export const CLOUD_FADE_DEG = 15;
-export function cloudFade(cam, centre) {
-  const d = [cam[0] - centre[0], cam[1] - centre[1], cam[2] - centre[2]];
-  const len = Math.hypot(d[0], d[1], d[2]);
-  if (!len) return 0;
-  const el = Math.asin(d[1] / len) * 180 / Math.PI;
-  return Math.max(0, Math.min(1, (CLOUD_FADE_FROM_DEG + CLOUD_FADE_DEG - el) / CLOUD_FADE_DEG));
+// Screen position { u, v } of a slot at drift time t (s): u moves right and wraps over
+// [-CLOUD_EDGE, 1 + CLOUD_EDGE].
+export function cloudScreen(slot, t) {
+  const span = 1 + 2 * CLOUD_EDGE, x = (slot.u + CLOUD_EDGE + ((Number(t) || 0) / CLOUD_CROSS_S) * span) % span;
+  return { u: x - CLOUD_EDGE, v: slot.v };
 }
 
 // Sky keep-out: clouds and the sun / moon discs never cover the rooms. The rooms' box is projected
@@ -156,15 +131,3 @@ export function skyKeepOut(dist, r) {
   return clamp01((dist - SKY_TOUCH * rr) / ((SKY_CLEAR - SKY_TOUCH) * rr));
 }
 
-// Day cloud colour (hex) for the background behind them: white on a dark background (the default),
-// a darker shade of a light background (luminance > 0.5) so white clouds don't vanish into it.
-export const CLOUD_ON_LIGHT = 0.8;
-export function cloudDayColor(bg) {
-  const n = Number(bg) || 0, r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  if ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 <= 0.5) return 0xffffff;
-  const k = (x) => Math.round(x * CLOUD_ON_LIGHT);
-  return (k(r) << 16) | (k(g) << 8) | k(b);
-}
-
-// A cloud the camera is (nearly) inside: hidden.
-export const cloudNear = (cam, cloud, size) => Math.hypot(cloud[0] - cam[0], cloud[1] - cam[1], cloud[2] - cam[2]) < size;
