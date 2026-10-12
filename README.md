@@ -79,6 +79,7 @@ The options below can be set in the visual editor or in YAML.
 | `weather` | first `weather.*` entity | Weather entity for the cloud shadows, rain / snow and light, or `none`. |
 | `clouds` | `true` | With a model: cloud shadows drifting over the surroundings and rain / snow around the house, never over the rooms. `false` turns them off; the light still follows the weather. |
 | `background` | dark grey / near black | With a model: the sky colour behind the house, `#rrggbb` for day and night, or `{ day: '#ebedf2', night: '#0e0f10' }`. Blends between the two with the day / night state. Defaults: `#2a2d30` by day, `#0e0f10` at night. |
+| `ao` | off | With a model: ambient occlusion (contact shading in corners, under furniture, where walls meet the floor). `true` for the defaults, or `{ intensity: 1, radius: 0.5, resolution: 0.5 }`: strength, reach in metres, and the share of the canvas resolution it is computed at (`1` is sharper, costs more). Glows, rain and labels are not darkened. |
 | `idle_reset` | off | Seconds without a touch, wheel or key on the card before it returns to how it opened: start view and mode, the view's saved camera, live sun time; an open popup closes. For wall tablets. Not while editing. |
 | `idle_orbit` | off | With `idle_reset`, in 3D: after returning, the camera turns around the view's rotation centre at this many degrees a second (negative: clockwise) until the next touch, wheel or key or a drag. At most 20 frames a second, only while the card is on screen. |
 | `view` | `3d` | Start in `3d` or `top` view. |

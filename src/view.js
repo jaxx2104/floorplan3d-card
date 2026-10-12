@@ -17,6 +17,7 @@ import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M
 import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from './weather.js';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from './precip.js';
+import { AmbientOcclusion, normAo } from './ao.js';
 import { makeCloudUniforms, patchCloudShadow, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from './cloud-shadow.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
@@ -1116,6 +1117,19 @@ export class FloorplanView {
     this._applyMoonLight();
     this._cloudLook();
     this.renderer.setClearColor(backgroundAt(this.background, t), 1);
+  }
+
+  // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
+  setAo(opt) {
+    const next = normAo(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._ao ? this._ao.settings : null)) return;
+    if (this._ao) this._ao.dispose();
+    this._ao = null;
+    if (next) {
+      this._ao = new AmbientOcclusion(this.renderer, next);
+      this.scene.add(this._ao.object);
+    }
+    this.dirty = true;
   }
 
   // Card option background ('#rrggbb' or { day, night }). Re-applied now with a model loaded.
@@ -2828,7 +2842,13 @@ export class FloorplanView {
       this._updateDepth();
       this._placeSkyBodies();
       this.labelRenderer.domElement.classList.toggle('compact', this.pixelsPerMetre() < COMPACT_PPM);
-      this.renderer.render(this.scene, this.camera);
+      const ao = this.model ? this._ao : null;
+      if (ao) ao.begin(this.scene, this.camera);
+      try {
+        this.renderer.render(this.scene, this.camera);
+      } finally {
+        if (ao) ao.end();
+      }
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
       if (this.onFrameTime) this.onFrameTime(performance.now() - t0);
@@ -2922,6 +2942,7 @@ export class FloorplanView {
     if (this._preview) { this._clearGroup(this._preview); this.scene.remove(this._preview); this._preview = null; }
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
+    this.setAo(null);
     this.setMapOverlay(null);
     this.setMowerWarning(null);
     for (const s of Object.values(this.skySprites)) {
