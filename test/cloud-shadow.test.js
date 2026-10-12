@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import {
   cloudShadowParams, cloudShadowOffset, roomMaskFrame, equalize, shadeDirectional, patchCloudShadow, makeCloudUniforms, shadable,
-  CLOUD_UMBRA, CLOUD_TILE_M, CLOUD_WIND_MS,
+  CLOUD_UMBRA, CLOUD_TILE_M, CLOUD_WIND_MS, normSway, swayLean,
 } from '../src/cloud-shadow.js';
 
 describe('cloudShadowParams', () => {
@@ -73,5 +73,32 @@ describe('patching', () => {
     expect(sh.fragmentShader).not.toContain('#include <lights_fragment_begin>');
     expect(shadable(new THREE.MeshBasicMaterial())).toBe(false);
     expect(patchCloudShadow(new THREE.MeshBasicMaterial(), U)).toBe(false);
+  });
+});
+
+describe('sway', () => {
+  it('normSway: off unless asked for; true: the decoration layer; lists and strength checked', () => {
+    for (const v of [undefined, null, false, 'yes', { strength: 0 }, { plants: [] }]) expect(normSway(v)).toBe(null);
+    expect(normSway(true)).toEqual({ plants: ['decoration'], strength: 1 });
+    expect(normSway({ plants: 'trees', strength: 9 })).toEqual({ plants: ['trees'], strength: 5 });
+  });
+  it('swayLean: a breath in calm air, more with wind, capped, scaled by strength', () => {
+    expect(swayLean(0)).toBeCloseTo(0.08);
+    expect(swayLean(5)).toBeGreaterThan(swayLean(2));
+    expect(swayLean(100)).toBeCloseTo(0.6);
+    expect(swayLean(0, 2)).toBeCloseTo(0.16);
+  });
+  it('patchCloudShadow: the sway goes into the vertex shader of swaying materials only', () => {
+    const sh = (sway) => {
+      const m = new THREE.MeshStandardMaterial();
+      m.userData.fpSway = sway;
+      patchCloudShadow(m, makeCloudUniforms());
+      const s = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+      m.onBeforeCompile(s, null);
+      return { vs: s.vertexShader, key: m.customProgramCacheKey() };
+    };
+    expect(sh(true).vs).toContain('fpSway');
+    expect(sh(false).vs).not.toContain('fpSway');
+    expect(sh(true).key).not.toBe(sh(false).key);
   });
 });

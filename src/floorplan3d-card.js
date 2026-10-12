@@ -33,7 +33,7 @@ import { loadOutline, saveOutline, pickOutline } from './load-outline.js';
 import { loadModelBuffer, layoutModelVersion, headerVersion, evictModel } from './model-cache.js';
 import { bindObjects, mowerTabEntity, effectiveGroups, layoutTags, nightFactor, sunVector, sunStrength, clampSunDir, screenByDistance, attachedPosition } from './objects/logic.js';
 import { moonPosition, sunPosition, sliderDate, snapMinutes, hhmm, tzMinutes, SCRUB_IDLE_MS } from './sky.js';
-import { weatherEntity, cloudCoverage } from './weather.js';
+import { weatherEntity, cloudCoverage, windSpeed } from './weather.js';
 import { ObjectPopup, actionTarget, toggleCall } from './objects/popup.js';
 import { typeOf } from './objects/types.js';
 import { resolveActions, actionCall, TapSequencer } from './actions.js';
@@ -535,6 +535,8 @@ class Floorplan3dCard extends HTMLElement {
       this._view.setBackground(this._config.background);
       this._view.setAo(this._config.ao);
       this._view.setBokeh(this._config.bokeh);
+      this._view.setGrade(this._config.grade);
+      this._view.setSway(this._config.sway);
       this._view.setSurroundLight(this._config.surround_light);
       this._view.setCityLights(this._config.city_lights);
       if (this._view.model) this._applySky(true); // sky_bodies
@@ -1006,6 +1008,8 @@ class Floorplan3dCard extends HTMLElement {
     this._view.setBackground(this._config.background);
     this._view.setAo(this._config.ao);
     this._view.setBokeh(this._config.bokeh);
+    this._view.setGrade(this._config.grade);
+    this._view.setSway(this._config.sway);
     this._view.setSurroundLight(this._config.surround_light);
     this._view.setCityLights(this._config.city_lights);
     this._view.onPixelRatio = (pr) => this._hints.setPixelRatio(pr);
@@ -3252,7 +3256,7 @@ class Floorplan3dCard extends HTMLElement {
       }
     }
     this._weatherId = id;
-    v.setWeather({ coverage: id ? cloudCoverage(states[id]) : 0, clouds: c.clouds !== false, condition: id && states[id] ? states[id].state : null });
+    v.setWeather({ coverage: id ? cloudCoverage(states[id]) : 0, clouds: c.clouds !== false, condition: id && states[id] ? states[id].state : null, wind: id ? windSpeed(states[id]) : 0 });
   }
 
   // An object's label: layout.objects[id].label (Objects tab), else the model's.

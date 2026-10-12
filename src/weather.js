@@ -21,6 +21,15 @@ export function cloudCoverage(st) {
   return CONDITION_COVERAGE[st.state] ?? 0;
 }
 
+// Wind speed (m/s) of a weather entity's state from wind_speed and wind_speed_unit (km/h when missing), else 0.
+const WIND_UNIT_MS = { 'm/s': 1, 'km/h': 1 / 3.6, mph: 0.44704, kn: 0.514444, 'ft/s': 0.3048 };
+export function windSpeed(st) {
+  const a = st && st.attributes;
+  const v = a ? Number(a.wind_speed) : NaN;
+  if (!Number.isFinite(v) || v < 0) return 0;
+  return v * (WIND_UNIT_MS[a.wind_speed_unit] ?? WIND_UNIT_MS['km/h']);
+}
+
 // The weather entity: option weather (entity id | 'none' | false), default the first weather.* entity.
 export function weatherEntity(config, states) {
   const opt = config ? config.weather : undefined;

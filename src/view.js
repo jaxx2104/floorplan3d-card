@@ -18,9 +18,9 @@ import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, la
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from './weather.js';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from './precip.js';
 import { AmbientOcclusion, normAo } from './ao.js';
-import { DepthOfField, normBokeh } from './dof.js';
+import { ScreenFinish, normBokeh, normGrade } from './finish.js';
 import { DepthPrepass } from './depth-pass.js';
-import { makeCloudUniforms, patchCloudShadow, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from './cloud-shadow.js';
+import { normSway, swayLean, makeCloudUniforms, patchCloudShadow, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from './cloud-shadow.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
 } from './render-rules.js';
@@ -266,6 +266,9 @@ export function orbitStep(position, target, angle) {
   return position;
 }
 
+// Frame interval (ms) of the plants' sway.
+const SWAY_FRAME_MS = 66;
+
 export class FloorplanView {
   constructor(container) {
     this.container = container;
@@ -311,7 +314,7 @@ export class FloorplanView {
     this.daylight = true;
     this.sky = { night: 0, sunDir: null, sun: 1 };
     // weather: coverage % applied (null before the first), clouds option, drift time (s), last drift frame
-    this.weather = { applied: null, show: true, t: 0, frameAt: 0, shown: 0 };
+    this.weather = { applied: null, show: true, t: 0, frameAt: 0, shown: 0, wind: 0 };
     this.onScreen = true; // the card is on screen (IntersectionObserver in the card); drift only then
     this._cloudU = makeCloudUniforms(); // cloud shadows: shared by every patched model material
     this._roomMask = null; // room mask texture for the cloud shadows (rebuilt with the rooms)
@@ -1140,21 +1143,53 @@ export class FloorplanView {
     this.dirty = true;
   }
 
-  // Which model materials draw lit windows or lit glass (a shader define: recompiled only when it changes),
-  // and the site's ground height for the street light.
+  // Which model materials draw lit windows or lit glass, and which sway (shader defines: recompiled only when
+  // they change), and the site's ground height for the street light and the sway. A material shared by a
+  // plant and something else sways as a whole outside the rooms.
   _cityWindows() {
+    // per material: lit by the first mesh that asks for it, sways when any of its meshes does
+    const want = new Map();
     this.model.root.traverse((o) => {
       if (!o.isMesh) return;
       const info = shadowInfo(o);
       const lit = cityLitFor(info.names, info.layers, this._city);
+      const sway = !!this._sway && this._sway.plants.some((p) => info.names.includes(p) || info.layers.includes(p));
       for (const m of [].concat(o.material)) {
-        if (!m || !m.userData.fpCloud || (m.userData.fpCityLit || null) === lit) continue;
-        m.userData.fpCityLit = lit;
-        m.needsUpdate = true;
+        if (!m || !m.userData.fpCloud) continue;
+        const w = want.get(m) || { lit: null, sway: false };
+        want.set(m, { lit: w.lit || lit, sway: w.sway || sway });
       }
     });
+    for (const [m, { lit, sway }] of want) {
+      if ((m.userData.fpCityLit || null) === lit && !!m.userData.fpSway === sway) continue;
+      m.userData.fpCityLit = lit;
+      m.userData.fpSway = sway;
+      m.needsUpdate = true;
+    }
     const box = new THREE.Box3().setFromObject(this.model.root);
     this._cloudU.fpCityGround.value = box.isEmpty() ? 0 : box.min.y;
+  }
+
+  // Card option sway (true or { plants, strength }): the plants outside sway in the wind (weather wind_speed),
+  // redrawn at up to 1000 / SWAY_FRAME_MS frames a second while the card is on screen.
+  setSway(opt) {
+    const next = normSway(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._sway || null)) return;
+    this._sway = next;
+    this._cloudU.fpSway.value = next ? swayLean(this.weather.wind, next.strength) : 0;
+    if (!this.model) return;
+    this._cityWindows();
+    this.dirty = true;
+  }
+
+  _stepSway() {
+    const S = this._swayClock || (this._swayClock = { at: 0 });
+    if (!this._sway || !this.model || !this.onScreen || this.test || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { S.at = 0; return; }
+    const now = performance.now();
+    if (S.at && now - S.at < SWAY_FRAME_MS) return;
+    S.at = now;
+    this._cloudU.fpTime.value = (now / 1000) % 3600;
+    this.dirty = true;
   }
 
   // Card option surround_light (true or { day, night }): ambient light around the house, not in the rooms.
@@ -1180,13 +1215,23 @@ export class FloorplanView {
     this.dirty = true;
   }
 
-  // Card option bokeh (true or { strength, start, range }): the surroundings blur with their distance from
-  // the rooms, see dof.js.
+  // Card options bokeh (true or { strength, start, range, tilt }) and grade (true or { saturation, contrast,
+  // vignette }): the finish over the frame, see finish.js.
   setBokeh(opt) {
-    const next = normBokeh(opt);
-    if (JSON.stringify(next) === JSON.stringify(this._dof ? this._dof.settings : null)) return;
-    if (this._dof) this._dof.dispose();
-    this._dof = next ? new DepthOfField(this.renderer, next) : null;
+    this._setFinish({ ...this._finishOpts, bokeh: normBokeh(opt) });
+  }
+
+  setGrade(opt) {
+    this._setFinish({ ...this._finishOpts, grade: normGrade(opt) });
+  }
+
+  _setFinish(next) {
+    const prev = this._finishOpts || { bokeh: null, grade: null };
+    next = { bokeh: next.bokeh || null, grade: next.grade || null };
+    if (JSON.stringify(next) === JSON.stringify(prev)) return;
+    this._finishOpts = next;
+    if (this._finish) this._finish.dispose();
+    this._finish = next.bokeh || next.grade ? new ScreenFinish(this.renderer, next) : null;
     this.dirty = true;
   }
 
@@ -1299,8 +1344,11 @@ export class FloorplanView {
 
   // Weather: { coverage 0..100, clouds: option clouds (cloud shadows, rain, snow), condition: the state }. Applied only when the coverage moved >= 5 points
   // (or reached 0 / 100) or the option changed: light values, disc opacities, cloud shadows. Returns true when applied.
-  setWeather({ coverage = 0, clouds = true, condition = null } = {}) {
-    const w = this.weather, show = clouds !== false, c = Math.max(0, Math.min(100, Number(coverage) || 0)), cond = condition || null;
+  setWeather({ coverage = 0, clouds = true, condition = null, wind = 0 } = {}) {
+    const w = this.weather;
+    w.wind = Math.max(0, Number(wind) || 0); // m/s: the plants' sway (uniform only)
+    this._cloudU.fpSway.value = this._sway ? swayLean(w.wind, this._sway.strength) : 0;
+    const show = clouds !== false, c = Math.max(0, Math.min(100, Number(coverage) || 0)), cond = condition || null;
     if (!coverageChanged(w.applied, c) && show === w.show && cond === (w.condition ?? null)) return false;
     w.applied = c;
     w.show = show;
@@ -2900,6 +2948,7 @@ export class FloorplanView {
         this.dirty = true;
       }
       this._driftClouds();
+      this._stepSway();
       this._stepOrbit();
       if (!this.dirty) return;
       this.dirty = false;
@@ -2908,14 +2957,15 @@ export class FloorplanView {
       this._updateDepth();
       this._placeSkyBodies();
       this.labelRenderer.domElement.classList.toggle('compact', this.pixelsPerMetre() < COMPACT_PPM);
-      const ao = this.model ? this._ao : null, dof = this.model ? this._dof : null;
-      if (ao || dof) {
+      const ao = this.model ? this._ao : null, fin = this.model ? this._finish : null;
+      if (ao || (fin && fin.needsDepth)) {
         if (!this._depthPass) this._depthPass = new DepthPrepass(this.renderer);
         const depth = this._depthPass.render(this.scene, this.camera, ao ? ao.settings.resolution : 0.5);
         if (ao) ao.begin(depth, this.camera);
-        if (dof) {
-          dof.setFocus(this._focusBox());
-          dof.prepare(depth, this.camera);
+        if (fin && fin.needsDepth) {
+          this.camera.updateMatrixWorld();
+          fin.setFocus(this._focusBox());
+          fin.prepare(depth, this.camera);
         }
       }
       try {
@@ -2923,7 +2973,7 @@ export class FloorplanView {
       } finally {
         if (ao) ao.end();
       }
-      if (dof) dof.apply();
+      if (fin) fin.apply();
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
       if (this.onFrameTime) this.onFrameTime(performance.now() - t0);
@@ -3018,7 +3068,7 @@ export class FloorplanView {
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
     this.setAo(null);
-    this.setBokeh(null);
+    this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();
     this._depthPass = null;
     this.setMapOverlay(null);

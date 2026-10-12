@@ -63,10 +63,43 @@ export function makeCloudUniforms() {
     fpCity: { value: 0 },
     fpCityGround: { value: 0 },
     fpCityParams: { value: new THREE.Vector4(0.45, 0.6, 1.2, 0.35) },
+    // plants in the wind (card option sway): time (s), lean (m at SWAY_HEIGHT_M above the ground), wind direction
+    fpTime: { value: 0 },
+    fpSway: { value: 0 },
+    fpWindDir: { value: new THREE.Vector2(...CLOUD_WIND) },
   };
 }
 
+// Height (m above the site's ground) where the sway reaches its full lean; below it grows with the square.
+export const SWAY_HEIGHT_M = 8;
+
 const VERT_HEAD = 'varying vec3 vFpCloudW;\n';
+// plants sway in world x / z with the wind (two waves and a steady lean), more the higher they reach, never in
+// the rooms (indoor plants share materials with the ones outside); the parts of a plant move together
+const SWAY_HEAD = `
+uniform float fpTime;
+uniform float fpSway;
+uniform vec2 fpWindDir;
+uniform float fpCityGround;
+uniform sampler2D fpRoomMask;
+uniform vec4 fpRoomFrame;
+uniform float fpRoomFloor;
+`;
+const SWAY_BODY = `
+  if ( fpSway > 0.0 ) {
+    vec4 fpSw = modelMatrix * vec4( transformed, 1.0 );
+    float fpIn = 0.0;
+    if ( fpRoomFrame.z > 0.0 && fpSw.y >= fpRoomFloor ) {
+      vec2 fpM = ( fpSw.xz - fpRoomFrame.xy ) / fpRoomFrame.zw;
+      if ( fpM.x >= 0.0 && fpM.y >= 0.0 && fpM.x <= 1.0 && fpM.y <= 1.0 ) fpIn = texture2D( fpRoomMask, fpM ).r;
+    }
+    float fpH = clamp( ( fpSw.y - fpCityGround ) / ${SWAY_HEIGHT_M.toFixed(1)}, 0.0, 1.0 );
+    float fpPh = dot( fpSw.xz, vec2( 0.21, 0.17 ) );
+    float fpWave = 0.3 + 0.45 * sin( fpTime * 1.3 + fpPh ) + 0.25 * sin( fpTime * 3.1 + fpPh * 1.7 );
+    vec2 fpD = fpWindDir * fpWave * fpSway * fpH * fpH * ( 1.0 - fpIn );
+    transformed += ( vec4( fpD.x, 0.0, fpD.y, 0.0 ) * modelMatrix ).xyz; // world -> local (rotation, scale 1)
+  }
+`;
 const VERT_BODY = `
   vec4 fpCloudW = vec4( transformed, 1.0 );
   #ifdef USE_INSTANCING
@@ -179,14 +212,17 @@ export function patchCloudShadow(mat, uniforms) {
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev.call(mat, sh, r);
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = VERT_HEAD + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
+    const sway = !!mat.userData.fpSway;
+    let vs = sh.vertexShader;
+    if (sway) vs = SWAY_HEAD + vs.replace('#include <begin_vertex>', `#include <begin_vertex>${SWAY_BODY}`);
+    sh.vertexShader = VERT_HEAD + vs.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
     const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
     const city = mat.userData.fpCityLit, head = city === 'windows' ? '#define FP_WINDOWS\n' : city === 'glow' ? '#define FP_GLOW\n' : '';
     sh.fragmentShader = head + FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
   };
   const key = mat.customProgramCacheKey;
-  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}`;
+  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}${mat.userData.fpSway ? 's' : ''}`;
   mat.needsUpdate = true;
   return true;
 }
@@ -262,3 +298,18 @@ export function roomMaskTexture(polygons, frame, px = 256) {
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
+
+// Card option sway: true | { plants: [mesh / material names or layers that sway], strength } -> settings or null.
+export const SWAY_DEFAULTS = Object.freeze({ plants: Object.freeze(['decoration']), strength: 1 });
+export function normSway(opt) {
+  if (!opt) return null;
+  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  if (!o) return null;
+  const v = Number(o.strength);
+  const strength = o.strength === undefined || !Number.isFinite(v) ? SWAY_DEFAULTS.strength : Math.min(5, Math.max(0, v));
+  const plants = o.plants === undefined ? [...SWAY_DEFAULTS.plants] : [].concat(o.plants).filter((x) => typeof x === 'string' && x);
+  return strength > 0 && plants.length ? { plants, strength } : null;
+}
+
+// Lean (m at SWAY_HEIGHT_M) for a wind speed (m/s): a breath in calm air, at most 0.6 m in a gale.
+export const swayLean = (wind, strength = 1) => strength * Math.min(0.6, 0.08 + 0.04 * Math.max(0, Number(wind) || 0));

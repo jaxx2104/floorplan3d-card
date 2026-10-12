@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  windSpeed,
   cloudCoverage, weatherEntity, cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,
 } from '../src/weather.js';
 
@@ -90,5 +91,17 @@ describe('sky keep-out', () => {
     expect(k).toBeGreaterThan(0);
     expect(k).toBeLessThan(1);
     expect(skyKeepOut(Infinity, 50)).toBe(1); // no rooms
+  });
+});
+
+describe('windSpeed', () => {
+  const st = (wind_speed, wind_speed_unit) => ({ state: 'sunny', attributes: { wind_speed, wind_speed_unit } });
+  it('m/s from the entity unit, km/h when missing, 0 without a number', () => {
+    expect(windSpeed(st(10, 'm/s'))).toBe(10);
+    expect(windSpeed(st(36, 'km/h'))).toBeCloseTo(10);
+    expect(windSpeed(st(36))).toBeCloseTo(10);
+    expect(windSpeed(st(10, 'mph'))).toBeCloseTo(4.4704);
+    expect(windSpeed(st('x', 'm/s'))).toBe(0);
+    expect(windSpeed(null)).toBe(0);
   });
 });
