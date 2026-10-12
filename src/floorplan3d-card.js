@@ -3244,7 +3244,7 @@ class Floorplan3dCard extends HTMLElement {
       }
     }
     this._weatherId = id;
-    v.setWeather({ coverage: id ? cloudCoverage(states[id]) : 0, clouds: c.clouds !== false });
+    v.setWeather({ coverage: id ? cloudCoverage(states[id]) : 0, clouds: c.clouds !== false, condition: id && states[id] ? states[id].state : null });
   }
 
   // An object's label: layout.objects[id].label (Objects tab), else the model's.

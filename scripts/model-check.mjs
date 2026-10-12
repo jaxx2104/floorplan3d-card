@@ -639,6 +639,55 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   const night = await sky();
   check('night: the sun is down, the shade stays on the moonlight only (lamps untouched by construction)', night.sun === 0 && night.shadows === 1, JSON.stringify(night));
   await page.evaluate('window.__setDemoSun(30, 200)');
+  // rain / snow: around the house, never over the rooms (no drop over a room footprint, nothing drawn
+  // over the rooms on screen), animated by uniforms only at <= 20 frames a second
+  const fall = () => page.evaluate(`(() => { const v = ${card}._view, P = v._precip, polys = (v._rooms || []).map((x) => x.room.polygon);
+    const inPoly = (pl, x, y) => { let c = false; for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) { const [xi, yi] = pl[i], [xj, yj] = pl[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+    const info = (l) => { if (!l) return null; const a = l.geometry.getAttribute('aDrop'); let inRoom = 0; for (let i = 0; i < a.count; i++) if (polys.some((pl) => inPoly(pl, a.getX(i), -a.getY(i)))) inRoom++;
+      return { visible: l.visible, drops: l.userData.count, inRoom }; };
+    return { falling: !!v.weather.falling, rain: info(P.rain), snow: info(P.snow), frames: v.stats.cloudFrames, programs: v.renderer.info.programs.length }; })()`);
+  await wx(90, 'pouring');
+  await sleep(300);
+  const pour = await fall();
+  check('pouring: rain falls, no drop over a room', pour.falling && pour.rain && pour.rain.visible && pour.rain.drops === 1600 && pour.rain.inRoom === 0 && !(pour.snow && pour.snow.visible), JSON.stringify(pour));
+  const rainPx = await page.evaluate(`(() => { const v = ${card}._view, r = v.renderer, gl = r.getContext(), l = v._precip.rain;
+    v._placeSkyBodies();
+    const grab = () => { r.render(v.scene, v.camera); const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, d = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d); return { w, h, d }; };
+    l.visible = false; const a = grab(); l.visible = true; const b = grab();
+    const hulls = v._roomHull() || [], cw = r.domElement.clientWidth, ch = r.domElement.clientHeight, sx = cw / a.w, sy = ch / a.h;
+    const inside = (hh, p) => { for (let i = 0; i < hh.length; i++) { const q = hh[i], e = hh[(i + 1) % hh.length]; if ((e[0] - q[0]) * (p[1] - q[1]) - (e[1] - q[1]) * (p[0] - q[0]) < 0) return false; } return true; };
+    let inN = 0, inChanged = 0, outN = 0, outChanged = 0;
+    for (let y = 0; y < a.h; y += 2) for (let x = 0; x < a.w; x += 2) {
+      const i = (y * a.w + x) * 4, diff = Math.abs(a.d[i] - b.d[i]) + Math.abs(a.d[i + 1] - b.d[i + 1]) + Math.abs(a.d[i + 2] - b.d[i + 2]);
+      const p = [(x + 0.5) * sx - cw / 2, (y + 0.5) * sy - ch / 2];
+      if (hulls.some((hh) => inside(hh, p))) { inN++; if (diff > 6) inChanged++; } else { outN++; if (diff > 6) outChanged++; }
+    }
+    return { inN, inChanged, outN, outChanged }; })()`);
+  // the mask is a 256 px texture: a hull edge may leak a pixel or two, so allow 0.2 % of the room pixels
+  check('rain (rendered, 3D): streaks around the house, none over the rooms on screen', rainPx.outChanged > 200 && rainPx.inN > 100 && rainPx.inChanged / rainPx.inN < 0.002, JSON.stringify(rainPx));
+  await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
+    window.__newPrograms = []; r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
+  const rf0 = (await fall()).frames, rt0 = Date.now();
+  await sleep(2000);
+  const rf1 = (await fall()).frames, rsecs = (Date.now() - rt0) / 1000, rnew = await page.evaluate('window.__newPrograms.length');
+  check('rain animates: 5..20 frames a second, no new shader programs', (rf1 - rf0) / rsecs >= 5 && (rf1 - rf0) / rsecs <= 21 && rnew === 0, `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`);
+  await page.screenshot({ path: path.join(root, 'screenshots', 'weather-rain.png') });
+  await wx(90, 'snowy');
+  await sleep(300);
+  const snow = await fall();
+  check('snowy: snow falls (no rain), no flake over a room', snow.falling && snow.snow && snow.snow.visible && snow.snow.inRoom === 0 && !(snow.rain && snow.rain.visible), JSON.stringify(snow));
+  await page.screenshot({ path: path.join(root, 'screenshots', 'weather-snow.png') });
+  await wx(0, 'sunny');
+  await sleep(300);
+  const dry = await fall();
+  check('sunny: nothing falls, the frame rate drops back', !dry.falling && !(dry.rain && dry.rain.visible) && !(dry.snow && dry.snow.visible), JSON.stringify(dry));
+  await wx(90, 'pouring');
+  await page.evaluate(`${card}.setConfig({ ...${card}._config, clouds: false })`);
+  await idle(page);
+  const off = await fall();
+  check('clouds: false stops the rain too', !off.falling && !(off.rain && off.rain.visible), JSON.stringify(off));
+  await page.evaluate(`${card}.setConfig({ ...${card}._config, clouds: true })`);
+  await wx(60);
   await page.evaluate(`${card}.setConfig({ ...${card}._config, clouds: false })`);
   await idle(page);
   let c = await sky();

@@ -16,6 +16,7 @@ import { mergeGroups, namedGroups, mergedName } from './merge.js';
 import { moonLight, moonLitRight, domeRadius, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from './sky.js';
 import { mergeRender, recipeFar, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt } from './render-recipe.js';
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from './weather.js';
+import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from './precip.js';
 import { makeCloudUniforms, patchCloudShadow, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from './cloud-shadow.js';
 import {
   castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable,
@@ -311,6 +312,8 @@ export class FloorplanView {
     this.onScreen = true; // the card is on screen (IntersectionObserver in the card); drift only then
     this._cloudU = makeCloudUniforms(); // cloud shadows: shared by every patched model material
     this._roomMask = null; // room mask texture for the cloud shadows (rebuilt with the rooms)
+    this._precipU = makePrecipUniforms(); // rain / snow: time, fall range, screen mask of the rooms
+    this._precip = { rain: null, snow: null }; // layers, created on the first rain / snow
 
     this.staticGroup = new THREE.Group();
     this.markerGroup = new THREE.Group();
@@ -1215,13 +1218,14 @@ export class FloorplanView {
     }
   }
 
-  // Weather: { coverage 0..100, clouds: option clouds }. Applied only when the coverage moved >= 5 points
+  // Weather: { coverage 0..100, clouds: option clouds (cloud shadows, rain, snow), condition: the state }. Applied only when the coverage moved >= 5 points
   // (or reached 0 / 100) or the option changed: light values, disc opacities, cloud shadows. Returns true when applied.
-  setWeather({ coverage = 0, clouds = true } = {}) {
-    const w = this.weather, show = clouds !== false, c = Math.max(0, Math.min(100, Number(coverage) || 0));
-    if (!coverageChanged(w.applied, c) && show === w.show) return false;
+  setWeather({ coverage = 0, clouds = true, condition = null } = {}) {
+    const w = this.weather, show = clouds !== false, c = Math.max(0, Math.min(100, Number(coverage) || 0)), cond = condition || null;
+    if (!coverageChanged(w.applied, c) && show === w.show && cond === (w.condition ?? null)) return false;
     w.applied = c;
     w.show = show;
+    w.condition = cond;
     if (this.model) this._applyLights();
     else this._cloudLook();
     this._placeSkyBodies();
@@ -1242,8 +1246,12 @@ export class FloorplanView {
 
   // Cloud shadows show: a model (patched materials), the clouds option, the sky on, some coverage.
   _cloudShadowsOn() {
-    const w = this.weather;
-    return !!this.model && this._skyOn && !this.sectionClip && w.show && (w.applied || 0) > 0;
+    return this._weatherFxOn() && (this.weather.applied || 0) > 0;
+  }
+
+  // Weather effects (cloud shadows, rain, snow) may show: a model, the clouds option, the sky on.
+  _weatherFxOn() {
+    return !!this.model && this._skyOn && !this.sectionClip && this.weather.show;
   }
 
   // Cloud shadows drifting over the model's surroundings (not the rooms: _updateRoomMask), with
@@ -1254,6 +1262,45 @@ export class FloorplanView {
     w.shown = shown;
     if (w.shown && !U.fpCloudMap.value) U.fpCloudMap.value = cloudPattern();
     U.fpCloudOffset.value.set(...cloudShadowOffset(w.t));
+  }
+
+  // Rain / snow for the condition around the house (precip.js): layers made on first use (again when
+  // the amount changes), falling from above the rooms to the bottom of the model; the screen mask of
+  // the room hulls is redrawn each frame while they show. Returns true while something falls.
+  _placePrecip(hull) {
+    const P = this._precip, U = this._precipU, d = this._dome, w = this.weather;
+    const amt = this._weatherFxOn() && d ? precipAmounts(w.condition) : { rain: 0, snow: 0 };
+    let falling = false;
+    for (const [kind, max] of [['rain', RAIN_MAX], ['snow', SNOW_MAX]]) {
+      const count = Math.round(max * (amt[kind] || 0));
+      let layer = P[kind];
+      if (layer && layer.userData.count !== count && count) { this._disposePrecip(kind); layer = null; }
+      if (!layer && count) {
+        const rooms = (this._rooms || []).map((x) => x.room.polygon).filter((pl) => pl && pl.length >= 3);
+        layer = P[kind] = makePrecipLayer(kind, placeDrops(count, [d.centre.x, d.centre.z], d.radius, rooms), U);
+        layer.userData.count = count;
+        this.skyGroup.add(layer);
+      }
+      if (layer) layer.visible = count > 0;
+      falling = falling || count > 0;
+    }
+    if (!falling) return false;
+    const hb = this._houseBox, size = this.renderer.getSize(new THREE.Vector2()), buf = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    U.uTop.value = (hb ? hb.max.y : d.centre.y + 3) + 3;
+    U.uBottom.value = this._modelBottom ?? d.centre.y;
+    U.uTime.value = w.t;
+    U.uRes.value.copy(buf);
+    U.uMask.value = drawRoomMask(hull, size.x, size.y, U.uMask.value);
+    return true;
+  }
+
+  _disposePrecip(kind) {
+    const l = this._precip[kind];
+    if (!l) return;
+    l.removeFromParent();
+    l.geometry.dispose();
+    l.material.dispose();
+    this._precip[kind] = null;
   }
 
   // Room mask for the cloud shadows from the room polygons (all floors), from the lowest room floor up.
@@ -1357,6 +1404,7 @@ export class FloorplanView {
     put(this.skySprites.sun, this.skyBodies.sun, SUN_MIN_Y, SUN_DISC_M * 2, SUN_DISC_M * 0.7); // disc = half the sprite, plus some glow
     put(this.skySprites.moon, this.skyBodies.moon, 0, MOON_DISC_M / 0.9, MOON_DISC_M / 2); // disc = 90 % of the sprite
     this._placeClouds();
+    this.weather.falling = this._placePrecip(hull);
     this._cloudLook(); // per-sprite opacity for this camera
     const ring = this.skyRing;
     if (!ring) return;
@@ -1442,6 +1490,8 @@ export class FloorplanView {
     this._dome = { centre: new THREE.Vector3(hc.x, ground, hc.z), radius: domeRadius(Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2) };
     this._placeSkyBodies();
     this._houseBox = box.clone(); // the sky keep-out without room polygons
+    const all = new THREE.Box3().setFromObject(this.modelGroup); // rain / snow fall down to the model's bottom (not a far-off ground plane)
+    this._modelBottom = all.isEmpty() ? box.min.y : Math.max(all.min.y, box.min.y - 40);
     box.expandByScalar(SHADOW_MARGIN_M);
     const centre = box.getCenter(new THREE.Vector3());
     const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
@@ -2812,14 +2862,15 @@ export class FloorplanView {
     this.dirty = true;
   }
 
-  // Cloud shadow drift: at most one frame per CLOUD_FRAME_MS, only while they show (a model, coverage
-  // > 0), the card is on screen and the page visible.
+  // Cloud shadow drift / rain and snow: at most one frame per CLOUD_FRAME_MS (PRECIP_FRAME_MS while
+  // something falls), only while they show, the card is on screen and the page visible.
   _driftClouds() {
     const w = this.weather;
-    if (!w.shown || !this._cloudU.fpCloudStrength.value || !this.onScreen || (this.test && !this.test.drift) || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { w.frameAt = 0; return; }
+    const moving = (w.shown && this._cloudU.fpCloudStrength.value) || w.falling;
+    if (!moving || !this.onScreen || (this.test && !this.test.drift) || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { w.frameAt = 0; return; }
     const now = performance.now();
     if (!w.frameAt) { w.frameAt = now; return; }
-    if (now - w.frameAt < CLOUD_FRAME_MS) return;
+    if (now - w.frameAt < (w.falling ? PRECIP_FRAME_MS : CLOUD_FRAME_MS)) return; // rain / snow need a smoother fall
     const dt = Math.min(1, (now - w.frameAt) / 1000);
     w.frameAt = now;
     w.t += dt;
@@ -2879,6 +2930,12 @@ export class FloorplanView {
       s.material.dispose();
     }
     this.skySprites = { sun: null, moon: null };
+    if (this._roomMask) this._roomMask.dispose();
+    this._roomMask = null;
+    this._disposePrecip('rain');
+    this._disposePrecip('snow');
+    if (this._precipU.uMask.value) this._precipU.uMask.value.dispose();
+    this._precipU.uMask.value = null;
     if (this.skyRing) {
       this.skyRing.traverse((o) => { if (o.material && o.material.map) o.material.map.dispose(); });
       this._clearGroup(this.skyRing);
