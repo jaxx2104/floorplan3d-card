@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cloudCoverage, weatherEntity, cloudLight, cloudCount, coverageChanged, CLOUD_MAX,
-  cloudSlots, cloudScreen, CLOUD_CROSS_S, CLOUD_EDGE, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,
+  cloudCoverage, weatherEntity, cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,
 } from '../src/weather.js';
 
 const w = (state, attributes = {}) => ({ entity_id: 'weather.x', state, attributes });
@@ -58,15 +57,7 @@ describe('cloudLight', () => {
   });
 });
 
-describe('cloudCount / coverageChanged', () => {
-  it('count = round(coverage / 100 x max)', () => {
-    expect(CLOUD_MAX).toBeGreaterThanOrEqual(6);
-    expect(CLOUD_MAX).toBeLessThanOrEqual(14);
-    expect(cloudCount(0)).toBe(0);
-    expect(cloudCount(100)).toBe(CLOUD_MAX);
-    expect(cloudCount(60, 12)).toBe(7);
-    expect(cloudCount(40, 12)).toBe(5);
-  });
+describe('coverageChanged', () => {
   it('applies only on a change of 5 or more (and on reaching 0 / 100)', () => {
     expect(coverageChanged(null, 0)).toBe(true);
     expect(coverageChanged(40, 44)).toBe(false);
@@ -75,36 +66,6 @@ describe('cloudCount / coverageChanged', () => {
     expect(coverageChanged(3, 0)).toBe(true);
     expect(coverageChanged(97, 100)).toBe(true);
     expect(coverageChanged(0, 0)).toBe(false);
-  });
-});
-
-describe('cloud layer', () => {
-  it('slots are fixed, in a band along the top edge', () => {
-    const s = cloudSlots();
-    expect(s.length).toBe(CLOUD_MAX);
-    expect(cloudSlots()).toEqual(s); // deterministic
-    for (const x of s) {
-      expect(x.u).toBeGreaterThanOrEqual(0); expect(x.u).toBeLessThan(1);
-      expect(x.v).toBeGreaterThanOrEqual(0.02); expect(x.v).toBeLessThanOrEqual(0.08);
-      expect(x.size).toBeGreaterThan(0.2); expect(x.size).toBeLessThan(0.35);
-    }
-    // a partly cloudy sky (first 5) already reaches both halves of the card
-    const few = s.slice(0, 5);
-    expect(few.some((x) => x.u < 0.5) && few.some((x) => x.u >= 0.5)).toBe(true);
-  });
-  it('drifts right, slowly, and wraps beyond the edges', () => {
-    const slot = cloudSlots()[2];
-    expect(cloudScreen(slot, 0).u).toBeCloseTo(slot.u);
-    expect(cloudScreen(slot, 0).v).toBe(slot.v);
-    const step = cloudScreen(slot, 1).u - cloudScreen(slot, 0).u;
-    expect(step).toBeGreaterThan(0);
-    expect(step).toBeLessThan(0.01); // < 1 % of the width per second
-    for (let t = 0; t < CLOUD_CROSS_S * 2; t += 3) {
-      const u = cloudScreen(slot, t).u;
-      expect(u).toBeGreaterThanOrEqual(-CLOUD_EDGE - 1e-9);
-      expect(u).toBeLessThan(1 + CLOUD_EDGE);
-    }
-    expect(cloudScreen(slot, CLOUD_CROSS_S).u).toBeCloseTo(slot.u); // one full cycle
   });
 });
 

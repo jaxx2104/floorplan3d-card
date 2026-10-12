@@ -1,4 +1,4 @@
-// Weather: cloud coverage from a weather entity, its effect on the light, the cloud layer and the sky keep-out.
+// Weather: cloud coverage from a weather entity, its effect on the light, and the sky keep-out (sun / moon discs).
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
@@ -9,13 +9,7 @@ const CONDITION_COVERAGE = {
   'lightning-rainy': 100, hail: 100, 'windy-variant': 100, windy: 30, exceptional: 50,
 };
 
-// Cloud sprites at full coverage; the shown count is round(coverage / 100 x max).
-export const CLOUD_MAX = 12;
-// Drift: a cloud crosses the card sideways in CLOUD_CROSS_S seconds (wrapping around), and leaves /
-// enters CLOUD_EDGE (fraction of the card width) beyond the edges so it never pops in on screen.
-export const CLOUD_CROSS_S = 240;
-export const CLOUD_EDGE = 0.25;
-// Coverage change (percentage points) that re-applies light and clouds.
+// Coverage change (percentage points) that re-applies light and cloud shadows.
 export const COVERAGE_STEP = 5;
 
 // Coverage 0..100 of a weather state object (0 without one).
@@ -50,7 +44,6 @@ export function cloudLight(coverage, night = 0) {
   };
 }
 
-export const cloudCount = (coverage, max = CLOUD_MAX) => Math.round(clamp01((Number(coverage) || 0) / 100) * max);
 
 // True when the coverage moved enough to re-apply (first value, >= 5 points, or reaching 0 / 100).
 export function coverageChanged(last, next) {
@@ -59,32 +52,7 @@ export function coverageChanged(last, next) {
   return Math.abs(next - last) >= COVERAGE_STEP || next === 0 || next === 100;
 }
 
-// Clouds are a screen layer, not sky on the dome: the 3D camera looks down past the horizon, so
-// clouds in the sky would never be on screen. They form a band along the top edge of the card (half
-// out of frame), where a camera framing the rooms leaves room; more clouds fill the band.
-// Fixed slots (deterministic): u: 0 left .. 1 right, v: 0 top .. 1 bottom (centre), size: width as
-// a fraction of the card's width (height half of it); variant: texture index 0..2. The rooms still
-// keep them off where they reach the top (sky keep-out below).
-let slots = null;
-export function cloudSlots() {
-  if (slots) return slots;
-  slots = [];
-  for (let i = 0; i < CLOUD_MAX; i++) {
-    const r = (k) => { const x = Math.sin((i + 1) * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
-    // u: golden-ratio sequence (evenly spread for any count), v: the top edge +- a little
-    slots.push({ u: (i * 0.618034 + 0.13) % 1, v: 0.025 + 0.045 * r(3), size: 0.24 + 0.1 * r(1), variant: i % 3 });
-  }
-  return slots;
-}
-
-// Screen position { u, v } of a slot at drift time t (s): u moves right and wraps over
-// [-CLOUD_EDGE, 1 + CLOUD_EDGE].
-export function cloudScreen(slot, t) {
-  const span = 1 + 2 * CLOUD_EDGE, x = (slot.u + CLOUD_EDGE + ((Number(t) || 0) / CLOUD_CROSS_S) * span) % span;
-  return { u: x - CLOUD_EDGE, v: slot.v };
-}
-
-// Sky keep-out: clouds and the sun / moon discs never cover the rooms. The rooms' box is projected
+// Sky keep-out: the sun / moon discs never cover the rooms. The rooms' box is projected
 // to the screen (convex hull, px); a sky sprite fades out as its centre comes within its own radius
 // of that hull: full from SKY_CLEAR x radius outside, gone from SKY_TOUCH x radius (inside < 0).
 export const SKY_CLEAR = 1;
