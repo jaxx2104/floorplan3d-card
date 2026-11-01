@@ -113,3 +113,44 @@ describe('idle_orbit', () => {
     clearTimeout(c._idleTimer);
   });
 });
+
+describe('night_markers', () => {
+  afterEach(() => vi.useRealTimers());
+  const card = (config, daylight) => {
+    const c = Object.create(proto);
+    Object.assign(c, { _config: config, _daylight: daylight, _stage: document.createElement('div') });
+    return c;
+  };
+  it('hides the markers at night only with hide', () => {
+    const c = card({ night_markers: 'hide' }, false);
+    c._syncNightMarkers();
+    expect(c._stage.classList.contains('night-quiet')).toBe(true);
+    c._daylight = true;
+    c._syncNightMarkers();
+    expect(c._stage.classList.contains('night-quiet')).toBe(false);
+    const d = card({}, false);
+    d._syncNightMarkers();
+    expect(d._stage.classList.contains('night-quiet')).toBe(false);
+  });
+  it('a touch shows them for idle_reset seconds, 30 without it', () => {
+    vi.useFakeTimers();
+    const c = card({ night_markers: 'hide', idle_reset: 10 }, false);
+    c._wakeMarkers();
+    expect(c._stage.classList.contains('awake')).toBe(true);
+    vi.advanceTimersByTime(9000);
+    c._wakeMarkers(); // touched again: the countdown restarts
+    vi.advanceTimersByTime(9000);
+    expect(c._stage.classList.contains('awake')).toBe(true);
+    vi.advanceTimersByTime(1000);
+    expect(c._stage.classList.contains('awake')).toBe(false);
+    const d = card({ night_markers: 'hide' }, false);
+    d._wakeMarkers();
+    vi.advanceTimersByTime(29000);
+    expect(d._stage.classList.contains('awake')).toBe(true);
+    vi.advanceTimersByTime(1000);
+    expect(d._stage.classList.contains('awake')).toBe(false);
+    const e = card({}, false);
+    e._wakeMarkers();
+    expect(e._stage.classList.contains('awake')).toBe(false);
+  });
+});

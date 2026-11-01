@@ -87,6 +87,7 @@ The options below can be set in the visual editor or in YAML.
 | `sway` | off | With a model: the plants outside sway in the wind of the weather entity (`wind_speed`), more the higher they reach; never inside the rooms. `true` for the `decoration` layer, or `{ plants: ['decoration'], strength: 1 }` (mesh / material names or layers). Redrawn at about 15 frames a second while the card is on screen. |
 | `idle_reset` | off | Seconds without a touch, wheel or key on the card before it returns to how it opened: start view and mode, the view's saved camera, live sun time; an open popup closes. For wall tablets. Not while editing. |
 | `idle_orbit` | off | With `idle_reset`, in 3D: after returning, the camera turns around the view's rotation centre at this many degrees a second (negative: clockwise) until the next touch, wheel or key or a drag. At most 20 frames a second, only while the card is on screen. |
+| `night_markers` | `show` | `hide`: at night (sun down, or the night toggle) the device markers fade out so the lit rooms carry the plan; red / yellow alerts stay. A touch, wheel or key shows them for `idle_reset` seconds (30 without it). Not while editing. |
 | `view` | `3d` | Start in `3d` or `top` view. |
 | `floor` | first floor with rooms | Floor id (or view id) to show first, or `all`. |
 | `view_id` | | View to show first (with a model: a view id such as `ground`). Wins over `floor`. |

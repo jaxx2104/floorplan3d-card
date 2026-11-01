@@ -115,6 +115,7 @@ const STYLE = `
   .fp-mower-chip.rain, .fp-mower-chip.drying { color: #1e88e5; }
   .fp-marker.fp-occluded { opacity: .25; pointer-events: none; }
   .editing .fp-marker.fp-occluded { opacity: .5; pointer-events: auto; }
+  .body:not(.editing) .stage.night-quiet:not(.awake) .fp-marker:not(.alert-red):not(.alert-yellow) { opacity: 0; pointer-events: none; }
   .fp-val { position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
     font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 8px; white-space: nowrap;
     background: var(--card-background-color, #fff); color: var(--primary-text-color);
@@ -547,6 +548,7 @@ class Floorplan3dCard extends HTMLElement {
       this._updateObjects(); // lights: auto | off
       this._syncDebug();
       if (this._idleTimer) this._armIdleReset(); // idle_reset may have changed
+      this._syncNightMarkers(); // night_markers may have changed
     }
   }
 
@@ -828,7 +830,7 @@ class Floorplan3dCard extends HTMLElement {
     this._schedule();
     this._scheduleSurfaces();
     // idle_reset: any touch, wheel or key on the card restarts the countdown
-    if (!this._onActivity) this._onActivity = () => this._armIdleReset();
+    if (!this._onActivity) this._onActivity = () => { this._armIdleReset(); this._wakeMarkers(); };
     for (const t of ['pointerdown', 'wheel', 'keydown']) this.addEventListener(t, this._onActivity, { capture: true, passive: true });
     this._armIdleReset(); // counting from when the card is shown, so an untouched tablet starts turning too
   }
@@ -838,6 +840,8 @@ class Floorplan3dCard extends HTMLElement {
     if (this._view) this._view.stopOrbit();
     clearTimeout(this._idleTimer);
     this._idleTimer = null;
+    clearTimeout(this._wakeTimer);
+    this._wakeTimer = null;
     if (this._view) this._view.stop();
     if (this._loadUI) this._loadUI.dispose();
     this._endGesture();
@@ -2421,6 +2425,22 @@ class Floorplan3dCard extends HTMLElement {
     this._idleTimer = setTimeout(() => this._idleReset(), sec * 1000);
   }
 
+  // Option night_markers: 'hide' -> at night (sun down, or the night toggle) markers fade out so the lit rooms
+  // carry the plan; alerts stay. A touch, wheel or key shows them for idle_reset seconds (30 without it).
+  _syncNightMarkers() {
+    if (!this._stage) return;
+    const quiet = !!this._config && this._config.night_markers === 'hide' && this._daylight === false;
+    this._stage.classList.toggle('night-quiet', quiet);
+  }
+
+  _wakeMarkers() {
+    if (!this._stage || !this._config || this._config.night_markers !== 'hide') return;
+    this._stage.classList.add('awake');
+    clearTimeout(this._wakeTimer);
+    const sec = Number(this._config.idle_reset) > 0 ? Number(this._config.idle_reset) : 30;
+    this._wakeTimer = setTimeout(() => { this._wakeTimer = null; if (this._stage) this._stage.classList.remove('awake'); }, sec * 1000);
+  }
+
   _idleReset() {
     this._idleTimer = null;
     if (!this._view || !this._views) return;
@@ -3227,6 +3247,7 @@ class Floorplan3dCard extends HTMLElement {
     if (!same) {
       this._skyLast = sky;
       this._daylight = sky.night < 0.5;
+      this._syncNightMarkers();
       v.setSky(sky, { shadow });
     }
     let moonBody = null;
