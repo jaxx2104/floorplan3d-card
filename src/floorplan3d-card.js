@@ -534,6 +534,7 @@ class Floorplan3dCard extends HTMLElement {
       this._view.setOcclusion(this._config.occlusion !== false);
       this._view.setRenderOption(this._config.render);
       this._view.setBackground(this._config.background);
+      this._view.setFurniture(this._config.furniture);
       this._view.setAo(this._config.ao);
       this._view.setBokeh(this._config.bokeh);
       this._view.setGrade(this._config.grade);
@@ -1010,6 +1011,7 @@ class Floorplan3dCard extends HTMLElement {
     this._view.setOcclusion(this._config.occlusion !== false);
     this._view.setRenderOption(this._config.render);
     this._view.setBackground(this._config.background);
+    this._view.setFurniture(this._config.furniture);
     this._view.setAo(this._config.ao);
     this._view.setBokeh(this._config.bokeh);
     this._view.setGrade(this._config.grade);

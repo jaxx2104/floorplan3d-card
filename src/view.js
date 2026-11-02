@@ -2,6 +2,7 @@
 // Plan (x, y, z) maps to world (x, floorElevation + z, -y) so north is up in top view.
 
 import * as THREE from 'three';
+import { rememberColor, paintFurniture } from './furniture.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -281,6 +282,7 @@ export class FloorplanView {
     this.renderOption = 'model'; // card option render: model | default (ignore the recipe)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
+    this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
     this.renderer.setPixelRatio(this._pixelRatio());
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.localClippingEnabled = true; // model cut-away
@@ -676,6 +678,7 @@ export class FloorplanView {
             }
             mat.userData.baseDepthWrite = mat.depthWrite;
             patchCloudShadow(mat, this._cloudU); // cloud shadows: compiled in once, uniforms after
+            rememberColor(mat); // option furniture: the modelled colour
           }
           const box = new THREE.Box3().setFromObject(o);
           const info = shadowInfo(o, { size: box.getSize(new THREE.Vector3()).toArray(), bottom: box.min.y, floors: floorYs });
@@ -689,6 +692,7 @@ export class FloorplanView {
         this._modelVisibility = null;
         this.model = { id, root, manifest, tagged, north: northOf(root), opacity: 1 };
         this._liftTextured(root);
+        this._applyFurniture();
         this.modelGroup.add(root);
         this._applyLook();
         this.mergeStats = null;
@@ -1250,6 +1254,19 @@ export class FloorplanView {
     if (!this.model) return;
     this._applyLights();
     this.dirty = true;
+  }
+
+  // Card option furniture: 'white' shows every material that carries extras fp_white ([r, g, b] linear, the
+  // model's white look) in that colour instead of its own; anything else ('color', unset) the modelled colour.
+  setFurniture(opt) {
+    const next = opt === 'white' ? 'white' : 'color';
+    if (next === this.furniture) return;
+    this.furniture = next;
+    if (this._applyFurniture()) this.dirty = true;
+  }
+
+  _applyFurniture() {
+    return !!this.model && paintFurniture(this.model.root, this.furniture === 'white') > 0;
   }
 
   // Sun / moon on a dome around the house: { sun: { dir } | null, moon: { dir, phase, illumination } | null,
