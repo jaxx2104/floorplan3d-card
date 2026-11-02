@@ -519,6 +519,11 @@ has no marker: the object is the control.
   on its controller row.
 - **Edit mode:** bind objects in the Objects tab; in the Devices tab a dragged marker sticks to the
   model's surfaces and attaches to an object it is dropped on (Alt: free drag, Detach to undo).
+- **Animated screens:** a material whose glTF extras carry `fp_anim: { frames, fps, entity, above }`
+  plays a loop on its textures (`map` / `emissiveMap`): the frames are stacked top to bottom in one image
+  and the UVs cover frame 0 (the top `1/frames`), so other viewers show frame 0 still. It plays at `fps`
+  while `entity` is on (state `on`, or a number above `above` when given, e.g. a desk plug's power for
+  monitors); off, its glow goes dark. No `entity`: always on. Only while the card is on screen.
 
 ### Actions
 

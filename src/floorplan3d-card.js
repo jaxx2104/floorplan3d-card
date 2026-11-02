@@ -783,6 +783,7 @@ class Floorplan3dCard extends HTMLElement {
     this._fetchLabels(hass);
     if (this._view && this._view.model && this._skyMode === 'auto') this._applySky(false);
     this._applyWeather();
+    if (this._view) this._view.setScreenStates(hass.states); // fp_anim screens follow their entities
     if (!this._layout && !this._loading) this._load();
     this._schedule();
   }

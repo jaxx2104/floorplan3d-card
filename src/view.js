@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { rememberColor, paintFurniture } from './furniture.js';
+import { collectScreens, screenOn, frameAt, showFrame, setScreenOn } from './screens.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -693,6 +694,8 @@ export class FloorplanView {
         this.model = { id, root, manifest, tagged, north: northOf(root), opacity: 1 };
         this._liftTextured(root);
         this._applyFurniture();
+        this._screens = collectScreens(root); // fp_anim: monitors / pixel frames that play while their entity is on
+        this._applyScreens();
         this.modelGroup.add(root);
         this._applyLook();
         this.mergeStats = null;
@@ -1263,6 +1266,26 @@ export class FloorplanView {
     if (next === this.furniture) return;
     this.furniture = next;
     if (this._applyFurniture()) this.dirty = true;
+  }
+
+  // hass.states for the animated screens (fp_anim): each plays while its entity is on.
+  setScreenStates(states) {
+    this._screenStates = states || null;
+    if (this._applyScreens()) this.dirty = true;
+  }
+
+  _applyScreens() {
+    let changed = false;
+    for (const s of this._screens || []) if (setScreenOn(s, screenOn(s.anim, this._screenStates))) changed = true;
+    return changed;
+  }
+
+  // Advance the playing screens to the frame for now; only a changed frame asks for a render.
+  _stepScreens() {
+    if (!this._screens || !this._screens.length || !this.onScreen) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    const t = performance.now() / 1000;
+    for (const s of this._screens) if (s.on && showFrame(s, frameAt(s.anim, t))) this.dirty = true;
   }
 
   _applyFurniture() {
@@ -2965,6 +2988,7 @@ export class FloorplanView {
         this.dirty = true;
       }
       this._driftClouds();
+      this._stepScreens();
       this._stepSway();
       this._stepOrbit();
       if (!this.dirty) return;
