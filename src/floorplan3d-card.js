@@ -539,6 +539,7 @@ class Floorplan3dCard extends HTMLElement {
       this._view.setBokeh(this._config.bokeh);
       this._view.setGrade(this._config.grade);
       this._view.setSway(this._config.sway);
+      this._view.setMaxFps(this._config.max_fps);
       this._view.setSurroundLight(this._config.surround_light);
       this._view.setCityLights(this._config.city_lights);
       if (this._view.model) this._applySky(true); // sky_bodies
@@ -1017,6 +1018,7 @@ class Floorplan3dCard extends HTMLElement {
     this._view.setBokeh(this._config.bokeh);
     this._view.setGrade(this._config.grade);
     this._view.setSway(this._config.sway);
+    this._view.setMaxFps(this._config.max_fps);
     this._view.setSurroundLight(this._config.surround_light);
     this._view.setCityLights(this._config.city_lights);
     this._view.onPixelRatio = (pr) => this._hints.setPixelRatio(pr);

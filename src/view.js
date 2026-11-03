@@ -271,6 +271,14 @@ export function orbitStep(position, target, angle) {
 // Frame interval (ms) of the plants' sway.
 const SWAY_FRAME_MS = 66;
 
+// Frame interval (ms) of an animation (idle orbit, clouds, rain / snow, sway): its own default, or with
+// the card option max_fps that many frames a second for all of them. 2 ms under the period, so a 60 Hz
+// requestAnimationFrame whose gaps jitter around 16.7 ms is not cut to every other frame.
+export function frameInterval(base, maxFps) {
+  const f = Number(maxFps);
+  return f > 0 ? Math.max(0, 1000 / f - 2) : base;
+}
+
 export class FloorplanView {
   constructor(container) {
     this.container = container;
@@ -1179,6 +1187,11 @@ export class FloorplanView {
 
   // Card option sway (true or { plants, strength }): the plants outside sway in the wind (weather wind_speed),
   // redrawn at up to 1000 / SWAY_FRAME_MS frames a second while the card is on screen.
+  // Card option max_fps: frames a second of the animations (null: their own defaults, 15-30).
+  setMaxFps(fps) {
+    this._maxFps = Number(fps) > 0 ? Number(fps) : null;
+  }
+
   setSway(opt) {
     const next = normSway(opt);
     if (JSON.stringify(next) === JSON.stringify(this._sway || null)) return;
@@ -1193,7 +1206,7 @@ export class FloorplanView {
     const S = this._swayClock || (this._swayClock = { at: 0 });
     if (!this._sway || !this.model || !this.onScreen || this.test || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { S.at = 0; return; }
     const now = performance.now();
-    if (S.at && now - S.at < SWAY_FRAME_MS) return;
+    if (S.at && now - S.at < frameInterval(SWAY_FRAME_MS, this._maxFps)) return;
     S.at = now;
     this._cloudU.fpTime.value = (now / 1000) % 3600;
     this.dirty = true;
@@ -3040,7 +3053,7 @@ export class FloorplanView {
     if (this.mode === 'top' || this._tween || !this.onScreen || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { o.frameAt = 0; return; }
     const now = performance.now();
     if (!o.frameAt) { o.frameAt = now; return; }
-    if (now - o.frameAt < ORBIT_FRAME_MS) return;
+    if (now - o.frameAt < frameInterval(ORBIT_FRAME_MS, this._maxFps)) return;
     const dt = Math.min(0.5, (now - o.frameAt) / 1000);
     o.frameAt = now;
     orbitStep(this.camera.position, this.controls.target, (o.speed * dt * Math.PI) / 180);
@@ -3056,7 +3069,7 @@ export class FloorplanView {
     if (!moving || !this.onScreen || (this.test && !this.test.drift) || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { w.frameAt = 0; return; }
     const now = performance.now();
     if (!w.frameAt) { w.frameAt = now; return; }
-    if (now - w.frameAt < (w.falling ? PRECIP_FRAME_MS : CLOUD_FRAME_MS)) return; // rain / snow need a smoother fall
+    if (now - w.frameAt < frameInterval(w.falling ? PRECIP_FRAME_MS : CLOUD_FRAME_MS, this._maxFps)) return; // rain / snow need a smoother fall
     const dt = Math.min(1, (now - w.frameAt) / 1000);
     w.frameAt = now;
     w.t += dt;
