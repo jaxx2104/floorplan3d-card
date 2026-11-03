@@ -153,11 +153,9 @@ export class ObjectLayer {
     }
   }
 
-  // The pool joins the scene only with a model, lights on and a lamp lit (a change recompiles the shaders
-  // once). Dark pool lights still cost every pixel their shading (and the shadow ones their shadow
-  // lookups), so with every lamp off they leave the scene: a daytime frame on a tablet ~1.5x faster.
+  // The pool joins the scene only with a model and lights on (a change recompiles the shaders once).
   _showLights() {
-    const on = ((!!this.model && this._slots.size > 0) || !!this._keepLights) && this._lightsOn;
+    const on = (!!this.model || !!this._keepLights) && this._lightsOn;
     if (this.lights.visible === on) return false;
     this.lights.visible = on;
     return true;
@@ -346,7 +344,6 @@ export class ObjectLayer {
       this._budgetSig = sig;
       const before = this._slotSig();
       this._assign(fixtures);
-      if (this._showLights()) changed = true; // the first lamp lit / the last one off
       this.stats.budget++;
       // shadow maps: only lit shadow slots whose fixture or position changed (dark slots are never redrawn)
       const redraw = [];
