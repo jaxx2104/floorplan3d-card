@@ -42,11 +42,11 @@ describe('lights: off hides the pool sub-group', () => {
   let view, layer;
   beforeEach(() => { view = fakeView(); layer = new ObjectLayer(view); });
 
-  it('pool visible only with a model and lights on; labels stay in objectsGroup', () => {
+  it('pool visible only with a model, lights on and a lamp lit; labels stay in objectsGroup', () => {
     expect(layer.lights.visible).toBe(false);
     const m = model([{ id: 'a', x: 1 }, { id: 'c', x: 2, type: 'climate' }]);
     layer.setModel(m);
-    expect(layer.lights.visible).toBe(true);
+    expect(layer.lights.visible).toBe(false); // no lamp lit yet
     layer.setBindings(bind([['a', 'light.a'], ['c', 'climate.c']]), {});
     layer.update({ 'light.a': st('on'), 'climate.c': st('heat', { current_temperature: 21 }) }, { ...ctx, lightsOn: false });
     expect(layer.lights.visible).toBe(false);
@@ -57,6 +57,10 @@ describe('lights: off hides the pool sub-group', () => {
     layer.update({ 'light.a': st('on'), 'climate.c': st('heat', { current_temperature: 21 }) }, ctx);
     expect(layer.lights.visible).toBe(true);
     expect(view.dirty).toBeGreaterThan(d);
+    layer.update({ 'light.a': st('off'), 'climate.c': st('heat', { current_temperature: 21 }) }, ctx);
+    expect(layer.lights.visible).toBe(false); // every lamp off: the dark pool leaves the scene
+    layer.update({ 'light.a': st('on'), 'climate.c': st('heat', { current_temperature: 21 }) }, ctx);
+    expect(layer.lights.visible).toBe(true);
     layer.setModel(null);
     expect(layer.lights.visible).toBe(false);
   });
