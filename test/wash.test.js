@@ -10,6 +10,7 @@ describe('washKind / washSize', () => {
     expect(washKind({ beam: 'spot' })).toBe('spot');
     expect(washKind({ beam: 'down' })).toBe('down');
     expect(washKind(null)).toBe('down');
+    expect(washKind({ beam: 'none' })).toBe('none');
   });
   it('size grows with max, clamped (width 0.8-2.5, height 1-3), distance limits it', () => {
     expect(washSize({ max: 0 })).toEqual({ width: 0.8, height: 1, pool: 0.8 });

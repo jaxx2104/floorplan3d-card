@@ -446,7 +446,7 @@ has no marker: the object is the control.
   placed the first time its lamp is lit (and again after the model is moved); turning lamps on and
   off only shows and hides them, no shader is rebuilt. `hints.beam: "updown"` (or `"both"`), or
   *Light on wall: Up and down* in the Objects tab, draws two washes, a cone below and one above the
-  lamp; *None* draws none. A real point light is kept at least 0.15 m off the wall it faces, so a
+  lamp; *None* (or `hints.beam: "none"`, for a broad fixture such as a ceiling panel) draws none. A real point light is kept at least 0.15 m off the wall it faces, so a
   lamp next to a door does not burn a hot spot into it.
 - **Glow:** a lamp's glow mesh glows with its colour and brightness; large glow meshes (a big shade,
   a long strip) glow less per unit of brightness than small bulbs (by their size, down to a quarter),

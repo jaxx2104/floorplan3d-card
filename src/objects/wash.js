@@ -15,10 +15,12 @@ const DOWN_RANGE = 6, UP_RANGE = 3, AIM_RANGE = 8;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 
-// 'down' (default), 'up', 'both' (updown), 'point' (an oval around the lamp) or 'spot' (a pool where it aims),
+// 'down' (default), 'up', 'both' (updown), 'point' (an oval around the lamp), 'spot' (a pool where it aims)
+// or 'none' (no wash: a broad fixture such as a ceiling panel, whose real light already covers the floor),
 // from the model's hints.beam
 export function washKind(hints) {
   const b = hints && hints.beam;
+  if (b === 'none') return 'none';
   if (b === 'updown' || b === 'both') return 'both';
   return b === 'up' || b === 'point' || b === 'spot' ? b : 'down';
 }
