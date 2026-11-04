@@ -16,7 +16,8 @@
       }
     ],
     "unicorn/no-new-array": "off",
-    "unicorn/no-useless-spread": "off"
+    "unicorn/no-useless-spread": "off",
+    "unicorn/prefer-string-starts-ends-with": "off"
   },
   "ignorePatterns": [
     "dist/**",

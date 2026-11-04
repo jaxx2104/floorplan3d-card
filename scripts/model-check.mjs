@@ -720,7 +720,7 @@ sections.add('uplights', { group: 'model', query: { model: '1', view: '3d' }, vi
     && !a.warnings.some((w) => /spot target/.test(w)), JSON.stringify(a));
   const bad = path.join(root, 'screenshots', 'uplights-bad.glb');
   fs.writeFileSync(bad, rewriteGlbJson(fs.readFileSync(path.join(root, 'demo', 'house.glb')), (json) => {
-    for (const n of json.nodes || []) if (n.extras && n.extras.fp && n.extras.fp.id.startsWith('wall_uplight_')) n.extras.fp.hints = { ...n.extras.fp.hints, target: [6.25, 0, 0.5] };
+    for (const n of json.nodes || []) if (n.extras && n.extras.fp && /^wall_uplight_/.test(n.extras.fp.id)) n.extras.fp.hints = { ...n.extras.fp.hints, target: [6.25, 0, 0.5] };
     return json;
   }));
   await page.evaluate(`${card}.setConfig({ ...${card}._config, model: '/screenshots/uplights-bad.glb' })`);
