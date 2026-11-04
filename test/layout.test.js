@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeFloors, roomFloorId, wallSegments, markerPositions, lightGlow, roomLabel, roomLabelMode } from '../src/layout.js';
-import { pointInPolygon } from '../src/placement.js';
+import { mergeFloors, roomFloorId, wallSegments, markerPositions, lightGlow, roomLabel, roomLabelMode } from '../src/layout.ts';
+import { pointInPolygon } from '../src/placement.ts';
 
 const hass = {
   floors: { up: { floor_id: 'up', name: 'Upstairs', level: 1 }, ground: { floor_id: 'ground', name: 'Ground', level: 0 } },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fallbackOutline } from '../src/view.js';
+import { fallbackOutline } from '../src/view.ts';
 
 describe('fallbackOutline', () => {
   it('is the plan rectangle of a world box (north = -z)', () => {

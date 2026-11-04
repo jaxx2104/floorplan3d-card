@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { ObjectLayer } from '../src/objects/layer.js';
+import { ObjectLayer } from '../src/objects/layer.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 

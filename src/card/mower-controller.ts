@@ -4,16 +4,16 @@
 // -> _refreshMower). The card (host) is read live on every call: _hass / _layout / _config are
 // replaced on each update, so nothing of it is captured here.
 
-import { readTrack, readSource, overlayUrl, mowerTransform } from '../mower.js';
-import { lastPosition, rememberPosition, mowerDockGroup, isDocked, dockWord, mowerStatusText, fullSearch, trackWindow, layerDue, LONG_TASK_MS, throttleStep, effectiveRefresh } from '../mower-track.js';
-import { STUCK_DEFAULT_MIN, stuckStep, errorKind, stuckDueIn, errorText } from '../mower-warning.js';
-import { connectivity, rain, findErrorEntity, findStatusEntity, findProgress, progressValue, findStaticMap, findMowerPicture } from '../mower-device.js';
-import { colorList, pixelToPlan, readImagePixels, FETCH_TIMEOUT_MS, mapWorkSize, MapProcessor, planToPixel, findBlob, stepTrack, headingMinStep, mowedShare, stripeBearing } from '../mower-image.js';
-import { grayOf, matchTemplate, iconMoments, momentsOf, momentHeading, makeTemplate, smoothHeading, norm360 } from '../mower-heading.js';
-import { pointInPolygon, signedArea } from '../placement.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { Zone } from './view-controller.js';
-import type { LayoutMower, MowerImage, MowerOverlay } from '../types/layout.js';
+import { readTrack, readSource, overlayUrl, mowerTransform } from '../mower.ts';
+import { lastPosition, rememberPosition, mowerDockGroup, isDocked, dockWord, mowerStatusText, fullSearch, trackWindow, layerDue, LONG_TASK_MS, throttleStep, effectiveRefresh } from '../mower-track.ts';
+import { STUCK_DEFAULT_MIN, stuckStep, errorKind, stuckDueIn, errorText } from '../mower-warning.ts';
+import { connectivity, rain, findErrorEntity, findStatusEntity, findProgress, progressValue, findStaticMap, findMowerPicture } from '../mower-device.ts';
+import { colorList, pixelToPlan, readImagePixels, FETCH_TIMEOUT_MS, mapWorkSize, MapProcessor, planToPixel, findBlob, stepTrack, headingMinStep, mowedShare, stripeBearing } from '../mower-image.ts';
+import { grayOf, matchTemplate, iconMoments, momentsOf, momentHeading, makeTemplate, smoothHeading, norm360 } from '../mower-heading.ts';
+import { pointInPolygon, signedArea } from '../placement.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Zone } from './view-controller.ts';
+import type { LayoutMower, MowerImage, MowerOverlay } from '../types/layout.ts';
 
 const MOWER_Z = 0.15;
 const MATCH_MIN = 0.5; // mower picture match score (NCC) trusted for position and heading

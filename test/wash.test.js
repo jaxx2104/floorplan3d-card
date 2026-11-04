@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { washKind, washSize, chooseWall, placeWash, washOpacity, washTexels, WALL_REACH } from '../src/objects/wash.js';
+import { washKind, washSize, chooseWall, placeWash, washOpacity, washTexels, WALL_REACH } from '../src/objects/wash.ts';
 
 const close = (a, b, eps = 1e-6) => a.every((v, i) => Math.abs(v - b[i]) < eps);
 

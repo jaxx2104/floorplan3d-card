@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   levelsFromFloorMap, migrateModel, resolveLevels, resolveRoomAreas, transformPoint, modelRooms,
   combineRooms, levelFloorOverrides, bindingDiff, snapshotDiff, levelVisible, measuredElevations,
-} from '../src/bindings.js';
+} from '../src/bindings.ts';
 
 const L = (id, role = 'storey', order = null, extra = {}) => ({ kind: 'level', id, role, order, elevation: null, height: null, ...extra });
 const floors = [{ id: 'floor1', elevation: 0 }, { id: 'floor2', elevation: 3 }];

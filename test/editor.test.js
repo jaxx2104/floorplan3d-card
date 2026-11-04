@@ -3,7 +3,7 @@ import {
   snapPoint, floorVertices, nearestEdge, newRoomId, upsertRoom, deleteRoom, moveVertex, insertVertex,
   removeVertex, addDoor, removeDoor, cleanPolygon, setPin, clearPin, hide, unhide, upsertFloor, deleteFloor,
   newFloorId, parseImport, fitImport, setObject, setObjectUi, setGroup, attachPin, realignPins, sliderValue,
-} from '../src/editor.js';
+} from '../src/editor.ts';
 
 const square = { id: 'r1', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] };
 

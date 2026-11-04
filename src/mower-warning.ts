@@ -1,5 +1,5 @@
 // Mower warning: error classification and the "stuck?" detector (pure, no DOM / Three.js).
-import type { PlanPoint } from './types/layout.js';
+import type { PlanPoint } from './types/layout.ts';
 
 /** Enough of an HA state object for the warning (entity_id decides binary_sensor handling). */
 export interface WarningState {

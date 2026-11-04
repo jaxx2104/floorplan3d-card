@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LayoutStore, normalise, EMPTY_LAYOUT } from '../src/storage.js';
+import { LayoutStore, normalise, EMPTY_LAYOUT } from '../src/storage.ts';
 
 const fail = () => Promise.reject(new Error('unknown command'));
 

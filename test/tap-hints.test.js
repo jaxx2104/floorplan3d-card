@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { tapHintsMode, reachability, hintAlpha, HINT_RADIUS } from '../src/objects/hints.js';
-import { chainState } from '../src/objects/logic.js';
+import { tapHintsMode, reachability, hintAlpha, HINT_RADIUS } from '../src/objects/hints.ts';
+import { chainState } from '../src/objects/logic.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 

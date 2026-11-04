@@ -10,8 +10,8 @@
 // 2 points -> similarity transform (shift, rotate, uniform scale)
 // 3+ points -> least-squares affine transform
 
-import type { Hass, HassEntity } from './types/ha.js';
-import type { LayoutMower, MowerCalibrationPoint, PlanPoint } from './types/layout.js';
+import type { Hass, HassEntity } from './types/ha.ts';
+import type { LayoutMower, MowerCalibrationPoint, PlanPoint } from './types/layout.ts';
 
 const R_EARTH = 6378137;
 

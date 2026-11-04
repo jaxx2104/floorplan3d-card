@@ -1,12 +1,12 @@
 // Pure layout helpers shared by the view and the editor: floors, room floors, walls, positions.
 // Plan metres: x = east, y = north, z = height above the floor.
 
-import { autoPlace, signedArea } from './placement.js';
-import { floorsFromHA } from './registry.js';
-import type { Marker } from './registry.js';
-import type { Hass, HassEntity } from './types/ha.js';
-import type { Floor, Layout, LayoutFloor, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.js';
-import type { CardConfig } from './types/config.js';
+import { autoPlace, signedArea } from './placement.ts';
+import { floorsFromHA } from './registry.ts';
+import type { Marker } from './registry.ts';
+import type { Hass, HassEntity } from './types/ha.ts';
+import type { Floor, Layout, LayoutFloor, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.ts';
+import type { CardConfig } from './types/config.ts';
 
 /** A wall piece between two plan points (door gaps already cut out). */
 export interface WallSegment { a: PlanPoint; b: PlanPoint }

@@ -1,16 +1,16 @@
 // Object popup: a small panel next to a model object with its controls (toggle, brightness,
 // colour, the group chain) and read-only values. popupRows() is the pure part (unit-tested).
 import type * as THREE from 'three';
-import { typeOf } from './types.js';
-import { controllersOf } from './logic.js';
-import { toggleCall, popupLinks } from '../actions.js';
-import { applyBadges } from '../badge-dom.js';
-import type { ChainState, Controller, ObjectBinding } from './logic.js';
-import type { ModelObject } from './types.js';
-import type { PopupLink, PopupSource } from '../actions.js';
-import type { BadgeInfo } from '../badges.js';
-import type { HassEntity } from '../types/ha.js';
-import type { ActionConfig, LayoutTag } from '../types/layout.js';
+import { typeOf } from './types.ts';
+import { controllersOf } from './logic.ts';
+import { toggleCall, popupLinks } from '../actions.ts';
+import { applyBadges } from '../badge-dom.ts';
+import type { ChainState, Controller, ObjectBinding } from './logic.ts';
+import type { ModelObject } from './types.ts';
+import type { PopupLink, PopupSource } from '../actions.ts';
+import type { BadgeInfo } from '../badges.ts';
+import type { HassEntity } from '../types/ha.ts';
+import type { ActionConfig, LayoutTag } from '../types/layout.ts';
 
 export { toggleCall };
 

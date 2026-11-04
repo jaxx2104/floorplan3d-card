@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.js';
+import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.ts';
 
 const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null };
 

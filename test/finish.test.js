@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { normBokeh, normGrade, cocAt, tiltAt, screenBand, focusBand, TILT_BAND, BOKEH_DEFAULTS, GRADE_DEFAULTS, TILT_FALLOFF } from '../src/finish.js';
+import { normBokeh, normGrade, cocAt, tiltAt, screenBand, focusBand, TILT_BAND, BOKEH_DEFAULTS, GRADE_DEFAULTS, TILT_FALLOFF } from '../src/finish.ts';
 
 describe('normBokeh', () => {
   it('off unless asked for, or with no strength', () => {

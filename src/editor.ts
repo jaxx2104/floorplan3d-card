@@ -1,11 +1,11 @@
 // Pure edit operations on the layout. Every function returns new objects (the card compares
 // layout identity to decide what to rebuild) and never mutates its input.
 
-import { snap } from './placement.js';
-import { normalise } from './storage.js';
-import { layoutTags } from './objects/logic.js';
-import { transformPoint, inverseTransformPoint } from './bindings.js';
-import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, LayoutRoom, LayoutTag, PlanPoint } from './types/layout.js';
+import { snap } from './placement.ts';
+import { normalise } from './storage.ts';
+import { layoutTags } from './objects/logic.ts';
+import { transformPoint, inverseTransformPoint } from './bindings.ts';
+import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, LayoutRoom, LayoutTag, PlanPoint } from './types/layout.ts';
 
 export type SnapKind = 'vertex' | 'align' | 'grid';
 export interface SnapResult { point: PlanPoint; kind: SnapKind }

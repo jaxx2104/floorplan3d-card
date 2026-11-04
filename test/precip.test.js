@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { precipAmounts, nearPolygon, placeDrops, PRECIP_ROOM_MARGIN } from '../src/precip.js';
+import { precipAmounts, nearPolygon, placeDrops, PRECIP_ROOM_MARGIN } from '../src/precip.ts';
 
 describe('precipAmounts', () => {
   it('rain / snow per condition, pouring the most, none when dry', () => {

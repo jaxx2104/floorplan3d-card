@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { parseSelector, nodeIndex, matches, resolveVisibility, unmatchedSelectors,
-  modelViewRules, generatedViews, migrateShowModes, resolveViews, primaryLevel, defaultFloors, markerState } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
+  modelViewRules, generatedViews, migrateShowModes, resolveViews, primaryLevel, defaultFloors, markerState } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 const tree = (roots) => {
   const parent = new Map();

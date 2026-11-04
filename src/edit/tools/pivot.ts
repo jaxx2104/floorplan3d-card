@@ -1,6 +1,6 @@
 // "Set rotation centre" (Views tab): arm, cancel, and the click that sets it.
 
-import type { EditMode } from '../../edit-mode.js';
+import type { EditMode } from '../../edit-mode.ts';
 
 export function cancelPivot(ed: EditMode) {
   ed.pivoting = false;

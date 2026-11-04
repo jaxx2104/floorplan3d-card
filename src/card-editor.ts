@@ -1,8 +1,8 @@
 // Visual editor for the card options (Lovelace "Show visual editor"), built on HA's ha-form.
 // Rooms, devices, mower and model are edited on the card itself (its Edit button).
 
-import type { CardConfig } from './types/config.js';
-import type { Hass } from './types/ha.js';
+import type { CardConfig } from './types/config.ts';
+import type { Hass } from './types/ha.ts';
 
 /** One ha-form schema entry (HA frontend: a field with a selector, or a grid / expandable of fields). */
 export interface FormSchema {

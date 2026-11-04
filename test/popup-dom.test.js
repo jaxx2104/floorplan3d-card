@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { ObjectPopup, rowsKey } from '../src/objects/popup.js';
+import { ObjectPopup, rowsKey } from '../src/objects/popup.ts';
 
 describe('popup info rows keep label and value together', () => {
   it('the key includes info labels', () => {

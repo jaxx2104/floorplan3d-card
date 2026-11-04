@@ -1,8 +1,8 @@
 // Local cache of model files (.glb): Cache Storage when the page has it (secure contexts), else an
 // IndexedDB blob (HA over plain http on the LAN), keyed by the model URL + its version. Only the
 // response body is stored, under a plain URL: never request headers or tokens.
-import { idbGet, idbAll, idbPut, idbDelete } from './idb.js';
-import type { LayoutModel } from './types/layout.js';
+import { idbGet, idbAll, idbPut, idbDelete } from './idb.ts';
+import type { LayoutModel } from './types/layout.ts';
 
 /** IndexedDB record of a cached model body. */
 interface ModelRecord {

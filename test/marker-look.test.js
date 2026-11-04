@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { markerLook, iconFor } from '../src/registry.js';
+import { markerLook, iconFor } from '../src/registry.ts';
 
 const hass = (states) => ({ states, entities: {}, hassUrl: (p) => 'http://ha' + p });
 const m = (eid, extra = {}) => ({ id: 'entity:' + eid, entityId: eid, domain: eid.split('.')[0], ...extra });
@@ -46,7 +46,7 @@ describe('markerLook', () => {
   });
 });
 
-import { pictureKey } from '../src/registry.js';
+import { pictureKey } from '../src/registry.ts';
 describe('pictureKey', () => {
   const u = (t, c) => `/api/media_player_proxy/media_player.tv?token=${t}&cache=${c}`;
   it('a new cache hash reloads', () => expect(pictureKey(u('a', 'h1'))).not.toBe(pictureKey(u('a', 'h2'))));

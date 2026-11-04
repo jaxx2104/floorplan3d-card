@@ -3,15 +3,15 @@
 // move of auto-placed markers onto the model's surfaces. _buildMarkers replaces the _positions Map:
 // other parts read card._positions each time, never keep it.
 
-import { buildMarkers, isActive, iconFor, markerLook, displayValue, pictureKey } from '../registry.js';
-import { markerPositions, lightGlow } from '../layout.js';
-import { surfaceKind, surfaceKey, surfaceSearch, worldOf, nearPolygon, chooseSurface, planOf } from '../surface.js';
-import { attachedPosition } from '../objects/logic.js';
-import { badgeOptions, badgeInfo } from '../badges.js';
-import { applyBadges } from '../badge-dom.js';
-import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { LayoutPin } from '../types/layout.js';
+import { buildMarkers, isActive, iconFor, markerLook, displayValue, pictureKey } from '../registry.ts';
+import { markerPositions, lightGlow } from '../layout.ts';
+import { surfaceKind, surfaceKey, surfaceSearch, worldOf, nearPolygon, chooseSurface, planOf } from '../surface.ts';
+import { attachedPosition } from '../objects/logic.ts';
+import { badgeOptions, badgeInfo } from '../badges.ts';
+import { applyBadges } from '../badge-dom.ts';
+import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { LayoutPin } from '../types/layout.ts';
 
 /** A device / entity marker (registry.js buildMarkers). */
 export type Marker = ReturnType<typeof buildMarkers>[number];

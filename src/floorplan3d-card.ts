@@ -4,31 +4,31 @@
 // mode, the debug overlay or the headless checks use keeps its name on the card (delegates below).
 
 import { Color } from 'three';
-import { FloorplanView } from './view.js';
-import { EditMode } from './edit-mode.js';
-import './card-editor.js';
-import { LayoutStore } from './storage.js';
-import { registrySignature } from './registry.js';
-import './mower-auto.js'; // registers the auto-mode kernel with the map worker
-import { ObjectLayer } from './objects/layer.js';
-import { TapHints } from './objects/hints.js';
-import { DebugOverlay } from './debug-overlay.js';
-import { ModelLoadUI, LOAD_STYLE } from './load-ui.js';
-import { loadOutline, pickOutline } from './load-outline.js';
-import { ObjectPopup } from './objects/popup.js';
-import { TapSequencer } from './actions.js';
-import { STYLE } from './card/style.js';
-import { defineDelegates } from './card/delegates.js';
-import { MowerController } from './card/mower-controller.js';
-import { ModelLoader } from './card/model-loader.js';
-import { ViewController } from './card/view-controller.js';
-import { MarkerLayer } from './card/marker-layer.js';
-import { ActionRunner } from './card/action-runner.js';
-import { ObjectInput } from './card/object-input.js';
-import { SkyController } from './card/sky-controller.js';
-import type { CardConfig } from './types/config.js';
-import type { Hass, HassEntity, HassThemes } from './types/ha.js';
-import type { Layout } from './types/layout.js';
+import { FloorplanView } from './view.ts';
+import { EditMode } from './edit-mode.ts';
+import './card-editor.ts';
+import { LayoutStore } from './storage.ts';
+import { registrySignature } from './registry.ts';
+import './mower-auto.ts'; // registers the auto-mode kernel with the map worker
+import { ObjectLayer } from './objects/layer.ts';
+import { TapHints } from './objects/hints.ts';
+import { DebugOverlay } from './debug-overlay.ts';
+import { ModelLoadUI, LOAD_STYLE } from './load-ui.ts';
+import { loadOutline, pickOutline } from './load-outline.ts';
+import { ObjectPopup } from './objects/popup.ts';
+import { TapSequencer } from './actions.ts';
+import { STYLE } from './card/style.ts';
+import { defineDelegates } from './card/delegates.ts';
+import { MowerController } from './card/mower-controller.ts';
+import { ModelLoader } from './card/model-loader.ts';
+import { ViewController } from './card/view-controller.ts';
+import { MarkerLayer } from './card/marker-layer.ts';
+import { ActionRunner } from './card/action-runner.ts';
+import { ObjectInput } from './card/object-input.ts';
+import { SkyController } from './card/sky-controller.ts';
+import type { CardConfig } from './types/config.ts';
+import type { Hass, HassEntity, HassThemes } from './types/ha.ts';
+import type { Layout } from './types/layout.ts';
 
 const VERSION = '0.0.0-dev';
 

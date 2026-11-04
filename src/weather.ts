@@ -1,6 +1,6 @@
 // Weather: cloud coverage from a weather entity, its effect on the light, and the sky keep-out (sun / moon discs).
 
-import type { HassEntity } from './types/ha.js';
+import type { HassEntity } from './types/ha.ts';
 
 type Pt = number[];
 

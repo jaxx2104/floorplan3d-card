@@ -1,14 +1,14 @@
 // Views tab: the edited view, its floors, camera, section and per-part visibility rules.
 
-import { ruleState, ruleKeepsObjects, setRuleState, nextEyeState, viewTree, nextViewId, unmatchedSelectors, SECTION_DIRS, sectionDir, sectionPos, sectionAt, sectionRange, zoomToFor } from '../../views.js';
-import { cancelPivot } from '../tools/pivot.js';
-import { closeMenu } from '../tools/view-menu.js';
-import { esc, sliderHtml } from '../html.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { CardView, ViewIndex } from '../host.js';
-import type { LayoutView } from '../../types/layout.js';
+import { ruleState, ruleKeepsObjects, setRuleState, nextEyeState, viewTree, nextViewId, unmatchedSelectors, SECTION_DIRS, sectionDir, sectionPos, sectionAt, sectionRange, zoomToFor } from '../../views.ts';
+import { cancelPivot } from '../tools/pivot.ts';
+import { closeMenu } from '../tools/view-menu.ts';
+import { esc, sliderHtml } from '../html.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { CardView, ViewIndex } from '../host.ts';
+import type { LayoutView } from '../../types/layout.ts';
 
 /** A row of the Views tab's model tree (views.js viewTree). */
 export interface TreeRow {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { moonPosition, moonLight, moonLitRight, domeRadius, SUN_MIN_Y, sunPosition, sliderDate, snapMinutes, hhmm, tzMinutes, SCRUB_IDLE_MS } from '../src/sky.js';
+import { moonPosition, moonLight, moonLitRight, domeRadius, SUN_MIN_Y, sunPosition, sliderDate, snapMinutes, hhmm, tzMinutes, SCRUB_IDLE_MS } from '../src/sky.ts';
 
 // Reference: suncalc's published test values (2013-03-05 UTC, 50.5 N, 30.5 E):
 // getMoonPosition azimuth -0.9783999522438226 rad (from south), altitude 0.014551482243892251 rad;

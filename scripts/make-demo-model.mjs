@@ -9,7 +9,7 @@ import zlib from 'node:zlib';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { DEMO_LAYOUT } from '../demo/layout.js';
-import { wallSegments } from '../src/layout.js';
+import { wallSegments } from '../src/layout.ts';
 
 // GLTFExporter reads blobs with FileReader, which Node lacks
 globalThis.FileReader = class {

@@ -1,5 +1,5 @@
 // Room outline from a mesh's upward-facing triangles at the clicked height (pick a room from the model).
-import { pointInPolygon, signedArea } from './placement.js';
+import { pointInPolygon, signedArea } from './placement.ts';
 
 const COS_UP = Math.cos((25 * Math.PI) / 180);
 const MERGE = 200; // points within 5 mm share a key

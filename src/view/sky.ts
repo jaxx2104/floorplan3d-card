@@ -4,15 +4,15 @@
 // sky math this part draws with.)
 
 import * as THREE from 'three';
-import { moonLight, moonLitRight, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from '../sky.js';
-import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from '../weather.js';
-import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from '../precip.js';
-import { swayLean, makeCloudUniforms, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from '../cloud-shadow.js';
-import { testMode, frameInterval, isPerspective, type Drawable, type Vec3 } from './core.js';
-import type { FloorplanView } from '../view.js';
-import type { CloudUniforms } from '../cloud-shadow.js';
-import type { PrecipKind, PrecipUniforms } from '../precip.js';
-import type { PlanPoint } from '../types/layout.js';
+import { moonLight, moonLitRight, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from '../sky.ts';
+import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from '../weather.ts';
+import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from '../precip.ts';
+import { swayLean, makeCloudUniforms, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from '../cloud-shadow.ts';
+import { testMode, frameInterval, isPerspective, type Drawable, type Vec3 } from './core.ts';
+import type { FloorplanView } from '../view.ts';
+import type { CloudUniforms } from '../cloud-shadow.ts';
+import type { PrecipKind, PrecipUniforms } from '../precip.ts';
+import type { PlanPoint } from '../types/layout.ts';
 
 /** A body on the sky dome: unit vector toward it (world); the moon also its phase and lit share. */
 export interface SkyBody { dir: Vec3; phase?: number; illumination?: number; latitude?: number }

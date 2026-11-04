@@ -2,9 +2,9 @@
 // Card timers across disconnect / reconnect (a wall tablet switching dashboard views), idle reset and
 // night markers, on the card's parts with fake hosts.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { MowerController } from '../src/card/mower-controller.js';
-import { ViewController } from '../src/card/view-controller.js';
-import { SkyController } from '../src/card/sky-controller.js';
+import { MowerController } from '../src/card/mower-controller.ts';
+import { ViewController } from '../src/card/view-controller.ts';
+import { SkyController } from '../src/card/sky-controller.ts';
 
 function mower(connected) {
   const host = { isConnected: connected };

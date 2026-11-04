@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readTag, buildManifest, gltfAdapter, threeAdapter, summarize } from '../src/manifest.js';
+import { readTag, buildManifest, gltfAdapter, threeAdapter, summarize } from '../src/manifest.ts';
 
 // tiny tree helper: { name, extras, children }
 const tree = (roots) => {

@@ -2,12 +2,12 @@
 // The static map has the lawn (green), no-mow areas (grey), the boundary and a dark background; the
 // live map adds mowed stripes (lighter green), the mower icon and the dock icon. Pixels that did not
 // change are drawn transparent; mowed stripes light; no-mow shaded; icons hidden.
-import { headingKernel } from './mower-heading.js';
-import type { HeadingKernel, HeadingTemplate, TemplateMatch, TurnedPatch } from './mower-heading.js';
-import { mapKernel, registerAuto } from './mower-image.js';
-import type { MapKernel, Pixels } from './mower-image.js';
-import { tileKernel } from './mower-track.js';
-import type { PixelRect, TileKernel } from './mower-track.js';
+import { headingKernel } from './mower-heading.ts';
+import type { HeadingKernel, HeadingTemplate, TemplateMatch, TurnedPatch } from './mower-heading.ts';
+import { mapKernel, registerAuto } from './mower-image.ts';
+import type { MapKernel, Pixels } from './mower-image.ts';
+import { tileKernel } from './mower-track.ts';
+import type { PixelRect, TileKernel } from './mower-track.ts';
 
 /** Offset of the live map against the static one (px). */
 export interface Shift {

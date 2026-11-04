@@ -6,18 +6,18 @@
 // Shadow maps are rendered per light (shadow.autoUpdate = false): only lit shadow slots whose
 // fixture or position changed, or all lit ones when the casters changed (shadowsStale).
 import * as THREE from 'three';
-import { chainState, lightBudget, controllersOf, budgetGroup } from './logic.js';
-import { typeOf, reanchor } from './types.js';
-import { badTargets, aimPoint, aimsUp } from './aim.js';
-import { dockFrontAxis, dockPose } from '../mower-track.js';
-import { WashLayer, resolveWash, washSize, placeWashes, washOpacity, clearOfWall, washSetting } from './wash.js';
-import type { SurfaceRaySource, WashKind, WashMesh, WashPlacement } from './wash.js';
-import type { BasePart, ModelObject, MowerPose, ObjectType, ObjectViewHost, TypeResult } from './types.js';
-import type { BadTarget } from './aim.js';
-import type { BudgetFixture, ChainState, ObjectBinding } from './logic.js';
-import type { HassEntity } from '../types/ha.js';
-import type { LayoutObject, LayoutTag } from '../types/layout.js';
-import type { ManifestLevel } from '../types/manifest.js';
+import { chainState, lightBudget, controllersOf, budgetGroup } from './logic.ts';
+import { typeOf, reanchor } from './types.ts';
+import { badTargets, aimPoint, aimsUp } from './aim.ts';
+import { dockFrontAxis, dockPose } from '../mower-track.ts';
+import { WashLayer, resolveWash, washSize, placeWashes, washOpacity, clearOfWall, washSetting } from './wash.ts';
+import type { SurfaceRaySource, WashKind, WashMesh, WashPlacement } from './wash.ts';
+import type { BasePart, ModelObject, MowerPose, ObjectType, ObjectViewHost, TypeResult } from './types.ts';
+import type { BadTarget } from './aim.ts';
+import type { BudgetFixture, ChainState, ObjectBinding } from './logic.ts';
+import type { HassEntity } from '../types/ha.ts';
+import type { LayoutObject, LayoutTag } from '../types/layout.ts';
+import type { ManifestLevel } from '../types/manifest.ts';
 
 interface LampShadows { mapSize: number; bias: number; normalBias: number; radius: number }
 

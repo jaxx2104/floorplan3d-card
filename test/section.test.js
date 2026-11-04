@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normSection, sectionPlane, sectionCamera, SECTION_DIRS, sectionDir, sectionPos, sectionAt, sectionRange,
-  sectionSide, sectionLevels, unionBox, resolveViews } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
+  sectionSide, sectionLevels, unionBox, resolveViews } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 const box = { min: [0, 0, -10], max: [16, 8, 0] }; // centre x 8, plan y 0..10
 const close = (a, b) => a.forEach((x, i) => expect(x).toBeCloseTo(b[i], 6));

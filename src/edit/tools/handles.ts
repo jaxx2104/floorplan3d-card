@@ -1,10 +1,10 @@
 // Overlay of the edit tools on the plan: the selected room, the picked outline, the drawing, and their
 // drag handles (one element per key, reused across refreshes).
 
-import * as E from '../../editor.js';
-import { vertexDown, midDown } from './drag.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { LayoutRoom, PlanPoint } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { vertexDown, midDown } from './drag.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { LayoutRoom, PlanPoint } from '../../types/layout.ts';
 
 interface OverlayLine { points: PlanPoint[]; closed: boolean; floorId: string; color: number }
 interface OverlayFill { points: PlanPoint[]; floorId: string; color: number; opacity: number }

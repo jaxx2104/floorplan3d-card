@@ -3,7 +3,7 @@
 // (GLTFLoader puts material extras in material.userData).
 
 import type * as THREE from 'three';
-import { isMesh, meshMaterials } from './view/core.js';
+import { isMesh, meshMaterials } from './view/core.ts';
 
 type ColorMaterial = THREE.Material & { color: THREE.Color };
 

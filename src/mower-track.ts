@@ -1,7 +1,7 @@
 // Mower tracking on the live map (pure, no DOM): docked state, the dock pose, the search window,
 // changed-tile detection, the adaptive refresh throttle and the Mower tab's status line.
 
-import type { Pixels } from './mower-image.js';
+import type { Pixels } from './mower-image.ts';
 
 /** Pixel rectangle, x1 / y1 exclusive. */
 export interface PixelRect {

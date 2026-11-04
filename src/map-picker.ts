@@ -3,7 +3,7 @@
 //   mode 'color': adds its colour (median 3x3) through onColor and stays open (Done / Esc closes);
 //   mode 'point': reports the pixel through onPoint and closes.
 // "Show matches" tints pixels within tolerance of the category's colours (what will be keyed).
-import { medianColor } from './mower-image.js';
+import { medianColor } from './mower-image.ts';
 
 export type RGB = number[];
 /** View transform: image pixel (x, y) -> box (ox + x * s, oy + y * s). */

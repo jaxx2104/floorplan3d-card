@@ -5,8 +5,8 @@
 // (e.g. a desk plug's power for monitors). Off, its emissive goes dark. No entity: always on.
 
 import type * as THREE from 'three';
-import type { HassEntity } from './types/ha.js';
-import { isMesh, meshMaterials } from './view/core.js';
+import type { HassEntity } from './types/ha.ts';
+import { isMesh, meshMaterials } from './view/core.ts';
 
 const TEX = ['map', 'emissiveMap'] as const;
 

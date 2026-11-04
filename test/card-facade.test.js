@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // The card element as a facade over its parts: delegated members keep their names and identities.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import '../src/floorplan3d-card.js';
-import { defineDelegates } from '../src/card/delegates.js';
-import { ActionRunner } from '../src/card/action-runner.js';
+import '../src/floorplan3d-card.ts';
+import { defineDelegates } from '../src/card/delegates.ts';
+import { ActionRunner } from '../src/card/action-runner.ts';
 
 describe('defineDelegates', () => {
   it('forwards methods with their arguments and this of the part', () => {

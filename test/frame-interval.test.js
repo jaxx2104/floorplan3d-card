@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { frameInterval } from '../src/view.js';
+import { frameInterval } from '../src/view.ts';
 
 describe('frameInterval (card option max_fps)', () => {
   it('keeps each animation\'s own interval without max_fps', () => {

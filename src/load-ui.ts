@@ -1,9 +1,9 @@
 // Model loading UI of the card: the slim progress bar at the bottom of the stage and the plan drawing
 // shown over the empty stage while the model loads (room outlines traced in step with the download).
-import { progressText } from './model-cache.js';
-import { idbAll, idbDelete } from './idb.js';
-import { fitOutline, HOUSE_OUTLINE } from './load-outline.js';
-import type { PlanPoint } from './types/layout.js';
+import { progressText } from './model-cache.ts';
+import { idbAll, idbDelete } from './idb.ts';
+import { fitOutline, HOUSE_OUTLINE } from './load-outline.ts';
+import type { PlanPoint } from './types/layout.ts';
 
 /** What the load UI needs from the card. */
 export interface LoadUIHost {

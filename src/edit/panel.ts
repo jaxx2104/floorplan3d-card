@@ -2,16 +2,16 @@
 // is dragged or its number typed), rendering with scroll / focus / open details kept, logos, save state,
 // and the dispatch of panel clicks / changes / inputs through the tabs' registry.
 
-import * as E from '../editor.js';
-import { platformOf } from '../badges.js';
-import { setLogo } from '../badge-dom.js';
-import { closePicker } from './tools/map-tools.js';
-import { closeMenu } from './tools/view-menu.js';
-import { objectsAvailable } from './tabs/objects.js';
-import { TABS, TAB_BY_ID, buildRegistry, dispatchAct, dispatchField, dispatchInput } from './tabs/index.js';
-import { esc, fmt } from './html.js';
-import type { EditPart, FieldEl, TabId } from './tabs/index.js';
-import type { EditMode } from '../edit-mode.js';
+import * as E from '../editor.ts';
+import { platformOf } from '../badges.ts';
+import { setLogo } from '../badge-dom.ts';
+import { closePicker } from './tools/map-tools.ts';
+import { closeMenu } from './tools/view-menu.ts';
+import { objectsAvailable } from './tabs/objects.ts';
+import { TABS, TAB_BY_ID, buildRegistry, dispatchAct, dispatchField, dispatchInput } from './tabs/index.ts';
+import { esc, fmt } from './html.ts';
+import type { EditPart, FieldEl, TabId } from './tabs/index.ts';
+import type { EditMode } from '../edit-mode.ts';
 
 // The tab bar (rendered on every tab).
 const panelPart: EditPart = {

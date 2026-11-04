@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { castsShadow, shadowInfo, isCoplanarOverlay, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable } from '../src/render-rules.js';
+import { castsShadow, shadowInfo, isCoplanarOverlay, depthRange, depthChanged, isOccluded, sunDirection, ghostMaterial, pickable } from '../src/render-rules.ts';
 
 describe('castsShadow', () => {
   const solid = { names: ['wall_1', 'plaster'], layers: [], transparent: false, opacity: 1, transmission: 0, size: [4, 2.7, 0.15], bottom: 0, floors: [0, 3] };
@@ -153,7 +153,7 @@ describe('pickable', () => {
   });
 });
 
-import { coplanarWinners } from '../src/render-rules.js';
+import { coplanarWinners } from '../src/render-rules.ts';
 describe('coplanarWinners', () => {
   const sheet = (id, textured, o = {}) => ({ id, textured, min: [0, 0, 0], max: [4, 0.002, 3], ...o });
   it('the textured one of a coplanar pair wins', () => {

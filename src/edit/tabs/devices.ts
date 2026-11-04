@@ -1,13 +1,13 @@
 // Devices tab: the selected marker, stick to surfaces, badges, unplaced and hidden devices.
 
-import * as E from '../../editor.js';
-import { buildMarkers, areaName } from '../../registry.js';
-import { surfaceKind, surfaceSearch, stickSurface, nearestDistance, needsStick, worldOf, planOf } from '../../surface.js';
-import { logoBox, esc, fmt } from '../html.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldHandler } from './tab.js';
-import type { EditMode, StickMove } from '../../edit-mode.js';
-import type { Layout, LayoutPin } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { buildMarkers, areaName } from '../../registry.ts';
+import { surfaceKind, surfaceSearch, stickSurface, nearestDistance, needsStick, worldOf, planOf } from '../../surface.ts';
+import { logoBox, esc, fmt } from '../html.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldHandler } from './tab.ts';
+import type { EditMode, StickMove } from '../../edit-mode.ts';
+import type { Layout, LayoutPin } from '../../types/layout.ts';
 
 /** A device / entity marker (registry.js buildMarkers), as far as this tab reads it. */
 export interface MarkerInfo {

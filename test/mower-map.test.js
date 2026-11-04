@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { processMap, zoneMask, zonePixels, stripeAngle, stripeBearing, mowedShare, mapWorkSize, planToPixel, insidePoint, mapKernel } from '../src/mower-image.js';
-import { sunVector } from '../src/objects/logic.js';
-import { pointInPolygon } from '../src/placement.js';
+import { processMap, zoneMask, zonePixels, stripeAngle, stripeBearing, mowedShare, mapWorkSize, planToPixel, insidePoint, mapKernel } from '../src/mower-image.ts';
+import { sunVector } from '../src/objects/logic.ts';
+import { pointInPolygon } from '../src/placement.ts';
 
 const BG = [30, 70, 35], MOWED = [120, 190, 110], NOMOW = [140, 140, 140], RED = [255, 40, 30];
 function image(w, h, c = BG) {

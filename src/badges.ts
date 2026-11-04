@@ -1,6 +1,6 @@
 // Device badges (pure): integration logo, status dot, low battery. No DOM here.
-import { isActive } from './registry.js';
-import type { Hass, HassEntity, HassEntityRegistryEntry } from './types/ha.js';
+import { isActive } from './registry.ts';
+import type { Hass, HassEntity, HassEntityRegistryEntry } from './types/ha.ts';
 
 export interface BadgeOptions { integration: boolean; status: boolean; battery: boolean }
 export type StatusKind = 'red' | 'yellow' | 'green' | 'grey';

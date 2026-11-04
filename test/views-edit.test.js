@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { nodeIndex, ruleState, ruleKeepsObjects, setRuleState, nextEyeState, viewTree, pickSelector, orderViews, nextViewId, parseSelector, matches, legacyShowRules } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
+import { nodeIndex, ruleState, ruleKeepsObjects, setRuleState, nextEyeState, viewTree, pickSelector, orderViews, nextViewId, parseSelector, matches, legacyShowRules } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 const tree = (roots) => {
   const parent = new Map();

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { normAo, AO_DEFAULTS } from '../src/ao.js';
-import { occludes } from '../src/depth-pass.js';
+import { normAo, AO_DEFAULTS } from '../src/ao.ts';
+import { occludes } from '../src/depth-pass.ts';
 
 describe('normAo', () => {
   it('off unless asked for', () => {

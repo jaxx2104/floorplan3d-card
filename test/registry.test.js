@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMarkers, floorsFromHA, iconFor, isActive, displayValue } from '../src/registry.js';
+import { buildMarkers, floorsFromHA, iconFor, isActive, displayValue } from '../src/registry.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 const hass = {

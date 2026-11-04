@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { mergeStaticMeshes } from '../src/view.js';
-import { buildManifest, threeAdapter } from '../src/manifest.js';
-import { nodeIndex, parseSelector, matches, resolveVisibility } from '../src/views.js';
+import { mergeStaticMeshes } from '../src/view.ts';
+import { buildManifest, threeAdapter } from '../src/manifest.ts';
+import { nodeIndex, parseSelector, matches, resolveVisibility } from '../src/views.ts';
 
 // Scene > ground (level) > Room (room) > three "Chair" meshes + a table, one material
 function house({ mirrored = false } = {}) {

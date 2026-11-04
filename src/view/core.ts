@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import type { LayoutRoom } from '../types/layout.js';
+import type { LayoutRoom } from '../types/layout.ts';
 
 declare global {
   interface Window {

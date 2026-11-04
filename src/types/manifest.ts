@@ -2,7 +2,7 @@
 // views read from node names / glTF extras. Generic over the node type N: three.js nodes in the card,
 // glTF JSON nodes in tools/check-model.mjs.
 
-import type { PlanPoint, SectionPlaneConfig, TopCamera, ViewCamera } from './layout.js';
+import type { PlanPoint, SectionPlaneConfig, TopCamera, ViewCamera } from './layout.ts';
 
 export type LevelRole = 'storey' | 'basement' | 'exterior' | 'roof';
 export type ManifestKind = 'level' | 'room' | 'zone' | 'object';

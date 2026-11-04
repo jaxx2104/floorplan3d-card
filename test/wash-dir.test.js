@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { washKind, washSetting, resolveWash, placeWashes, clearOfWall, WASH_DIRS } from '../src/objects/wash.js';
-import { glowEmissiveScale, hintDefaults } from '../src/objects/types.js';
-import { setObject, setTag } from '../src/editor.js';
+import { washKind, washSetting, resolveWash, placeWashes, clearOfWall, WASH_DIRS } from '../src/objects/wash.ts';
+import { glowEmissiveScale, hintDefaults } from '../src/objects/types.ts';
+import { setObject, setTag } from '../src/editor.ts';
 
 describe('wash direction', () => {
   it('model beam: updown / both -> both, the others unchanged', () => {

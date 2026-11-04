@@ -1,9 +1,9 @@
 // The Views tab pick menu: a click on the model highlights a part and offers hide / show / reveal.
 
-import { setRuleState, pickSelector } from '../../views.js';
-import { layoutRules, setRule, treeRows, nodePos } from '../tabs/views.js';
-import { esc } from '../html.js';
-import type { EditMode } from '../../edit-mode.js';
+import { setRuleState, pickSelector } from '../../views.ts';
+import { layoutRules, setRule, treeRows, nodePos } from '../tabs/views.ts';
+import { esc } from '../html.ts';
+import type { EditMode } from '../../edit-mode.ts';
 
 // Click on the model (Views tab): highlight the part and offer hide/show.
 export function pickView(ed: EditMode, e: PointerEvent) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { iconMoments, momentHeading, smoothHeading, angleDiff, makeTemplate, matchTemplate, grayOf } from '../src/mower-heading.js';
+import { iconMoments, momentHeading, smoothHeading, angleDiff, makeTemplate, matchTemplate, grayOf } from '../src/mower-heading.ts';
 
 const BG = [40, 90, 40], RED = [230, 40, 40];
 function image(w, h, c = BG) {

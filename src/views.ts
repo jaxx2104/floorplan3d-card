@@ -1,9 +1,9 @@
 // Views: what each floor button shows. Pure: works on a node index built through the same adapter
 // as the manifest, so it is testable without three.js.
 
-import type { Floor, LayoutView, SavedLevelBinding, SectionPlaneConfig, TopCamera, Vec3, ViewCamera, ViewRule } from './types/layout.js';
-import type { CardConfig } from './types/config.js';
-import type { Manifest, ManifestEntry, ManifestLevel, ManifestView, ModelAdapter } from './types/manifest.js';
+import type { Floor, LayoutView, SavedLevelBinding, SectionPlaneConfig, TopCamera, Vec3, ViewCamera, ViewRule } from './types/layout.ts';
+import type { CardConfig } from './types/config.ts';
+import type { Manifest, ManifestEntry, ManifestLevel, ManifestView, ModelAdapter } from './types/manifest.ts';
 
 export type SelectorKind = 'all' | 'level' | 'role' | 'room' | 'zone' | 'object' | 'type' | 'group' | 'tag' | 'layer' | 'node';
 export interface Selector { kind: SelectorKind; value: string | null }

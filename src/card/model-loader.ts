@@ -2,14 +2,14 @@
 // its bytes through the local cache, the merge keep-list from the view rules, the alignment and the
 // level / room bindings resolved against HA. What happens once it is there is the card's (_afterModel).
 
-import { headerVersion, layoutModelVersion, evictModel, loadModelBuffer } from '../model-cache.js';
-import { nodeIndex, unmatchedSelectors } from '../views.js';
-import { threeAdapter } from '../manifest.js';
-import { levelsFromFloorMap, resolveLevels, resolveRoomAreas, bindingDiff, snapshotDiff } from '../bindings.js';
-import { mergeFloors } from '../layout.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { CardConfig } from '../types/config.js';
-import type { LayoutModel } from '../types/layout.js';
+import { headerVersion, layoutModelVersion, evictModel, loadModelBuffer } from '../model-cache.ts';
+import { nodeIndex, unmatchedSelectors } from '../views.ts';
+import { threeAdapter } from '../manifest.ts';
+import { levelsFromFloorMap, resolveLevels, resolveRoomAreas, bindingDiff, snapshotDiff } from '../bindings.ts';
+import { mergeFloors } from '../layout.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { CardConfig } from '../types/config.ts';
+import type { LayoutModel } from '../types/layout.ts';
 
 declare global {
   interface Window {

@@ -9,8 +9,8 @@
 // 2. Template: the product picture of the mower (front = top) matched by normalized cross-correlation
 //    over rotations (coarse 10°, then 1°) and a few scales around the icon -> angle and centre.
 
-import type { Pixels } from './mower-image.js';
-import type { RgbColor } from './types/layout.js';
+import type { Pixels } from './mower-image.ts';
+import type { RgbColor } from './types/layout.ts';
 
 /** Second moments of an icon's pixels around its centroid; pts: [dx, dy, ...] (dy up). */
 export interface IconMoments {

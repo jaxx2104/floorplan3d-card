@@ -1,16 +1,16 @@
 // Mower tab: setup checklist, position source, warning, calibration, map overlay and its processing.
 
-import { readSource, calibrationError } from '../../mower.js';
-import { setupChecklist } from '../../mower-setup.js';
-import { colorList, removeColorPatch, MAX_COLORS } from '../../mower-image.js';
-import { closePicker, openColorPicker, alignPicker, cancelAlign, markFront } from '../tools/map-tools.js';
-import { entOption, esc, fmt, sliderHtml } from '../html.js';
-import { colorsOf } from '../tools/map-tools.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldHandler } from './tab.js';
-import type { EditMode, MapColorKind } from '../../edit-mode.js';
-import type { MowerImageResult, MowerLive } from '../host.js';
-import type { LayoutMower, MowerCalibrationPoint, MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.js';
+import { readSource, calibrationError } from '../../mower.ts';
+import { setupChecklist } from '../../mower-setup.ts';
+import { colorList, removeColorPatch, MAX_COLORS } from '../../mower-image.ts';
+import { closePicker, openColorPicker, alignPicker, cancelAlign, markFront } from '../tools/map-tools.ts';
+import { entOption, esc, fmt, sliderHtml } from '../html.ts';
+import { colorsOf } from '../tools/map-tools.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldHandler } from './tab.ts';
+import type { EditMode, MapColorKind } from '../../edit-mode.ts';
+import type { MowerImageResult, MowerLive } from '../host.ts';
+import type { LayoutMower, MowerCalibrationPoint, MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.ts';
 
 type Slider = (f: string, label: string, min: number, max: number, step: number, v: unknown, unit?: string) => string;
 interface SetupRow { ok?: boolean; optional?: boolean; target: string; label: string }

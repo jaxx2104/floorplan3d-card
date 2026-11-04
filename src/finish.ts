@@ -8,8 +8,8 @@
 // After the frame render the canvas is copied and drawn back finished. Labels (CSS) stay as they are.
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import type { DepthPrepass } from './depth-pass.js';
-import { isPerspective, type ViewCamera } from './view/core.js';
+import type { DepthPrepass } from './depth-pass.ts';
+import { isPerspective, type ViewCamera } from './view/core.ts';
 
 export const BOKEH_DEFAULTS = Object.freeze({ strength: 10, start: 0.5, range: 10, tilt: 0 });
 const BOKEH_RANGE = { strength: [0, 20], start: [0, 50], range: [0.5, 200], tilt: [0, 1] };

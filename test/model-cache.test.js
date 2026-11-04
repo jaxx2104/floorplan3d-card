@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layoutModelVersion, headerVersion, cacheUrl, cacheBase, lruEvict, progressText, readWithProgress, withTimeout, loadModelBuffer, MODEL_TIMEOUT_MS } from '../src/model-cache.js';
+import { layoutModelVersion, headerVersion, cacheUrl, cacheBase, lruEvict, progressText, readWithProgress, withTimeout, loadModelBuffer, MODEL_TIMEOUT_MS } from '../src/model-cache.ts';
 
 describe('model cache versions', () => {
   it('versions an uploaded model by its version, size and upload time', () => {

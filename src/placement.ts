@@ -1,7 +1,7 @@
 // Type-based auto placement of devices inside room polygons.
 // Plan coordinates are metres: x = east, y = north. z = height above the floor.
 
-import type { PlanPoint } from './types/layout.js';
+import type { PlanPoint } from './types/layout.ts';
 
 // ---------- geometry ----------
 export function signedArea(poly: readonly PlanPoint[]): number {

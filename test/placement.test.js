@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   signedArea, centroid, pointInPolygon, ruleFor, autoPlace, snap, domainPriority, SKIP_DOMAINS,
-} from '../src/placement.js';
+} from '../src/placement.ts';
 
 const square = [[0, 0], [4, 0], [4, 3], [0, 3]]; // CCW, 4 x 3
 const squareCW = [...square].reverse();

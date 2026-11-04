@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   surfaceKind, chooseSurface, needsStick, nearestDistance, rayGroups, nearPolygon, worldOf, planOf,
   HORIZONTAL_DIRS, SURFACE_OFFSET, WALL_RANGE, CEILING_RANGE, FLOOR_RANGE, STICK_DISTANCE, surfaceKey, stickSurface, surfaceSearch,
-} from '../src/surface.js';
+} from '../src/surface.ts';
 
 const close = (a, b, eps = 1e-9) => a.every((v, i) => Math.abs(v - b[i]) < eps);
 const h = (point, normal, distance, dir) => ({ point, normal, distance, dir });

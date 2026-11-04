@@ -3,10 +3,10 @@
 // assignable to EditCard (`new EditMode(this)` checks it). Shapes owned by other modules (views,
 // bindings, mower) are listed only as far as edit mode reads them.
 
-import type { FloorplanView } from '../view.js';
-import type { Hass } from '../types/ha.js';
-import type { CardConfig } from '../types/config.js';
-import type { Floor, Layout, LayoutMower, MowerOverlay, PlanPoint } from '../types/layout.js';
+import type { FloorplanView } from '../view.ts';
+import type { Hass } from '../types/ha.ts';
+import type { CardConfig } from '../types/config.ts';
+import type { Floor, Layout, LayoutMower, MowerOverlay, PlanPoint } from '../types/layout.ts';
 
 /** A resolved view (card._views): model / generated / added, merged with layout.views and the YAML. */
 export interface CardView {

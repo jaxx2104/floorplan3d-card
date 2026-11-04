@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDemo, root, brandRequests } from './lib/demo-browser.mjs';
-import { planToPixel } from '../src/mower-image.js';
+import { planToPixel } from '../src/mower-image.ts';
 
 const shots = path.join(root, 'screenshots');
 fs.mkdirSync(shots, { recursive: true });

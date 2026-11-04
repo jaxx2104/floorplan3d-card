@@ -1,14 +1,14 @@
 // Model tab: upload / remove, alignment, levels -> HA floors and rooms -> HA areas.
 
-import * as E from '../../editor.js';
-import { levelsFromFloorMap } from '../../bindings.js';
-import { legacyShowRules } from '../../views.js';
-import { esc, sliderHtml, copyText } from '../html.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldHandler } from './tab.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { Align } from '../../editor.js';
-import type { Layout, LayoutModel } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { levelsFromFloorMap } from '../../bindings.ts';
+import { legacyShowRules } from '../../views.ts';
+import { esc, sliderHtml, copyText } from '../html.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldHandler } from './tab.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { Align } from '../../editor.ts';
+import type { Layout, LayoutModel } from '../../types/layout.ts';
 
 // ---------- model ----------
 export function onModelLoaded(ed: EditMode, changed = true) {

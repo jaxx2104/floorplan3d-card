@@ -1,17 +1,17 @@
 // Objects tab: model objects by level and room with their entity, label, actions, wash and tags.
 
-import * as E from '../../editor.js';
-import { objectTags, layoutTags } from '../../objects/logic.js';
-import { actionTarget } from '../../objects/popup.js';
-import { typeOf } from '../../objects/types.js';
-import { resolveWash, WASH_DIRS } from '../../objects/wash.js';
-import { resolveActions, validateAction } from '../../actions.js';
-import { entOption, logoBox, esc } from '../html.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { ManifestLevel, ManifestObject, ObjectBinding } from '../host.js';
-import type { LayoutObject } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { objectTags, layoutTags } from '../../objects/logic.ts';
+import { actionTarget } from '../../objects/popup.ts';
+import { typeOf } from '../../objects/types.ts';
+import { resolveWash, WASH_DIRS } from '../../objects/wash.ts';
+import { resolveActions, validateAction } from '../../actions.ts';
+import { entOption, logoBox, esc } from '../html.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { ManifestLevel, ManifestObject, ObjectBinding } from '../host.ts';
+import type { LayoutObject } from '../../types/layout.ts';
 
 // actions.js is still JS: its destructured defaults are inferred as the only option types
 const resolveActionsFor = resolveActions as unknown as (opts: Record<string, unknown>) => Record<string, { action: string } | null | undefined>;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { transformPoint, inverseTransformPoint } from '../src/bindings.js';
-import { realignPins, setPin } from '../src/editor.js';
+import { transformPoint, inverseTransformPoint } from '../src/bindings.ts';
+import { realignPins, setPin } from '../src/editor.ts';
 
 const align = { position: [3, -2, 0.5], rotation: 30, scale: 2 };
 

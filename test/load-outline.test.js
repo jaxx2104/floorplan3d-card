@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   simplifyPolygon, pickOutline, serializeOutline, parseOutline, saveOutline, loadOutline, outlineKey,
   fitOutline, polygonLength, HOUSE_OUTLINE, OUTLINE_CAP,
-} from '../src/load-outline.js';
+} from '../src/load-outline.ts';
 
 const memory = () => {
   const m = new Map();

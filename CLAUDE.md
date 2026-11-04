@@ -8,7 +8,8 @@ position and map overlay.
 ## Stack
 - Vanilla custom element, Three.js 0.169, esbuild bundle -> `dist/floorplan3d-card.js`
 - TypeScript 7 (`npm run typecheck`, strict; shared contracts in `src/types/`), oxlint (`npm run lint`).
-  Import specifiers stay `./x.js` (bundler resolution maps them to `.ts`).
+  Relative imports use `.ts` specifiers (allowImportingTsExtensions); only erasable TS syntax
+  (erasableSyntaxOnly), so node runs src/ directly for scripts/ and tools/.
 - Structure: `src/floorplan3d-card.*` is the element shell (lifecycle, hass update diff, commit) over
   parts in `src/card/`; `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
   coordinates the edit panel (`src/edit/tabs/*` registered by data-act / data-field, `src/edit/tools/*`)

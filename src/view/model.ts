@@ -3,21 +3,21 @@
 // conversions. `view.model` itself stays on the view (every part reads it).
 
 import * as THREE from 'three';
-import { rememberColor } from '../furniture.js';
-import { collectScreens } from '../screens.js';
+import { rememberColor } from '../furniture.ts';
+import { collectScreens } from '../screens.ts';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries, deinterleaveAttribute } from 'three/addons/utils/BufferGeometryUtils.js';
-import { measuredElevations } from '../bindings.js';
-import { buildManifest, threeAdapter } from '../manifest.js';
-import { sectionLevels, unionBox, nodeIndex, parseSelector, matches, viewTree, escapeName } from '../views.js';
-import { mergeGroups, namedGroups, mergedName } from '../merge.js';
-import { mergeRender } from '../render-recipe.js';
-import { patchCloudShadow } from '../cloud-shadow.js';
-import { castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, ghostMaterial, pickable } from '../render-rules.js';
-import { isMesh, meshMaterials, type BoxData, type Drawable, type ModelMaterial, type PlaneData, type TexKey, type Vec3 } from './core.js';
-import type { FloorplanView } from '../view.js';
-import type { PlanPoint } from '../types/layout.js';
+import { measuredElevations } from '../bindings.ts';
+import { buildManifest, threeAdapter } from '../manifest.ts';
+import { sectionLevels, unionBox, nodeIndex, parseSelector, matches, viewTree, escapeName } from '../views.ts';
+import { mergeGroups, namedGroups, mergedName } from '../merge.ts';
+import { mergeRender } from '../render-recipe.ts';
+import { patchCloudShadow } from '../cloud-shadow.ts';
+import { castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, ghostMaterial, pickable } from '../render-rules.ts';
+import { isMesh, meshMaterials, type BoxData, type Drawable, type ModelMaterial, type PlaneData, type TexKey, type Vec3 } from './core.ts';
+import type { FloorplanView } from '../view.ts';
+import type { PlanPoint } from '../types/layout.ts';
 
 /** The model's tag manifest (manifest.js). */
 export type Manifest = ReturnType<typeof buildManifest>;

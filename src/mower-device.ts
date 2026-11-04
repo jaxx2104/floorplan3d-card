@@ -1,7 +1,7 @@
 // The mower's device entities (pure): static map / mower picture / error code auto-detection,
 // progress, connectivity, rain, and the automatic popup rows. hass: { states, entities }.
 
-import type { Hass, HassEntity } from './types/ha.js';
+import type { Hass, HassEntity } from './types/ha.ts';
 
 /** The parts of hass the device lookups read. */
 export type DeviceHass = Pick<Hass, 'states' | 'entities'>;

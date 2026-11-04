@@ -1,7 +1,7 @@
 // Pure logic for model objects: binding, chains, colour, budget, sun. No Three.js here.
-import type { Hass, HassEntity, HassEntityRegistryEntry } from '../types/ha.js';
-import type { Layout, LayoutObject, LayoutTag } from '../types/layout.js';
-import type { ManifestObject } from '../types/manifest.js';
+import type { Hass, HassEntity, HassEntityRegistryEntry } from '../types/ha.ts';
+import type { Layout, LayoutObject, LayoutTag } from '../types/layout.ts';
+import type { ManifestObject } from '../types/manifest.ts';
 
 type States = Record<string, HassEntity>;
 type Entities = Record<string, HassEntityRegistryEntry>;

@@ -2,20 +2,20 @@
 // gestures, resolved actions (objects and markers), the object popup's content, tap hint dots and the
 // desktop hover highlight.
 
-import { tapHintsMode, reachability, hintAlpha, TOUCH_SHOW_MS } from '../objects/hints.js';
-import { groupedHidden, groupedTapId, dockRows } from '../mower-track.js';
-import { actionTarget, toggleCall } from '../objects/popup.js';
-import { layoutTags, mowerTabEntity, bindObjects, effectiveGroups, screenByDistance } from '../objects/logic.js';
-import { resolveActions } from '../actions.js';
-import { typeOf } from '../objects/types.js';
-import { deviceRows } from '../mower-device.js';
-import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { Marker } from './marker-layer.js';
-import type { CardAction } from './action-runner.js';
-import type { ObjectLayer } from '../objects/layer.js';
-import type { TapHints } from '../objects/hints.js';
-import type { Layout } from '../types/layout.js';
+import { tapHintsMode, reachability, hintAlpha, TOUCH_SHOW_MS } from '../objects/hints.ts';
+import { groupedHidden, groupedTapId, dockRows } from '../mower-track.ts';
+import { actionTarget, toggleCall } from '../objects/popup.ts';
+import { layoutTags, mowerTabEntity, bindObjects, effectiveGroups, screenByDistance } from '../objects/logic.ts';
+import { resolveActions } from '../actions.ts';
+import { typeOf } from '../objects/types.ts';
+import { deviceRows } from '../mower-device.ts';
+import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Marker } from './marker-layer.ts';
+import type { CardAction } from './action-runner.ts';
+import type { ObjectLayer } from '../objects/layer.ts';
+import type { TapHints } from '../objects/hints.ts';
+import type { Layout } from '../types/layout.ts';
 
 /** A model object's binding to HA (objects/logic.js bindObjects). */
 export type Binding = ReturnType<typeof bindObjects> extends Map<string, infer B> ? B : never;

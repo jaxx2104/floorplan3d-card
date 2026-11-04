@@ -2,11 +2,11 @@
 // update() when the object's state changed. Real lights come from the layer's fixed pool.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { lightColor, lightLevel } from './logic.js';
-import type { ChainState } from './logic.js';
-import type { HassEntity } from '../types/ha.js';
-import type { ObjectUi } from '../types/layout.js';
-import type { ManifestLevel, ManifestObject } from '../types/manifest.js';
+import { lightColor, lightLevel } from './logic.ts';
+import type { ChainState } from './logic.ts';
+import type { HassEntity } from '../types/ha.ts';
+import type { ObjectUi } from '../types/layout.ts';
+import type { ManifestLevel, ManifestObject } from '../types/manifest.ts';
 
 type Rgb = readonly number[];
 type States = Record<string, HassEntity>;

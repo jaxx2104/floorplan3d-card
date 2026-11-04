@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { compareMaps, bestShift, downGray, autoShare, dockBlob, CLS, pickMower, isDock, autoProcess, framePass, frameState } from '../src/mower-auto.js';
-import { trackWindow } from '../src/mower-track.js';
-import { makeTemplate, matchTemplate, grayOf, angleDiff } from '../src/mower-heading.js';
+import { compareMaps, bestShift, downGray, autoShare, dockBlob, CLS, pickMower, isDock, autoProcess, framePass, frameState } from '../src/mower-auto.ts';
+import { trackWindow } from '../src/mower-track.ts';
+import { makeTemplate, matchTemplate, grayOf, angleDiff } from '../src/mower-heading.ts';
 
 const BGC = [28, 28, 30], LAWN = [60, 125, 58], MOWED = [118, 190, 104], NOMOW = [140, 140, 140], LINE = [210, 50, 50], DOCK = [176, 176, 176];
 const W = 160, H = 200;

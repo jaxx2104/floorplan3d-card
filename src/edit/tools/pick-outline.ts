@@ -1,12 +1,12 @@
 // "Pick" a room outline from the model: the floor piece under a click is traced (cached per piece and height).
 
-import * as E from '../../editor.js';
-import { areaName } from '../../registry.js';
-import { outlineLoops, pickLoop, rasterGrid, outlineFromGrid } from '../../outline.js';
-import { refreshOverlay } from './handles.js';
+import * as E from '../../editor.ts';
+import { areaName } from '../../registry.ts';
+import { outlineLoops, pickLoop, rasterGrid, outlineFromGrid } from '../../outline.ts';
+import { refreshOverlay } from './handles.ts';
 import type { Mesh } from 'three';
-import type { EditMode, OutlineEntry } from '../../edit-mode.js';
-import type { LayoutRoom, PlanPoint } from '../../types/layout.js';
+import type { EditMode, OutlineEntry } from '../../edit-mode.ts';
+import type { LayoutRoom, PlanPoint } from '../../types/layout.ts';
 
 const DENSE_TRIS = 150000;
 

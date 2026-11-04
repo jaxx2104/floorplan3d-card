@@ -1,8 +1,8 @@
 // Reads the fp tags of a house model (docs/model-builder-guide.md). Works on any node tree
 // through an adapter, so the card (three.js nodes) and tools/check-model.mjs (glTF JSON) share it.
-import { normSection, normTopCamera } from './views.js';
-import { badTargets, aimWarning, aimsUp } from './objects/aim.js';
-import { normRender } from './render-recipe.js';
+import { normSection, normTopCamera } from './views.ts';
+import { badTargets, aimWarning, aimsUp } from './objects/aim.ts';
+import { normRender } from './render-recipe.ts';
 
 /** Walks any node tree: three.js nodes (threeAdapter) or glTF node indices (gltfAdapter). */
 export interface ManifestAdapter<N> {

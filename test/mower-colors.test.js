@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { processMap, findBlob, colorList, addColorPatch, removeColorPatch, MAX_COLORS } from '../src/mower-image.js';
+import { processMap, findBlob, colorList, addColorPatch, removeColorPatch, MAX_COLORS } from '../src/mower-image.ts';
 
 const BG1 = [30, 70, 35], BG2 = [60, 110, 50], RED1 = [255, 40, 30], RED2 = [200, 20, 60];
 function image(w, h, c) {

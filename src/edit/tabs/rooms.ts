@@ -1,16 +1,16 @@
 // Rooms tab: HA areas per floor with their drawn / model rooms, the selected room, floors without a model.
 
-import * as E from '../../editor.js';
-import { areaName } from '../../registry.js';
-import { esc, fmt } from '../html.js';
-import { startDrawing, finishDrawing, cancelDrawing } from '../tools/draw.js';
-import { startPicking, cancelPicking, usePickedOutline } from '../tools/pick-outline.js';
-import { refreshOverlay } from '../tools/handles.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { HassArea } from '../../types/ha.js';
-import type { Layout, LayoutFloor, LayoutRoom } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { areaName } from '../../registry.ts';
+import { esc, fmt } from '../html.ts';
+import { startDrawing, finishDrawing, cancelDrawing } from '../tools/draw.ts';
+import { startPicking, cancelPicking, usePickedOutline } from '../tools/pick-outline.ts';
+import { refreshOverlay } from '../tools/handles.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { HassArea } from '../../types/ha.ts';
+import type { Layout, LayoutFloor, LayoutRoom } from '../../types/layout.ts';
 
 export function sortedAreas(ed: EditMode): HassArea[] {
   const areas = Object.values(ed.hass.areas || {});

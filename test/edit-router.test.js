@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { clickRoute, keyRoute, onKeyDown, canvasDown, canvasUp, CLICK_SLOP_PX } from '../src/edit/router.js';
+import { clickRoute, keyRoute, onKeyDown, canvasDown, canvasUp, CLICK_SLOP_PX } from '../src/edit/router.ts';
 
 const ed = (o = {}) => ({ tab: 'rooms', view: { model: null }, drawing: null, picking: null, pivoting: false, aligning: null, colorPick: false,
   calibrating: null, menu: null, doorMode: false, selectedRoom: null, selectedMarker: null, ...o });

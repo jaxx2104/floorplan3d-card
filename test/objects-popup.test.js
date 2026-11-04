@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { popupRows, actionTarget, rowsKey, effectOrder, wheelHs, wheelPoint, rgbToHs } from '../src/objects/popup.js';
-import { resolveActions } from '../src/actions.js';
-import { typeOf } from '../src/objects/types.js';
-import { chainState } from '../src/objects/logic.js';
+import { popupRows, actionTarget, rowsKey, effectOrder, wheelHs, wheelPoint, rgbToHs } from '../src/objects/popup.ts';
+import { resolveActions } from '../src/actions.ts';
+import { typeOf } from '../src/objects/types.ts';
+import { chainState } from '../src/objects/logic.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 const kinds = (rows) => rows.map((r) => r.kind);

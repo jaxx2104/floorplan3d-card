@@ -3,15 +3,15 @@
 // the side section. Single owner of _floor / _floorOnly / _section / _viewId / _viewState /
 // _viewStates / _index: other parts change them through the methods here.
 
-import { combineRooms, measuredElevations, levelFloorOverrides, modelRooms, transformPoint, levelsFromFloorMap } from '../bindings.js';
-import { mergeFloors, roomFloorId, roomLabel, roomLabelMode } from '../layout.js';
-import { pickOutline, saveOutline } from '../load-outline.js';
-import { levelOrders, floorLevels, defaultViewId, nodeIndex, orderViews, resolveViews, resolveVisibility, primaryLevel, defaultFloors, isOverview, zoomToFor, viewCut, shownHere, exteriorShown, roomAt, deviceState, cameraToCard, topCameraToCard, sectionPlane, sectionCamera } from '../views.js';
-import { areaName } from '../registry.js';
-import { threeAdapter } from '../manifest.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { ModelBindings, Manifest } from './model-loader.js';
-import type { Floor, LayoutRoom, PlanPoint } from '../types/layout.js';
+import { combineRooms, measuredElevations, levelFloorOverrides, modelRooms, transformPoint, levelsFromFloorMap } from '../bindings.ts';
+import { mergeFloors, roomFloorId, roomLabel, roomLabelMode } from '../layout.ts';
+import { pickOutline, saveOutline } from '../load-outline.ts';
+import { levelOrders, floorLevels, defaultViewId, nodeIndex, orderViews, resolveViews, resolveVisibility, primaryLevel, defaultFloors, isOverview, zoomToFor, viewCut, shownHere, exteriorShown, roomAt, deviceState, cameraToCard, topCameraToCard, sectionPlane, sectionCamera } from '../views.ts';
+import { areaName } from '../registry.ts';
+import { threeAdapter } from '../manifest.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { ModelBindings, Manifest } from './model-loader.ts';
+import type { Floor, LayoutRoom, PlanPoint } from '../types/layout.ts';
 
 /** A resolved view (views.js resolveViews). */
 export type CardView = ReturnType<typeof resolveViews>[number];

@@ -1,13 +1,13 @@
 // Window drags started on the plan: room corners and midpoints, markers (magnetic on a model, Alt: free),
 // the map overlay (move tool). Orbit controls are off while one runs.
 
-import * as E from '../../editor.js';
-import { snapPin, attachOffset, floorAtHeight } from '../../objects/logic.js';
-import { mapPoint, planPoint, CLICK_SLOP_PX } from '../router.js';
-import { setOverlay } from '../tabs/mower.js';
-import { refreshOverlay } from './handles.js';
-import { onModel } from '../tabs/devices.js';
-import type { Drag, EditMode, MarkerDrag } from '../../edit-mode.js';
+import * as E from '../../editor.ts';
+import { snapPin, attachOffset, floorAtHeight } from '../../objects/logic.ts';
+import { mapPoint, planPoint, CLICK_SLOP_PX } from '../router.ts';
+import { setOverlay } from '../tabs/mower.ts';
+import { refreshOverlay } from './handles.ts';
+import { onModel } from '../tabs/devices.ts';
+import type { Drag, EditMode, MarkerDrag } from '../../edit-mode.ts';
 
 /** A model part under the pointer (view.surfaceAt(...).owner / pickModel). */
 interface HitOwner { kind: string; id: string; level?: string; node?: unknown }

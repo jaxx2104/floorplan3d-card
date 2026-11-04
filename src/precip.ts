@@ -3,8 +3,8 @@
 // over a room footprint (world x / z, with a margin), and fragments over the rooms on screen are
 // discarded (a mask of the on-screen room hulls), so nothing falls in front of a room either.
 import * as THREE from 'three';
-import { CLOUD_WIND } from './cloud-shadow.js';
-import type { PlanPoint } from './types/layout.js';
+import { CLOUD_WIND } from './cloud-shadow.ts';
+import type { PlanPoint } from './types/layout.ts';
 
 // Amounts 0..1 of rain and snow for a weather condition.
 export interface PrecipAmounts { rain: number; snow: number }

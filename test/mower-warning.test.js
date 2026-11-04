@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isProblem, errorKind, errorText, stuckStep, stuckDueIn, parseOkValues } from '../src/mower-warning.js';
+import { isProblem, errorKind, errorText, stuckStep, stuckDueIn, parseOkValues } from '../src/mower-warning.ts';
 
 const S = (entity_id, state, attributes = {}) => ({ entity_id, state, attributes });
 

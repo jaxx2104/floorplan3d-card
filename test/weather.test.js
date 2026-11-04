@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   windSpeed,
   cloudCoverage, weatherEntity, cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,
-} from '../src/weather.js';
+} from '../src/weather.ts';
 
 const w = (state, attributes = {}) => ({ entity_id: 'weather.x', state, attributes });
 

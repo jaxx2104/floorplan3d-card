@@ -3,9 +3,9 @@
 // 2. frontend user data (stored in HA, but per user)
 // 3. browser localStorage (last resort)
 
-import { migrateModel } from './bindings.js';
-import type { Hass } from './types/ha.js';
-import type { Layout, LayoutModel, NormalisedLayout } from './types/layout.js';
+import { migrateModel } from './bindings.ts';
+import type { Hass } from './types/ha.ts';
+import type { Layout, LayoutModel, NormalisedLayout } from './types/layout.ts';
 
 /** Where layouts are saved: the companion integration, HA user data, or this browser. */
 export type StorageBackend = 'shared' | 'user' | 'browser';

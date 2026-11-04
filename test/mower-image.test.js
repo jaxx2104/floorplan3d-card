@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { findBlob, pickBlob, stepTrack, headingMinStep, TRACK_MAX_MISSES, pixelToPlan, planToPixel, medianColor, imageScale, fitOverlay } from '../src/mower-image.js';
+import { findBlob, pickBlob, stepTrack, headingMinStep, TRACK_MAX_MISSES, pixelToPlan, planToPixel, medianColor, imageScale, fitOverlay } from '../src/mower-image.ts';
 
 // synthetic RGBA image filled with one colour
 function image(w, h, bg = [30, 80, 30]) {
@@ -250,7 +250,7 @@ describe('fitOverlay', () => {
 
 describe('MapProcessor.dispose', () => {
   it('settles a pending worker run (timeout cleared) without marking the worker dead', async () => {
-    const { MapProcessor } = await import('../src/mower-image.js');
+    const { MapProcessor } = await import('../src/mower-image.ts');
     vi.useFakeTimers();
     try {
       const mp = new MapProcessor();

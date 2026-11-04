@@ -4,12 +4,12 @@
 
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { centroid } from '../placement.js';
-import { wallSegments } from '../layout.js';
-import { planToWorld, type ViewRoom, type ViewTheme } from './core.js';
-import type { FloorplanView } from '../view.js';
-import type { Floor, PlanPoint } from '../types/layout.js';
-import { OCCLUSION_DELAY_MS } from './occlusion.js';
+import { centroid } from '../placement.ts';
+import { wallSegments } from '../layout.ts';
+import { planToWorld, type ViewRoom, type ViewTheme } from './core.ts';
+import type { FloorplanView } from '../view.ts';
+import type { Floor, PlanPoint } from '../types/layout.ts';
+import { OCCLUSION_DELAY_MS } from './occlusion.ts';
 
 const WALL_THICKNESS = 0.12;
 const GLOW_RADIUS = 2.2;

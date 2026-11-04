@@ -1,10 +1,10 @@
 // Drawing a room: click corners (snapped to the grid and to existing corners), finish, cancel.
 
-import * as E from '../../editor.js';
-import { refreshOverlay } from './handles.js';
-import type { EditMode } from '../../edit-mode.js';
-import type { SnapResult } from '../../editor.js';
-import type { LayoutRoom, PlanPoint } from '../../types/layout.js';
+import * as E from '../../editor.ts';
+import { refreshOverlay } from './handles.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { SnapResult } from '../../editor.ts';
+import type { LayoutRoom, PlanPoint } from '../../types/layout.ts';
 
 // ---------- drawing ----------
 export function startDrawing(ed: EditMode, areaId: string) {

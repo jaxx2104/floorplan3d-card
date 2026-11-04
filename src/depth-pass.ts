@@ -3,7 +3,7 @@
 // test, so the cut-away stays cut). Colour red = front face: the inside of a cut wall (its back faces)
 // is told apart. Transparent things, helpers, glass, sprites, points and lines are left out.
 import * as THREE from 'three';
-import type { Drawable } from './view/core.js';
+import type { Drawable } from './view/core.ts';
 
 /** The material fields the pre-pass reads beyond Material's own (textured / physical materials). */
 type SourceMaterial = THREE.Material & { map?: THREE.Texture | null; alphaMap?: THREE.Texture | null; transmission?: number };

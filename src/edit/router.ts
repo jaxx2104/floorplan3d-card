@@ -1,17 +1,17 @@
 // Pointer and key routing on the plan in edit mode: which armed tool gets a click or a key.
 
-import * as E from '../editor.js';
-import { pointInPolygon, signedArea } from '../placement.js';
-import { cancelPicking, pickRoom } from './tools/pick-outline.js';
-import { snapDraw, addDrawPoint, finishDrawing, cancelDrawing } from './tools/draw.js';
-import { mower, setMower } from './tabs/mower.js';
-import { cancelAlign, alignClick, pickMowerColor, pickMapColor } from './tools/map-tools.js';
-import { refreshOverlay } from './tools/handles.js';
-import { startWindowDrag } from './tools/drag.js';
-import { cancelPivot, setPivot } from './tools/pivot.js';
-import { pickView, closeMenu } from './tools/view-menu.js';
-import type { EditMode } from '../edit-mode.js';
-import type { PlanPoint } from '../types/layout.js';
+import * as E from '../editor.ts';
+import { pointInPolygon, signedArea } from '../placement.ts';
+import { cancelPicking, pickRoom } from './tools/pick-outline.ts';
+import { snapDraw, addDrawPoint, finishDrawing, cancelDrawing } from './tools/draw.ts';
+import { mower, setMower } from './tabs/mower.ts';
+import { cancelAlign, alignClick, pickMowerColor, pickMapColor } from './tools/map-tools.ts';
+import { refreshOverlay } from './tools/handles.ts';
+import { startWindowDrag } from './tools/drag.ts';
+import { cancelPivot, setPivot } from './tools/pivot.ts';
+import { pickView, closeMenu } from './tools/view-menu.ts';
+import type { EditMode } from '../edit-mode.ts';
+import type { PlanPoint } from '../types/layout.ts';
 
 export type ClickRoute = 'pivot' | 'align' | 'color' | 'calibrate' | 'pick-room' | 'objects' | 'views' | 'model' | 'plan';
 export type KeyRoute =

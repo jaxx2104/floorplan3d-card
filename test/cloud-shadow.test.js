@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   cloudShadowParams, cloudShadowOffset, roomMaskFrame, equalize, shadeDirectional, patchCloudShadow, makeCloudUniforms, shadable,
   CLOUD_UMBRA, CLOUD_TILE_M, CLOUD_WIND_MS, normSway, swayLean,
-} from '../src/cloud-shadow.js';
+} from '../src/cloud-shadow.ts';
 
 describe('cloudShadowParams', () => {
   it('clear sky: no shadows, rooms untouched', () => {

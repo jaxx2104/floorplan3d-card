@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { setupChecklist, overlayAligned } from '../src/mower-setup.js';
+import { setupChecklist, overlayAligned } from '../src/mower-setup.ts';
 
 const states = { 'lawn_mower.m': { state: 'docked' }, 'image.map': { state: 'x' } };
 const ok = (r) => Object.fromEntries(r.rows.map((x) => [x.id, x.ok]));

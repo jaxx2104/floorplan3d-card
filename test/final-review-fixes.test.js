@@ -2,11 +2,11 @@
 // shadow updates, tap order, charger power input, import keeping object bindings.
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { ObjectLayer } from '../src/objects/layer.js';
-import { chargerInputs, TYPES } from '../src/objects/types.js';
-import { screenByDistance } from '../src/objects/logic.js';
-import { mergeImport } from '../src/editor.js';
-import { normalise } from '../src/storage.js';
+import { ObjectLayer } from '../src/objects/layer.ts';
+import { chargerInputs, TYPES } from '../src/objects/types.ts';
+import { screenByDistance } from '../src/objects/logic.ts';
+import { mergeImport } from '../src/editor.ts';
+import { normalise } from '../src/storage.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 const ctx = { visibleLevel: () => true, lightsOn: true };

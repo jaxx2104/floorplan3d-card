@@ -4,9 +4,9 @@
 // Pixel coordinates are continuous: pixel (i, j) covers [i, i+1) x [j, j+1), so its centre is
 // (i + 0.5, j + 0.5) and the image spans [0, w] x [0, h].
 
-import type { MapColorKind, MowerOverlay, PlanPoint, RgbColor } from './types/layout.js';
-import type { AutoContext, AutoKernel, AutoResult, FrameContext, FrameResult, FrameState } from './mower-auto.js';
-import type { HeadingTemplate, TurnedPatch } from './mower-heading.js';
+import type { MapColorKind, MowerOverlay, PlanPoint, RgbColor } from './types/layout.ts';
+import type { AutoContext, AutoKernel, AutoResult, FrameContext, FrameResult, FrameState } from './mower-auto.ts';
+import type { HeadingTemplate, TurnedPatch } from './mower-heading.ts';
 
 export const MAX_SAMPLE_WIDTH = 1600;
 

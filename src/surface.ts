@@ -2,8 +2,8 @@
 // where the marker goes (5 cm off the surface). Pure: hits come from the view's surfaceRays().
 // World = card world: (x, elevation + z, -y) of plan metres.
 
-import { ruleFor, pointInPolygon } from './placement.js';
-import type { PlanPoint } from './types/layout.js';
+import { ruleFor, pointInPolygon } from './placement.ts';
+import type { PlanPoint } from './types/layout.ts';
 
 export type Vec3 = [number, number, number];
 type VecLike = number[] | { x: number; y: number; z: number };

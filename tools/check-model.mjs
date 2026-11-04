@@ -5,21 +5,8 @@
 // No dependencies: reads the GLB's JSON chunk, accessor bounds and embedded image headers.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { registerHooks } from 'node:module';
-
-// src/ is TypeScript imported with `.js` specifiers (bundler resolution, as esbuild / vitest do):
-// map a missing `.js` to its `.ts` sibling so node (type stripping) can load the shared manifest code.
-registerHooks({
-  resolve(specifier, context, next) {
-    try {
-      return next(specifier, context);
-    } catch (e) {
-      if (e && e.code === 'ERR_MODULE_NOT_FOUND' && /^\.\.?\/.*\.js$/.test(specifier)) return next(specifier.slice(0, -3) + '.ts', context);
-      throw e;
-    }
-  },
-});
-const { buildManifest, gltfAdapter, summarize } = await import('../src/manifest.js');
+// src/ is TypeScript with `.ts` specifiers: node strips the types itself.
+import { buildManifest, gltfAdapter, summarize } from '../src/manifest.ts';
 
 const MAX_MESH_M = 60;
 const MAX_TEXTURE_PX = 2048;

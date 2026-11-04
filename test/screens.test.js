@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { animOf, screenOn, frameAt, collectScreens, showFrame, setScreenOn } from '../src/screens.js';
+import { animOf, screenOn, frameAt, collectScreens, showFrame, setScreenOn } from '../src/screens.ts';
 
 const screenMat = (extras) => {
   const m = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff });

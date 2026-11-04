@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normTopCamera, zoomToFor, pivotCamera, rayPlaneY, orthoZoom, topZoom, resolveViews } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
+import { normTopCamera, zoomToFor, pivotCamera, rayPlaneY, orthoZoom, topZoom, resolveViews } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 describe('normTopCamera', () => {
   it('accepts a plan centre and a positive zoom (copied)', () => {
@@ -112,7 +112,7 @@ describe('manifest camera_top', () => {
   });
 });
 
-import { orbitStep } from '../src/view.js';
+import { orbitStep } from '../src/view.ts';
 describe('orbitStep', () => {
   it('turns around the target on the ground plane, keeping height and distance', () => {
     const pos = { x: 2, y: 5, z: 0 };

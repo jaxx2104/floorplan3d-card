@@ -1,10 +1,10 @@
 // Final review fixes: roomless markers by zone (I2), model cameras through the alignment (I3),
 // one-time pin migration (I5), import keeping / remapping views (I6).
 import { describe, it, expect } from 'vitest';
-import { nodeIndex, resolveViews, roomAt, exteriorShown, alignModelPoint, cameraToCard, topCameraToCard } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
-import { transformPoint } from '../src/bindings.js';
-import { fitImport, migrateLegacyPins, mergeImport } from '../src/editor.js';
+import { nodeIndex, resolveViews, roomAt, exteriorShown, alignModelPoint, cameraToCard, topCameraToCard } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
+import { transformPoint } from '../src/bindings.ts';
+import { fitImport, migrateLegacyPins, mergeImport } from '../src/editor.ts';
 
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 

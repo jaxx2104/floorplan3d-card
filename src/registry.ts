@@ -2,9 +2,9 @@
 // These registries live on the hass object and update by themselves, so a new device
 // with an area shows up on the plan without any extra work.
 
-import { SKIP_DOMAINS, domainPriority, sensorPriority } from './placement.js';
-import type { Hass, HassEntity } from './types/ha.js';
-import type { Layout } from './types/layout.js';
+import { SKIP_DOMAINS, domainPriority, sensorPriority } from './placement.ts';
+import type { Hass, HassEntity } from './types/ha.ts';
+import type { Layout } from './types/layout.ts';
 
 /** One candidate entity of a marker, with its sort priority. */
 export interface MarkerEntity {

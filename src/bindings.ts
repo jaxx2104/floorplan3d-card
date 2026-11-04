@@ -2,8 +2,8 @@
 // which HA area each room/zone is. Saved choices live in layout.model.levels / .rooms; anything
 // not saved is derived here, so re-exports and HA changes never need manual repair.
 
-import type { Floor, PlanPoint, SavedLevelBinding } from './types/layout.js';
-import type { ManifestLevel, ManifestRoom } from './types/manifest.js';
+import type { Floor, PlanPoint, SavedLevelBinding } from './types/layout.ts';
+import type { ManifestLevel, ManifestRoom } from './types/manifest.ts';
 
 export type ShowMode = 'with' | 'only' | 'always' | 'hidden' | 'all-only';
 const SHOW: readonly unknown[] = ['with', 'only', 'always', 'hidden', 'all-only'];

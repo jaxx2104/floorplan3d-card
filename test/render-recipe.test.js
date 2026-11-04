@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS, normCityLights, cityLitFor, cityLightsOn, CITY_DEFAULTS } from '../src/render-recipe.js';
-import { buildManifest } from '../src/manifest.js';
+import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS, normCityLights, cityLitFor, cityLightsOn, CITY_DEFAULTS } from '../src/render-recipe.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 const tree = (roots) => ({
   roots: () => roots, children: (n) => n.children || [], name: (n) => n.name || '',

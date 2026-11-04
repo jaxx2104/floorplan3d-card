@@ -1,14 +1,14 @@
 // Mower map tools: the 2D picker on the map image (colour picks, align points, mark front), the 3D colour
 // pick fallback, and "Align by points".
 
-import { overlayUrl } from '../../mower.js';
-import { MapPicker } from '../../map-picker.js';
-import { readImagePixels, imagePixels, medianColor, colorList, addColorPatch, removeColorPatch, MAX_COLORS, fitOverlay } from '../../mower-image.js';
-import { mapPoint } from '../router.js';
-import { mower, setMower, setOverlay } from '../tabs/mower.js';
-import type { EditMode, MapColorKind } from '../../edit-mode.js';
-import type { PickerImage, PickerPoint, RGB } from '../../map-picker.js';
-import type { MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.js';
+import { overlayUrl } from '../../mower.ts';
+import { MapPicker } from '../../map-picker.ts';
+import { readImagePixels, imagePixels, medianColor, colorList, addColorPatch, removeColorPatch, MAX_COLORS, fitOverlay } from '../../mower-image.ts';
+import { mapPoint } from '../router.ts';
+import { mower, setMower, setOverlay } from '../tabs/mower.ts';
+import type { EditMode, MapColorKind } from '../../edit-mode.ts';
+import type { PickerImage, PickerPoint, RGB } from '../../map-picker.ts';
+import type { MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.ts';
 
 
 /** Colour categories: the mower icon or one of the map colours. */

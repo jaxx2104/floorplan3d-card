@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { outlineFromTriangles, outlineFromRaster, outlineLoops, pickLoop, rasterGrid, outlineFromGrid } from '../src/outline.js';
-import { pointInPolygon, signedArea } from '../src/placement.js';
+import { outlineFromTriangles, outlineFromRaster, outlineLoops, pickLoop, rasterGrid, outlineFromGrid } from '../src/outline.ts';
+import { pointInPolygon, signedArea } from '../src/placement.ts';
 
 // a horizontal quad at height y from plan rect (x0..x1, y0..y1) → two triangles (world z = -plan y), CCW from above
 const quad = (x0, y0, x1, y1, y = 0) => [x0, y, -y0, x1, y, -y0, x1, y, -y1, x0, y, -y0, x1, y, -y1, x0, y, -y1];

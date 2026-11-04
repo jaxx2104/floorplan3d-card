@@ -8,10 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openDemo, newPage, root } from './lib/demo-browser.mjs';
 import { Sections, parseArgs, selectGroups } from './lib/sections.mjs';
-import { inverseTransformPoint, transformPoint } from '../src/bindings.js';
-import { alignModelPoint } from '../src/views.js';
-import { pixelToPlan } from '../src/mower-image.js';
-import { fitOutline, HOUSE_OUTLINE } from '../src/load-outline.js';
+import { inverseTransformPoint, transformPoint } from '../src/bindings.ts';
+import { alignModelPoint } from '../src/views.ts';
+import { pixelToPlan } from '../src/mower-image.ts';
+import { fitOutline, HOUSE_OUTLINE } from '../src/load-outline.ts';
 
 const failures = [];
 const check = (name, ok, detail = '') => {
@@ -492,7 +492,7 @@ async function sunTimeChecks(page) {
     await idle(page);
     return page.evaluate(`(() => { const c = ${card}, v = c._view; return { sun: c._sunNow, night: v.sky.night, light: v.sun.intensity, label: c.shadowRoot.querySelector('button.suntime .t').textContent }; })()`);
   };
-  const { sunPosition } = await import('../src/sky.js');
+  const { sunPosition } = await import('../src/sky.ts');
   const ref = (t) => sunPosition(t, 52.0, 5.0);
   const t3 = await at(180), t6 = await at(360), t12 = await at(720);
   const ok = (r) => r.sun && Math.abs(r.sun.elevation - ref(r.sun.at).elevation) < 0.01 && Math.abs(r.sun.azimuth - ref(r.sun.at).azimuth) < 0.01;

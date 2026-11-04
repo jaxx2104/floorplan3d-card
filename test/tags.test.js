@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { objectTags, controllersOf, budgetGroup, bindObjects, chainState, effectiveGroups, layoutTags, lightBudget } from '../src/objects/logic.js';
-import { actionTarget, popupRows } from '../src/objects/popup.js';
-import { resolveActions } from '../src/actions.js';
-import { parseSelector, matches } from '../src/views.js';
-import { normalise, } from '../src/storage.js';
-import { mergeImport, setTag, setObjectTags, addTagToObjects, removeTagFromObjects } from '../src/editor.js';
+import { objectTags, controllersOf, budgetGroup, bindObjects, chainState, effectiveGroups, layoutTags, lightBudget } from '../src/objects/logic.ts';
+import { actionTarget, popupRows } from '../src/objects/popup.ts';
+import { resolveActions } from '../src/actions.ts';
+import { parseSelector, matches } from '../src/views.ts';
+import { normalise, } from '../src/storage.ts';
+import { mergeImport, setTag, setObjectTags, addTagToObjects, removeTagFromObjects } from '../src/editor.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 

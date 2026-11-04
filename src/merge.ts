@@ -1,6 +1,6 @@
 // Which static model meshes can be merged into one draw call (pure: works on three.js-like nodes,
 // so it is unit tested with plain objects). view.js does the geometry work.
-import { GLASS_RE } from './render-rules.js';
+import { GLASS_RE } from './render-rules.ts';
 
 // The three.js-like shapes read here (plain objects in the tests, three.js nodes in the card).
 interface MergeAttr {

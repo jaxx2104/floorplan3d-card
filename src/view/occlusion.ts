@@ -2,9 +2,9 @@
 // a debounced pass once the camera is still, run in time slices; plus the one-ray pointHidden test.
 
 import * as THREE from 'three';
-import { isOccluded } from '../render-rules.js';
-import { isMesh } from './core.js';
-import type { FloorplanView } from '../view.js';
+import { isOccluded } from '../render-rules.ts';
+import { isMesh } from './core.ts';
+import type { FloorplanView } from '../view.ts';
 
 interface Occluder { mesh: THREE.Mesh; box: THREE.Box3 }
 

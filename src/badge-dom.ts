@@ -1,6 +1,6 @@
 // Badge DOM shared by markers and the object popup: logo (lazy <img>), status dot, battery chip.
-import { brandUrl, integrationName } from './badges.js';
-import type { BadgeInfo, StatusKind } from './badges.js';
+import { brandUrl, integrationName } from './badges.ts';
+import type { BadgeInfo, StatusKind } from './badges.ts';
 
 /** An element carrying badges; remembers the last applied signature. */
 export type BadgeHost = HTMLElement & { _fpBadgeSig?: string };

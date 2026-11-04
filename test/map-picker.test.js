@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { fitView, zoomAt, toImage, matchMask } from '../src/map-picker.js';
-import { medianColor } from '../src/mower-image.js';
+import { fitView, zoomAt, toImage, matchMask } from '../src/map-picker.ts';
+import { medianColor } from '../src/mower-image.ts';
 
 describe('map picker view', () => {
   it('fits the picture centred in the box', () => {

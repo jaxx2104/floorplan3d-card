@@ -3,7 +3,11 @@
     "target": "es2022",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
     "strict": true,
     "noEmit": true,
     "allowJs": true,
@@ -12,8 +16,17 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
-    "types": []
+    "types": [],
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
-  "include": ["src/**/*", "demo/**/*"],
-  "exclude": ["node_modules", "dist", ".claude"]
+  "include": [
+    "src/**/*",
+    "demo/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".claude"
+  ]
 }

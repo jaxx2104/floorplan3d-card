@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GroundCache, GROUND_CELL } from '../src/surface.js';
-import { outdoorShown } from '../src/views.js';
+import { GroundCache, GROUND_CELL } from '../src/surface.ts';
+import { outdoorShown } from '../src/views.ts';
 
 describe('GroundCache', () => {
   it('casts once per 0.5 m cell, at the cell centre', () => {

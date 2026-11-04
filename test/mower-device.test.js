@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findStaticMap, findMowerPicture, findErrorEntity, findProgress, progressValue, connectivity, rain, zoneEntities, deviceRows, words, mowerDevice } from '../src/mower-device.js';
+import { findStaticMap, findMowerPicture, findErrorEntity, findProgress, progressValue, connectivity, rain, zoneEntities, deviceRows, words, mowerDevice } from '../src/mower-device.ts';
 
 function hassOf(list) {
   const entities = {}, states = {};

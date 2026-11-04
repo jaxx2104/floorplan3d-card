@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readSource, readTrack, toPlanar, fitTransform, overlayUrl, calibrationError, mowerTransform } from '../src/mower.js';
+import { readSource, readTrack, toPlanar, fitTransform, overlayUrl, calibrationError, mowerTransform } from '../src/mower.ts';
 
 const close = (a, b, digits = 6) => {
   expect(a[0]).toBeCloseTo(b[0], digits);

@@ -1,11 +1,11 @@
 // The FloorplanView facade and the per-frame / timer logic of its parts (src/view/*), on fakes (no WebGL).
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { FloorplanView } from '../src/view.js';
-import { CameraRig } from '../src/view/camera.js';
-import { MarkerOcclusion, OCCLUSION_DELAY_MS } from '../src/view/occlusion.js';
-import { RenderLook } from '../src/view/look.js';
-import { SkyLayer } from '../src/view/sky.js';
+import { FloorplanView } from '../src/view.ts';
+import { CameraRig } from '../src/view/camera.ts';
+import { MarkerOcclusion, OCCLUSION_DELAY_MS } from '../src/view/occlusion.ts';
+import { RenderLook } from '../src/view/look.ts';
+import { SkyLayer } from '../src/view/sky.ts';
 
 afterEach(() => {
   vi.useRealTimers();

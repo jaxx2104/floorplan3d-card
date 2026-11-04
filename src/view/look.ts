@@ -4,25 +4,25 @@
 // moonLight) stay on the view.
 
 import * as THREE from 'three';
-import { paintFurniture } from '../furniture.js';
-import { screenOn, frameAt, showFrame, setScreenOn } from '../screens.js';
-import { domeRadius } from '../sky.js';
-import { mergeRender, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from '../render-recipe.js';
-import { cloudLight } from '../weather.js';
-import { AmbientOcclusion, normAo } from '../ao.js';
-import { ScreenFinish, normBokeh, normGrade } from '../finish.js';
-import { normSway, swayLean } from '../cloud-shadow.js';
-import { shadowInfo, sunDirection } from '../render-rules.js';
-import { frameInterval, isMesh, type Drawable } from './core.js';
-import type { FloorplanView } from '../view.js';
-import type { Manifest } from './model.js';
-import type { RenderSettings, DayNight, CityLights } from '../render-recipe.js';
-import type { SwaySettings } from '../cloud-shadow.js';
-import type { FinishSettings } from '../finish.js';
-import type { DepthPrepass } from '../depth-pass.js';
-import type { Screen } from '../screens.js';
-import type { HassEntity } from '../types/ha.js';
-import type { Vec3 } from './core.js';
+import { paintFurniture } from '../furniture.ts';
+import { screenOn, frameAt, showFrame, setScreenOn } from '../screens.ts';
+import { domeRadius } from '../sky.ts';
+import { mergeRender, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from '../render-recipe.ts';
+import { cloudLight } from '../weather.ts';
+import { AmbientOcclusion, normAo } from '../ao.ts';
+import { ScreenFinish, normBokeh, normGrade } from '../finish.ts';
+import { normSway, swayLean } from '../cloud-shadow.ts';
+import { shadowInfo, sunDirection } from '../render-rules.ts';
+import { frameInterval, isMesh, type Drawable } from './core.ts';
+import type { FloorplanView } from '../view.ts';
+import type { Manifest } from './model.ts';
+import type { RenderSettings, DayNight, CityLights } from '../render-recipe.ts';
+import type { SwaySettings } from '../cloud-shadow.ts';
+import type { FinishSettings } from '../finish.ts';
+import type { DepthPrepass } from '../depth-pass.ts';
+import type { Screen } from '../screens.ts';
+import type { HassEntity } from '../types/ha.ts';
+import type { Vec3 } from './core.ts';
 
 /** Sky state: night 0..1, unit vector toward the sun (world) or null, sun strength factor. */
 export interface SkyState { night: number; sunDir?: Vec3 | null; sun?: number }

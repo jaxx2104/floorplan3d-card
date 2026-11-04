@@ -4,12 +4,12 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { pivotCamera, rayPlaneY, orthoZoom, topZoom } from '../views.js';
-import { SUN_DISC_M, MOON_DISC_M } from '../sky.js';
-import { recipeFar } from '../render-recipe.js';
-import { depthRange, depthChanged } from '../render-rules.js';
-import { planToWorld, frameInterval, isMesh, type CameraPose, type TopCameraPose } from './core.js';
-import type { FloorplanView } from '../view.js';
+import { pivotCamera, rayPlaneY, orthoZoom, topZoom } from '../views.ts';
+import { SUN_DISC_M, MOON_DISC_M } from '../sky.ts';
+import { recipeFar } from '../render-recipe.ts';
+import { depthRange, depthChanged } from '../render-rules.ts';
+import { planToWorld, frameInterval, isMesh, type CameraPose, type TopCameraPose } from './core.ts';
+import type { FloorplanView } from '../view.ts';
 
 type CameraTween =
   | { top: true; t0: number; from: { target: THREE.Vector3; zoom: number }; to: { target: THREE.Vector3; zoom: number } }

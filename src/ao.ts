@@ -5,8 +5,8 @@
 // its tone mapping, MSAA and background.
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import type { DepthPrepass } from './depth-pass.js';
-import { isPerspective, type ViewCamera } from './view/core.js';
+import type { DepthPrepass } from './depth-pass.ts';
+import { isPerspective, type ViewCamera } from './view/core.ts';
 
 export const AO_DEFAULTS = Object.freeze({ intensity: 1, radius: 0.5, resolution: 0.5 });
 const AO_RANGE = { intensity: [0, 4], radius: [0.05, 3], resolution: [0.25, 1] };

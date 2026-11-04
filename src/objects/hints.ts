@@ -3,10 +3,10 @@
 // shared THREE.Points (filled / hollow, materials made once), drawn a little towards the camera so the
 // lamp's own mesh does not hide its dot while walls in front still do.
 import * as THREE from 'three';
-import { controllersOf } from './logic.js';
-import type { ChainState, Controller, ObjectBinding, ObjectLike } from './logic.js';
-import type { HassEntity } from '../types/ha.js';
-import type { Layout, LayoutTag } from '../types/layout.js';
+import { controllersOf } from './logic.ts';
+import type { ChainState, Controller, ObjectBinding, ObjectLike } from './logic.ts';
+import type { HassEntity } from '../types/ha.ts';
+import type { Layout, LayoutTag } from '../types/layout.ts';
 
 export type TapHintsMode = 'always' | 'off' | 'near';
 /** One dot: world position, reachable (filled) or not (hollow), colour [r, g, b] (0-255). */

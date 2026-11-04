@@ -1,7 +1,7 @@
 // Markup helpers shared by the edit panel's tabs.
 
-import { platformOf, entityOptionLabel } from '../badges.js';
-import type { EditMode } from '../edit-mode.js';
+import { platformOf, entityOptionLabel } from '../badges.ts';
+import type { EditMode } from '../edit-mode.ts';
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (s: unknown): string => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);

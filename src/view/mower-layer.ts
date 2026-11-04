@@ -4,10 +4,10 @@
 
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { outdoorShown } from '../views.js';
-import { GroundCache } from '../surface.js';
-import { planToWorld } from './core.js';
-import type { FloorplanView, MapImageResult } from '../view.js';
+import { outdoorShown } from '../views.ts';
+import { GroundCache } from '../surface.ts';
+import { planToWorld } from './core.ts';
+import type { FloorplanView, MapImageResult } from '../view.ts';
 
 type MapPlane = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 /** A loaded map picture: an <img> from TextureLoader or an ImageBitmap from the card (closed when replaced). */

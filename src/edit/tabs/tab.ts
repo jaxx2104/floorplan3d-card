@@ -1,6 +1,6 @@
 // Tab definition types and defineTab: kept apart from index.ts, which imports every tab (no cycle).
 
-import type { EditMode } from '../../edit-mode.js';
+import type { EditMode } from '../../edit-mode.ts';
 
 export type TabId = 'rooms' | 'devices' | 'objects' | 'mower' | 'views' | 'model' | 'data';
 

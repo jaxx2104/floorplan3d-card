@@ -1,9 +1,9 @@
 // HA actions run from the card (taps, holds, popup links): service calls with failures as a toast,
 // more-info, navigation, URLs, Assist, and the in-card confirmation.
 
-import { actionCall } from '../actions.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { HassServiceTarget } from '../types/ha.js';
+import { actionCall } from '../actions.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { HassServiceTarget } from '../types/ha.ts';
 
 /** An action as actions.js takes it (HA's { action, ... } shape, or a bare action name). */
 export type CardAction = Parameters<typeof actionCall>[0];

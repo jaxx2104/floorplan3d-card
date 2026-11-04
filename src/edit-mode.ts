@@ -7,32 +7,32 @@
 // tools/* (drawing, outline picking, drags, handles, map pickers, rotation centre, the Views pick menu)
 // and tabs/* (each tab's markup and its act / field handlers). Those take the EditMode as `ed`.
 
-import * as E from './editor.js';
-import { roomFloorId } from './layout.js';
-import { createPanel, render, setSaveState, onStates } from './edit/panel.js';
-import { canvasDown, canvasMove, canvasUp, canvasDownCapture, onKeyDown, syncStageClasses } from './edit/router.js';
-import { traceOutline } from './edit/tools/pick-outline.js';
-import { markerDown, dragMove, dragEnd, endWindowDrag } from './edit/tools/drag.js';
-import { refreshOverlay } from './edit/tools/handles.js';
-import { closePicker } from './edit/tools/map-tools.js';
-import { closeMenu } from './edit/tools/view-menu.js';
-import { selectObject } from './edit/tabs/objects.js';
-import { onViewChanged } from './edit/tabs/views.js';
-import { onModelLoaded, setModelProps } from './edit/tabs/model.js';
+import * as E from './editor.ts';
+import { roomFloorId } from './layout.ts';
+import { createPanel, render, setSaveState, onStates } from './edit/panel.ts';
+import { canvasDown, canvasMove, canvasUp, canvasDownCapture, onKeyDown, syncStageClasses } from './edit/router.ts';
+import { traceOutline } from './edit/tools/pick-outline.ts';
+import { markerDown, dragMove, dragEnd, endWindowDrag } from './edit/tools/drag.ts';
+import { refreshOverlay } from './edit/tools/handles.ts';
+import { closePicker } from './edit/tools/map-tools.ts';
+import { closeMenu } from './edit/tools/view-menu.ts';
+import { selectObject } from './edit/tabs/objects.ts';
+import { onViewChanged } from './edit/tabs/views.ts';
+import { onModelLoaded, setModelProps } from './edit/tabs/model.ts';
 
 import type { Mesh } from 'three';
-import type { FloorplanView } from './view.js';
-import type { Hass } from './types/ha.js';
-import type { EditCard, MarkerPosition, ViewIndex } from './edit/host.js';
-import type { TabId } from './edit/tabs/index.js';
-import type { TreeRows } from './edit/tabs/views.js';
-import type { MapPicker, PickerPoint } from './map-picker.js';
-import type { PinInput, SnapResult } from './editor.js';
-import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.js';
-import type { OutlineGrid } from './outline.js';
+import type { FloorplanView } from './view.ts';
+import type { Hass } from './types/ha.ts';
+import type { EditCard, MarkerPosition, ViewIndex } from './edit/host.ts';
+import type { TabId } from './edit/tabs/index.ts';
+import type { TreeRows } from './edit/tabs/views.ts';
+import type { MapPicker, PickerPoint } from './map-picker.ts';
+import type { PinInput, SnapResult } from './editor.ts';
+import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.ts';
+import type { OutlineGrid } from './outline.ts';
 
 
-export { sliderHtml } from './edit/html.js';
+export { sliderHtml } from './edit/html.ts';
 
 // ---------- edit state ----------
 export interface Drawing { areaId: string; floorId: string; points: PlanPoint[]; cursor: SnapResult | null }

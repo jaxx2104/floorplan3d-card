@@ -7,17 +7,17 @@
 // Dispatch goes by name, not by the active tab: some buttons are rendered outside their own tab (the Rooms
 // list links to the Model tab; the tab bar itself).
 
-import type { EditMode } from '../../edit-mode.js';
-import { roomsTabDef } from './rooms.js';
-import { devicesTabDef } from './devices.js';
-import { objectsTabDef } from './objects.js';
-import { mowerTabDef } from './mower.js';
-import { viewsTabDef } from './views.js';
-import { modelTabDef } from './model.js';
-import { dataTabDef } from './data.js';
+import type { EditMode } from '../../edit-mode.ts';
+import { roomsTabDef } from './rooms.ts';
+import { devicesTabDef } from './devices.ts';
+import { objectsTabDef } from './objects.ts';
+import { mowerTabDef } from './mower.ts';
+import { viewsTabDef } from './views.ts';
+import { modelTabDef } from './model.ts';
+import { dataTabDef } from './data.ts';
 
-export type { TabId, ActResult, ActHandler, FieldEl, FieldHandler, EditPart, TabDef } from './tab.js';
-import type { TabDef, TabId, ActHandler, FieldHandler, EditPart, FieldEl } from './tab.js';
+export type { TabId, ActResult, ActHandler, FieldEl, FieldHandler, EditPart, TabDef } from './tab.ts';
+import type { TabDef, TabId, ActHandler, FieldHandler, EditPart, FieldEl } from './tab.ts';
 
 export const TABS: TabDef[] = [roomsTabDef, devicesTabDef, objectsTabDef, mowerTabDef, viewsTabDef, modelTabDef, dataTabDef];
 export const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<TabId, TabDef>; // every id is in TABS

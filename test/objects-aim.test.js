@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { badTargets, aimPoint, aimsUp, aimWarning, TARGET_MAX_M } from '../src/objects/aim.js';
+import { badTargets, aimPoint, aimsUp, aimWarning, TARGET_MAX_M } from '../src/objects/aim.ts';
 
 describe('badTargets', () => {
   it('keeps a near, unshared target', () => {

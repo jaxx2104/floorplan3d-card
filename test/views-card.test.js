@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { nodeIndex, resolveVisibility, levelOrders, isOverview, floorLevels, deviceState, defaultViewId, viewCut } from '../src/views.js';
-import { buildManifest } from '../src/manifest.js';
+import { nodeIndex, resolveVisibility, levelOrders, isOverview, floorLevels, deviceState, defaultViewId, viewCut } from '../src/views.ts';
+import { buildManifest } from '../src/manifest.ts';
 
 const tree = (roots) => ({ roots: () => roots, children: (n) => n.children || [], name: (n) => n.name || '', extras: (n) => n.extras || {}, parent: () => null });
 const fp = (o) => ({ fp: o });

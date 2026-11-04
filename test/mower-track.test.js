@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isDocked, dockWord, dockFrontAxis, dockPose, trackWindow, fullSearch, layerDue, tileHashes, changedTiles, tileRect, tilesOf,
   throttleStep, effectiveRefresh, mowerStatusText, durationText, rememberPosition, lastPosition, mowerDockGroup, groupedTapId, groupedHidden, dockRows,
-} from '../src/mower-track.js';
+} from '../src/mower-track.ts';
 
 describe('docked state', () => {
   it('lawn_mower docked / charging', () => {

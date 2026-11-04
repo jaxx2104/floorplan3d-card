@@ -5,7 +5,7 @@
 // average dimming instead. Uniforms only after the one-time material patch.
 import * as THREE from 'three';
 
-import type { PlanPoint } from './types/layout.js';
+import type { PlanPoint } from './types/layout.ts';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 

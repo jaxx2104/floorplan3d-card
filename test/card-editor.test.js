@@ -8,7 +8,7 @@ describe('card editor', () => {
   let mod;
   beforeAll(async () => {
     customElements.define('ha-form', FakeForm);
-    mod = await import('../src/card-editor.js');
+    mod = await import('../src/card-editor.ts');
   });
 
   it('drops empty values and defaults', () => {

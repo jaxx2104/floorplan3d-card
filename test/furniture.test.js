@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { isWhiteable, rememberColor, paintFurniture } from '../src/furniture.js';
+import { isWhiteable, rememberColor, paintFurniture } from '../src/furniture.ts';
 
 const mat = (color, extras) => {
   const m = new THREE.MeshStandardMaterial({ color });

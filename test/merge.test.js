@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeGroups, geometrySignature, MAX_MERGE_VERTICES, MAX_MERGE_MESH_M, fnv1a, mergedName, namedGroups } from '../src/merge.js';
+import { mergeGroups, geometrySignature, MAX_MERGE_VERTICES, MAX_MERGE_MESH_M, fnv1a, mergedName, namedGroups } from '../src/merge.ts';
 
 // fake three.js-like nodes
 const attr = (count, itemSize = 3, Arr = Float32Array) => ({ count, itemSize, normalized: false, array: new Arr(count * itemSize) });

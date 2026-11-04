@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
-import { buildRegistry, dispatchAct, dispatchField, dispatchInput } from '../src/edit/tabs/index.js';
-import { REGISTRY } from '../src/edit/panel.js';
+import { buildRegistry, dispatchAct, dispatchField, dispatchInput } from '../src/edit/tabs/index.ts';
+import { REGISTRY } from '../src/edit/panel.ts';
 
 const fakeEd = () => ({ message: { text: 'old' }, _syncStageClasses: vi.fn(), render: vi.fn() });
 

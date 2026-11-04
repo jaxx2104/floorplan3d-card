@@ -1,11 +1,11 @@
 // Sky of the card: day / night mode, the sun from sun.sun or the time scrubber, the moon, clouds from
 // the weather entity, the Day / night and sun time buttons, and night_markers.
 
-import { snapMinutes, SCRUB_IDLE_MS, hhmm, sliderDate, sunPosition, moonPosition, tzMinutes } from '../sky.js';
-import { sunVector, nightFactor, clampSunDir, sunStrength } from '../objects/logic.js';
-import { weatherEntity, cloudCoverage, windSpeed } from '../weather.js';
-import type { Floorplan3dCard } from '../floorplan3d-card.js';
-import type { CardConfig } from '../types/config.js';
+import { snapMinutes, SCRUB_IDLE_MS, hhmm, sliderDate, sunPosition, moonPosition, tzMinutes } from '../sky.ts';
+import { sunVector, nightFactor, clampSunDir, sunStrength } from '../objects/logic.ts';
+import { weatherEntity, cloudCoverage, windSpeed } from '../weather.ts';
+import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { CardConfig } from '../types/config.ts';
 
 declare global {
   interface Window {

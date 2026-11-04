@@ -2,8 +2,8 @@
 // Pure: resolution (type defaults < model fp.ui < layout ui < card YAML `actions:`), a description of
 // what to do (actionCall; the card executes it), popup link rows and the double-tap sequencer.
 
-import type { ActionConfig, ObjectUi } from './types/layout.js';
-import type { HassServiceTarget } from './types/ha.js';
+import type { ActionConfig, ObjectUi } from './types/layout.ts';
+import type { HassServiceTarget } from './types/ha.ts';
 
 export type ActionKind = 'toggle' | 'more-info' | 'navigate' | 'url' | 'perform-action' | 'assist' | 'popup' | 'none';
 export type ActionWhich = 'tap' | 'hold' | 'double_tap';

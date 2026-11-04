@@ -4,8 +4,8 @@
 // meshes), one small quad per lamp made the first time it is lit; per update only `visible`, the
 // transform and the quad's vertex colours change, so toggling lamps never recompiles a shader.
 import * as THREE from 'three';
-import { HORIZONTAL_DIRS } from '../surface.js';
-import type { WashDir } from '../types/layout.js';
+import { HORIZONTAL_DIRS } from '../surface.ts';
+import type { WashDir } from '../types/layout.ts';
 
 type V3 = readonly number[] | { x: number; y: number; z: number };
 /** A model surface hit (card world): point, normal, distance along the ray and the ray direction. */

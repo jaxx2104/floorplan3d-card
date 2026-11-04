@@ -1,11 +1,11 @@
 // Data tab: storage backend, JSON export / import.
 
-import * as E from '../../editor.js';
-import { LEVEL_SPACING } from '../../layout.js';
-import { esc } from '../html.js';
-import { defineTab } from './tab.js';
-import type { ActHandler, FieldHandler } from './tab.js';
-import type { EditMode } from '../../edit-mode.js';
+import * as E from '../../editor.ts';
+import { LEVEL_SPACING } from '../../layout.ts';
+import { esc } from '../html.ts';
+import { defineTab } from './tab.ts';
+import type { ActHandler, FieldHandler } from './tab.ts';
+import type { EditMode } from '../../edit-mode.ts';
 
 export function dataTab(ed: EditMode): string {
   const b = ed.card._store.backend;

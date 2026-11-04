@@ -1,6 +1,6 @@
-import { colorList } from './mower-image.js';
-import type { HassEntity } from './types/ha.js';
-import type { LayoutMower, MowerOverlay } from './types/layout.js';
+import { colorList } from './mower-image.ts';
+import type { HassEntity } from './types/ha.ts';
+import type { LayoutMower, MowerOverlay } from './types/layout.ts';
 
 // Mower tab setup checklist (pure). Each row: { id, label, ok, optional, target } where target is
 // the CSS selector of the control that fixes it.

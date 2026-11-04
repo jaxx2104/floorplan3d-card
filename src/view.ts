@@ -11,23 +11,23 @@
 
 import * as THREE from 'three';
 import { CSS2DRenderer, type CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { levelVisible } from './bindings.js';
-import { DepthPrepass } from './depth-pass.js';
-import { testMode, isCss2d, isMesh, meshMaterials, type CssEntry, type Drawable, type GlowEntry, type MarkerEntry, type MarkerState, type Vec3, type ViewCamera, type ViewRoom, type ViewTheme } from './view/core.js';
-import { CameraRig } from './view/camera.js';
-import { ModelLayer, type LoadedModel, type ModelVisibility } from './view/model.js';
-import { RenderLook } from './view/look.js';
-import { SkyLayer } from './view/sky.js';
-import { PlanStructure } from './view/structure.js';
-import { MowerLayer } from './view/mower-layer.js';
-import { MarkerOcclusion } from './view/occlusion.js';
-import type { ObjectLayer } from './objects/layer.js';
-import type { Floor } from './types/layout.js';
+import { levelVisible } from './bindings.ts';
+import { DepthPrepass } from './depth-pass.ts';
+import { testMode, isCss2d, isMesh, meshMaterials, type CssEntry, type Drawable, type GlowEntry, type MarkerEntry, type MarkerState, type Vec3, type ViewCamera, type ViewRoom, type ViewTheme } from './view/core.ts';
+import { CameraRig } from './view/camera.ts';
+import { ModelLayer, type LoadedModel, type ModelVisibility } from './view/model.ts';
+import { RenderLook } from './view/look.ts';
+import { SkyLayer } from './view/sky.ts';
+import { PlanStructure } from './view/structure.ts';
+import { MowerLayer } from './view/mower-layer.ts';
+import { MarkerOcclusion } from './view/occlusion.ts';
+import type { ObjectLayer } from './objects/layer.ts';
+import type { Floor } from './types/layout.ts';
 
-export { planToWorld, testMode, frameInterval } from './view/core.js';
-export { fallbackOutline, mergeStaticMeshes } from './view/model.js';
-export { drawMoon } from './view/sky.js';
-export { orbitStep } from './view/camera.js';
+export { planToWorld, testMode, frameInterval } from './view/core.ts';
+export { fallbackOutline, mergeStaticMeshes } from './view/model.ts';
+export { drawMoon } from './view/sky.ts';
+export { orbitStep } from './view/camera.ts';
 
 const COMPACT_PPM = 30;
 const PICK_LINE_M = 0.02; // raycast threshold for lines / points (three's default is 1 m)

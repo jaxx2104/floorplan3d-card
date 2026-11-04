@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { normAction, resolveActions, actionCall, validateAction, popupLinks, TapSequencer, DOUBLE_TAP_MS } from '../src/actions.js';
+import { normAction, resolveActions, actionCall, validateAction, popupLinks, TapSequencer, DOUBLE_TAP_MS } from '../src/actions.ts';
 
 const light = { tap_action: { action: 'toggle' }, hold_action: { action: 'popup' }, popup: ['toggle'] };
 
