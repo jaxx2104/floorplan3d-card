@@ -256,8 +256,8 @@ export class PathTraceSession {
   // was rebuilt and the materials when one changed. -> the geometry was built now.
   prepare(src: TraceSource, camera: THREE.Camera): boolean {
     this._src = src;
-    // the sky cube is read back synchronously (CubeToEquirectGenerator): no pack buffer may be left bound (three
-    // r169 leaves one bound after an async read-back, e.g. a light probe's)
+    // the sky cube is read back synchronously (CubeToEquirectGenerator): no pack buffer may be left bound. Probe
+    // read-backs already unbind theirs (packSafe in light-probes.ts); this guards any other async read-back
     const gl = this.renderer.getContext();
     if (gl instanceof WebGL2RenderingContext) gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     return this._ownOpacity(() => {
