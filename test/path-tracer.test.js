@@ -1,6 +1,6 @@
 // The patches the 'still' tier applies to three-gpu-pathtracer's shaders find what they replace (a library update
 // that changes them fails here, not on a wall tablet).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { PhysicalPathTracingMaterial } from 'three-gpu-pathtracer';
 import { clampSamples } from '../src/path-tracer.ts';
 import { STILL_SAMPLE_MAX } from '../src/still.ts';

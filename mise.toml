@@ -1,2 +1,4 @@
 [tools]
-pnpm = "12.16.1"
+# A dated bun canary (bun lint is canary-only so far) from npm: the GitHub "canary" release is a moving
+# tag, the npm builds are immutable. The one binary for install, lint, check, test and build.
+"http:bun" = { version = "1.4.4-canary.20261104.1", url = 'https://registry.npmjs.org/@oven/bun-{{ os(macos="darwin") }}-{{ arch(arm64="aarch64") }}/-/bun-{{ os(macos="darwin") }}-{{ arch(arm64="aarch64") }}-{{ version }}.tgz', bin_path = "package/bin" }

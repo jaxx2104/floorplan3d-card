@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { bindObjects, mowerTabEntity, chainState, lightColor, lightLevel, lightBudget, nightFactor, sunVector, screenNearest, sunStrength, clampSunDir, snapPin, attachedPosition, attachOffset, floorAtHeight, effectiveGroups } from '../src/objects/logic.ts';
 
 const st = (entity_id, state, attributes = {}) => ({ entity_id, state, attributes });

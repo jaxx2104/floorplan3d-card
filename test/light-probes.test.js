@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import * as THREE from 'three';
 
 // the read-back: SH coefficient 0 = the capture's position x (each room tells its own probe), the rest 0

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   surfaceKind, chooseSurface, needsStick, nearestDistance, rayGroups, nearPolygon, worldOf, planOf,
   HORIZONTAL_DIRS, SURFACE_OFFSET, WALL_RANGE, CEILING_RANGE, FLOOR_RANGE, STICK_DISTANCE, surfaceKey, stickSurface, surfaceSearch,

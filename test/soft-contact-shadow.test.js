@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { pcssFrame, penumbraM, kernelTexels, pcssDirectional, PCSS_SUN_TAN, PCSS_MIN_TEXELS, PCSS_MAX_TEXELS } from '../src/soft-shadow.ts';
 import { contactTileSize, contactDarkness, contactFloors, CONTACT_HEIGHT_M, CONTACT_MAX_FLOORS, CONTACT_TILE_MIN, CONTACT_TILE_MAX } from '../src/contact-shadow.ts';

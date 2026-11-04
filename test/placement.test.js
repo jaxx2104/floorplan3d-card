@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   signedArea, centroid, pointInPolygon, ruleFor, autoPlace, snap, domainPriority, SKIP_DOMAINS,
 } from '../src/placement.ts';

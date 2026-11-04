@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { stillBudget, stillHold, stillFade, stillDone, stillSize, STILL_IDLE_MS, STILL_MAX_SAMPLES, STILL_MAX_MS, STILL_TEST_SAMPLES, STILL_FADE_FROM, STILL_FADE_TO } from '../src/still.ts';
 
 const base = { tier: true, model: true, onScreen: true, visible: true, editing: false, clipped: false, idleFor: STILL_IDLE_MS };

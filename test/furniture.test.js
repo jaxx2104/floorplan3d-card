@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { isWhiteable, rememberColor, paintFurniture } from '../src/furniture.ts';
 

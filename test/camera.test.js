@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { normTopCamera, zoomToFor, pivotCamera, rayPlaneY, orthoZoom, topZoom, resolveViews } from '../src/views.ts';
 import { buildManifest } from '../src/manifest.ts';
 

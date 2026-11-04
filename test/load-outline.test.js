@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   simplifyPolygon, pickOutline, serializeOutline, parseOutline, saveOutline, loadOutline, outlineKey,
   fitOutline, polygonLength, HOUSE_OUTLINE, OUTLINE_CAP,

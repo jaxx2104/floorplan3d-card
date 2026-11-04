@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { RENDER_DEFAULTS, normRender, mergeRender, deviceShadowCap, lampShadowSlots, lampMapSize, recipeFar, skyLights, backgroundColors, backgroundAt, BACKGROUND_DEFAULTS, normSurroundLight, surroundLight, SURROUND_DEFAULTS, SURROUND_COLORS, normCityLights, cityLitFor, cityLightsOn, CITY_DEFAULTS } from '../src/render-recipe.ts';
 import { buildManifest } from '../src/manifest.ts';
 

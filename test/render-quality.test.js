@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import * as THREE from 'three';
 import { normRenderOption, renderTone, matchExposure, toneGrey, QUALITY_TIERS, QUALITIES, RENDER_OPTION_DEFAULTS, RENDER_DEFAULTS, TONE_MAPPINGS } from '../src/render-recipe.ts';
 import { envSky, envChanged, envIntensity, skyUniforms, EnvLight, ENV_ANGLE_DEG, ENV_THROTTLE_MS, ENV_DAY, ENV_NIGHT, ENV_DARK } from '../src/view/env-light.ts';

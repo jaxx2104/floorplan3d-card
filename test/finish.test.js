@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { normBokeh, normGrade, cocAt, tiltAt, screenBand, focusBand, TILT_BAND, BOKEH_DEFAULTS, GRADE_DEFAULTS, TILT_FALLOFF } from '../src/finish.ts';
 

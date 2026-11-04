@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { findBlob, pickBlob, stepTrack, headingMinStep, TRACK_MAX_MISSES, pixelToPlan, planToPixel, medianColor, imageScale, fitOverlay } from '../src/mower-image.ts';
 
 // synthetic RGBA image filled with one colour

@@ -1,6 +1,6 @@
 // Final review fixes for lights-and-objects (v0.4.0): lights: off sub-group, idle redraws, per-light
 // shadow updates, tap order, charger power input, import keeping object bindings.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import * as THREE from 'three';
 import { ObjectLayer } from '../src/objects/layer.ts';
 import { chargerInputs, TYPES } from '../src/objects/types.ts';

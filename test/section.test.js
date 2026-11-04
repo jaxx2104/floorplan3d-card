@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { normSection, sectionPlane, sectionCamera, SECTION_DIRS, sectionDir, sectionPos, sectionAt, sectionRange,
   sectionSide, sectionLevels, unionBox, resolveViews } from '../src/views.ts';
 import { buildManifest } from '../src/manifest.ts';

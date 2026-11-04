@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   windSpeed,
   cloudCoverage, weatherEntity, cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut, SKY_CLEAR,

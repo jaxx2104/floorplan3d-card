@@ -6,10 +6,12 @@ by device type, with mouse-drag for exact placement. Plus Sunseeker robot mower 
 position and map overlay.
 
 ## Stack
-- Vanilla custom element, Three.js 0.169, esbuild bundle -> `dist/floorplan3d-card.js`
-- TypeScript 7 (`pnpm run typecheck`, strict; shared contracts in `src/types/`), oxlint (`pnpm run lint`).
+- Vanilla custom element, Three.js 0.169, Bun.build bundle -> `dist/floorplan3d-card.js`
+- Toolchain: bun (a dated canary pinned in mise.toml) for install, lint (`bun lint`, .oxlintrc.json),
+  format (`bun fmt`), type check (`bun check`), tests (`bun test`, happy-dom) and build
+- TypeScript (`bun check`, strict; shared contracts in `src/types/`).
   Relative imports use `.ts` specifiers (allowImportingTsExtensions); only erasable TS syntax
-  (erasableSyntaxOnly), so node runs src/ directly for scripts/ and tools/.
+  (erasableSyntaxOnly), so bun (or node) runs src/ directly for scripts/ and tools/.
 - Structure: `src/floorplan3d-card.*` is the element shell (lifecycle, hass update diff, commit) over
   parts in `src/card/`; `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
   coordinates the edit panel (`src/edit/tabs/*` registered by data-act / data-field, `src/edit/tools/*`)
@@ -30,7 +32,7 @@ position and map overlay.
   least-squares affine. `overlayUrl()` for image./camera. entities via entity_picture.
 - `storage.js` — LayoutStore: companion integration WS -> `frontend/set_user_data` -> localStorage.
 
-Review these, fix bugs, add unit tests (vitest) for placement + mower math.
+Review these, fix bugs, add unit tests (bun test) for placement + mower math.
 
 ## Coordinates
 Plan metres: x = east, y = north, z = height above floor. Three.js world:
@@ -107,19 +109,19 @@ iiseppi/sunseeker_local_control (MQTT).
 ## Repo / delivery
 - GitHub (`origin`) is the main remote; HACS installs it as an Integration from release
   `floorplan3d.zip` (integration with the card bundled; it registers the card via
-  add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `pnpm run build`.
-- CI: `.github/workflows/ci.yml` (lint, vitest, build, headless checks, pytest);
+  add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `bun run build`.
+- CI: `.github/workflows/ci.yml` (lint, format, type check, bun test, build, headless checks, pytest);
   `release.yml` runs after every green CI on main: `scripts/next-version.mjs` picks the next
   version from the conventional commits since the last tag (feat -> minor, fix/perf/refactor ->
   patch, docs/chore/ci/test/style/build -> no release), stamps it into package.json, the manifest
   and `VERSION`, builds the zip and creates the tag + release. Never bump versions by hand: the
   repository keeps `0.0.0-dev`.
-- Add `pnpm run deploy` that scp's dist + integration to the HA host (host from .env, not committed).
+- Add `bun run deploy` that scp's dist + integration to the HA host (host from .env, not committed).
 - `demo/index.html` with a mock `hass` object (few areas, floors, lights, sensors, a fake mower
   moving in a circle) for testing without HA. Verify with a headless browser screenshot.
 
 ## Order of work
-1. Scaffold (package.json, esbuild, vitest, oxlint, TypeScript), tests for existing modules.
+1. Scaffold (package.json, bun build / test / lint / check, TypeScript), tests for existing modules.
 2. Card: scene, floors, rooms, walls, markers, glow, view mode. Demo page.
 3. Edit mode: room drawing/editing, marker drag + pins, storage.
 4. Companion integration.

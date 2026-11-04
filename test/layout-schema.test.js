@@ -3,7 +3,7 @@
 // The expected results live in test/fixtures/layouts/golden; UPDATE_GOLDEN=1 rewrites them.
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { LAYOUT_VERSION, parseLayout, serializeLayout, emptyLayout } from '../src/schema/layout.ts';
 import { parseImport } from '../src/editor.ts';
 import { DEMO_LAYOUT } from '../demo/layout.js';

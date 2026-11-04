@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { transformPoint, inverseTransformPoint } from '../src/bindings.ts';
 import { realignPins, setPin } from '../src/editor.ts';
 

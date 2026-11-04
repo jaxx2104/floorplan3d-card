@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { popupRows, actionTarget, rowsKey, effectOrder, wheelHs, wheelPoint, rgbToHs } from '../src/objects/popup.ts';
 import { resolveActions } from '../src/actions.ts';
 import { typeOf } from '../src/objects/types.ts';

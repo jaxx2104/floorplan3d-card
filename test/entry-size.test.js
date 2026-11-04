@@ -1,13 +1,15 @@
 // The entry HA loads on every page stays small: no three.js, no card code, under ENTRY_MAX_BYTES
 // minified; the card and edit mode are chunks it imports on demand (scripts/lib/card-build.mjs).
-import { describe, it, expect, beforeAll } from 'vitest';
-import * as esbuild from 'esbuild';
+import { describe, it, expect, beforeAll } from 'bun:test';
 import { cardOptions, ENTRY_MAX_BYTES } from '../scripts/lib/card-build.mjs';
 
 let outputs;
 beforeAll(async () => {
-  const r = await esbuild.build({ ...cardOptions, write: false, logLevel: 'silent' });
-  outputs = Object.fromEntries(Object.entries(r.metafile.outputs).filter(([f]) => f.endsWith('.js')));
+  const r = await Bun.build({ ...cardOptions, outdir: undefined });
+  // Bun's metafile names outputs relative to outdir ('./chunks/x.js'): as paths from the root (dist/chunks/x.js)
+  const dist = (f) => 'dist/' + f.replace(/^\.\//, '');
+  outputs = Object.fromEntries(Object.entries(r.metafile.outputs).filter(([f]) => f.endsWith('.js'))
+    .map(([f, o]) => [dist(f), { ...o, imports: o.imports.map((i) => ({ ...i, path: dist(i.path) })) }]));
 });
 
 const ENTRY = 'dist/floorplan3d-card.js';
@@ -33,7 +35,7 @@ describe('entry size guard', () => {
   });
   it('the card, edit mode and the visual editor are dynamic chunks', () => {
     const impl = chunkOf('src/card-impl.ts'), edit = chunkOf('src/edit-mode.ts'), editor = chunkOf('src/card-editor.ts');
-    for (const f of [impl, edit, editor]) expect(f, 'chunk').toMatch(/^dist\/chunks\/[\w-]+-[A-Z0-9]+\.js$/);
+    for (const f of [impl, edit, editor]) expect(f, 'chunk').toMatch(/^dist\/chunks\/[\w-]+-[a-z0-9]+\.js$/);
     const dyn = outputs[ENTRY].imports.filter((i) => i.kind === 'dynamic-import').map((i) => i.path).sort();
     expect(dyn).toEqual([impl, editor].sort());
     // three loads with the card; edit mode only on the first Edit
@@ -44,7 +46,7 @@ describe('entry size guard', () => {
   });
   it('the path tracer (quality still) is its own chunk, in neither the entry nor the card chunk', () => {
     const impl = chunkOf('src/card-impl.ts'), tracer = chunkOf('src/path-tracer.ts');
-    expect(tracer, 'chunk').toMatch(/^dist\/chunks\/path-tracer-[A-Z0-9]+\.js$/);
+    expect(tracer, 'chunk').toMatch(/^dist\/chunks\/path-tracer-[a-z0-9]+\.js$/);
     const isLib = (k) => /node_modules\/(three-gpu-pathtracer|three-mesh-bvh)\//.test(k);
     for (const f of [staticClosure(ENTRY), staticClosure(impl)]) {
       expect(inputsOf(f).filter(isLib)).toEqual([]);

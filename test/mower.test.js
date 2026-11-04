@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { readSource, readTrack, toPlanar, fitTransform, overlayUrl, calibrationError, mowerTransform } from '../src/mower.ts';
 
 const close = (a, b, digits = 6) => {

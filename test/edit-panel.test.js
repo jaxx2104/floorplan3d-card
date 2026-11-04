@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 // The edit panel rendered with lit-html: tabs render into the panel element of a real EditMode on a fake
 // card; clicks / changes / inputs are dispatched on the rendered controls.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import { render } from 'lit';
 import { EditMode } from '../src/edit-mode.ts';
 import { slider, entityInput } from '../src/edit/html.ts';

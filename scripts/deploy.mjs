@@ -21,7 +21,7 @@ const run = (cmd, args) => {
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status || 1);
 };
-run('node', ['scripts/build.mjs']);
+run(process.execPath, ['scripts/build.mjs']); // bun: the build uses Bun.build
 const port = ['-P', env.HA_SSH_PORT];
 run('ssh', ['-p', env.HA_SSH_PORT, env.HA_SSH, `mkdir -p ${env.HA_CONFIG}/custom_components`]);
 run('scp', [...port, '-r', 'custom_components/floorplan3d', `${env.HA_SSH}:${env.HA_CONFIG}/custom_components/`]);

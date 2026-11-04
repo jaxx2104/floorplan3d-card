@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { mergeFloors, roomFloorId, wallSegments, markerPositions, lightGlow, roomLabel, roomLabelMode } from '../src/layout.ts';
 import { pointInPolygon } from '../src/placement.ts';
 

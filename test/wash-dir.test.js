@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { washKind, washSetting, resolveWash, placeWashes, clearOfWall, WASH_DIRS } from '../src/objects/wash.ts';
 import { glowEmissiveScale, hintDefaults } from '../src/objects/types.ts';
 import { setObject, setTag } from '../src/editor.ts';

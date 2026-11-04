@@ -52,7 +52,7 @@ covers both. The integration stores the layout and makes it available to all use
 
 1. Download `floorplan3d.zip` from the [latest release](https://github.com/istals/floorplan3d-card/releases)
    and extract it to `/config/custom_components/floorplan3d/`
-   (or build it yourself: `pnpm install && pnpm build`, then copy `custom_components/floorplan3d/`).
+   (or build it yourself: `bun install && bun run build`, then copy `custom_components/floorplan3d/`).
 2. Restart, then Settings → Devices & services → Add integration → **Floorplan 3D**.
 
 `floorplan3d:` in `configuration.yaml` also works; it is imported as the integration entry.
@@ -62,7 +62,7 @@ small entry (a few kB) loads with every page: the card itself, with three.js, is
 dashboard shows it, and edit mode when an admin first presses Edit.
 
 If you only want the card without the integration, extract `floorplan3d-card.tar.gz` from the
-release (or copy the whole contents of `dist/` after `pnpm run build`) to `/config/www/floorplan3d/`,
+release (or copy the whole contents of `dist/` after `bun run build`) to `/config/www/floorplan3d/`,
 so `floorplan3d-card.js` and its `chunks/` directory sit side by side, and add
 `/local/floorplan3d/floorplan3d-card.js` as a dashboard resource (Settings → Dashboards → ⋮ →
 Resources, type JavaScript module). The entry alone does not work without its chunks. The
@@ -415,7 +415,7 @@ your choices are stored by id and survive re-exports. Click a part of the model 
 find it in the lists. A tagged model shows whole levels and is never clipped; only an untagged
 model is cut, at the top of the view's highest storey (its elevation + storey height, 2.7 m when
 unknown; per view, *Cut at storey height* in the Views tab). Check a model before uploading with
-`pnpm run check-model -- house.glb`.
+`bun run check-model house.glb`.
 
 Rendering notes for model authors:
 - **Shadows:** every mesh receives shadows; glass does not cast them, so light reaches rooms
@@ -522,7 +522,7 @@ has no marker: the object is the control.
   target farther from the lamp than `hints.distance` (8 m without one) is ignored, and so is a target
   shared by two or more lamps of one group when it also looks wrong (the origin `[0, 0, 0]`, or more
   than 60° off vertical for an uplight); `hints.target_ok: true` keeps a target as it is. An ignored target: the spot then aims straight up (beam up, or an id / label with
-  "uplight", "up_light", "uplighter") or straight down. `pnpm run check-model` and the Model tab warn
+  "uplight", "up_light", "uplighter") or straight down. `bun run check-model` and the Model tab warn
   "spot target looks wrong (shared / too far): <ids>".
 - **Labels:** every Objects tab row has a Label field (empty: the model's label); it names the object
   in the Objects tab, its popup, the Attach preview and panel and the Views tree. A tag can have a label too (Tags section), shown in popups
@@ -667,15 +667,17 @@ lights and helpers, prints size and origin, and downloads `house.glb`.
 ## Development
 
 ```sh
-pnpm install
-pnpm run demo          # http://localhost:8765/demo/  (mock HA, add ?model=1 for the 3D model with views)
-pnpm run make-demo-model  # regenerate demo/house.glb (views, layers, tagged rooms)
-pnpm test              # unit tests (vitest)
-pnpm run lint
-pnpm run check         # build + headless Chrome checks of view, edit mode and model
-pnpm run check:model -- --only views,mower   # some model check groups (--list, --shard 1/3, --jobs N)
+bun install           # bun is pinned in mise.toml (mise install)
+bun run demo          # http://localhost:8765/demo/  (mock HA, add ?model=1 for the 3D model with views)
+bun run make-demo-model  # regenerate demo/house.glb (views, layers, tagged rooms)
+bun run test          # unit tests (bun test --parallel; plain bun test works too)
+bun lint
+bun check             # type check
+bun fmt               # format (bun fmt --check in CI)
+bun run check:all     # build + headless Chrome checks of view, edit mode and model
+bun run check:model --only views,mower   # some model check groups (--list, --shard 1/3, --jobs N)
 python -m pytest      # integration tests (pip install -r requirements-test.txt first)
-pnpm run deploy        # build and scp the integration to HA (settings in .env, see .env.example)
+bun run deploy        # build and scp the integration to HA (settings in .env, see .env.example)
 ```
 
 Releases are automatic: every green CI run on `main` picks the next version from the

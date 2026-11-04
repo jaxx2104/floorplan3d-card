@@ -1,5 +1,5 @@
 // The FloorplanView facade and the per-frame / timer logic of its parts (src/view/*), on fakes (no WebGL).
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import * as THREE from 'three';
 import { FloorplanView } from '../src/view.ts';
 import { CameraRig } from '../src/view/camera.ts';

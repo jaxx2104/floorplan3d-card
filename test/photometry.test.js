@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { planckXy, kelvinRgb, kelvinSrgb, physicalColor, lumensToCandela, lampIntensity, DEFAULT_KELVIN, DEFAULT_LUMENS, LAMP_EXPOSURE } from '../src/photometry.ts';
 import { lightColor } from '../src/objects/logic.ts';

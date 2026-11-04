@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 // The card element as a facade over its parts: delegated members keep their names and identities.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import '../src/card-impl.ts';
 import { defineDelegates } from '../src/card/delegates.ts';
 import { ActionRunner } from '../src/card/action-runner.ts';

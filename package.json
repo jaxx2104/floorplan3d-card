@@ -5,20 +5,21 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "watch": "node scripts/build.mjs --watch",
-    "test": "vitest run",
-    "lint": "oxlint",
-    "typecheck": "tsc --noEmit -p .",
-    "demo": "node scripts/build.mjs && python3 -m http.server 8765",
-    "screenshot": "node scripts/screenshot.mjs",
-    "check:edit": "node scripts/edit-check.mjs",
-    "check:model": "node scripts/model-check.mjs",
-    "check:perf": "node scripts/perf-check.mjs",
-    "check-model": "node tools/check-model.mjs",
-    "check": "pnpm run build && node scripts/screenshot.mjs && node scripts/edit-check.mjs && node scripts/model-check.mjs",
-    "deploy": "node scripts/deploy.mjs",
-    "make-demo-model": "node scripts/make-demo-model.mjs"
+    "build": "bun scripts/build.mjs",
+    "watch": "bun scripts/build.mjs --watch",
+    "test": "bun test --parallel",
+    "lint": "bun lint",
+    "fmt": "bun fmt",
+    "typecheck": "bun check",
+    "demo": "bun scripts/build.mjs && python3 -m http.server 8765",
+    "screenshot": "bun scripts/screenshot.mjs",
+    "check:edit": "bun scripts/edit-check.mjs",
+    "check:model": "bun scripts/model-check.mjs",
+    "check:perf": "bun scripts/perf-check.mjs",
+    "check:all": "bun scripts/build.mjs && bun scripts/screenshot.mjs && bun scripts/edit-check.mjs && bun scripts/model-check.mjs",
+    "check-model": "bun tools/check-model.mjs",
+    "deploy": "bun scripts/deploy.mjs",
+    "make-demo-model": "bun scripts/make-demo-model.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -30,12 +31,7 @@
   "devDependencies": {
     "@mdi/js": "7.4.47",
     "@types/three": "0.169.0",
-    "esbuild": "0.28.2",
-    "jsdom": "29.1.1",
-    "oxlint": "1.91.0",
-    "puppeteer-core": "25.12.0",
-    "typescript": "7.0.2",
-    "vitest": "5.0.3"
-  },
-  "packageManager": "pnpm@12.16.1"
+    "happy-dom": "21.0.4",
+    "puppeteer-core": "25.12.0"
+  }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.ts';
 

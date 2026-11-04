@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { processMap, zoneMask, zonePixels, stripeAngle, stripeBearing, mowedShare, mapWorkSize, planToPixel, insidePoint, mapKernel } from '../src/mower-image.ts';
 import { sunVector } from '../src/objects/logic.ts';
 import { pointInPolygon } from '../src/placement.ts';

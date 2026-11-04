@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { parseLayout } from '../src/schema/layout.ts';
 import { processMap, findBlob, colorList, addColorPatch, removeColorPatch, MAX_COLORS } from '../src/mower-image.ts';
 

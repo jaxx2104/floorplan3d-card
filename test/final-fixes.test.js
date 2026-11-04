@@ -1,6 +1,6 @@
 // Final review fixes: roomless markers by zone (I2), model cameras through the alignment (I3),
 // one-time pin migration (I5), import keeping / remapping views (I6).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { nodeIndex, resolveViews, roomAt, exteriorShown, alignModelPoint, cameraToCard, topCameraToCard } from '../src/views.ts';
 import { buildManifest } from '../src/manifest.ts';
 import { transformPoint } from '../src/bindings.ts';

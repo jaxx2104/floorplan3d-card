@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { markerLook, iconFor } from '../src/registry.ts';
 
 const hass = (states) => ({ states, entities: {}, hassUrl: (p) => 'http://ha' + p });

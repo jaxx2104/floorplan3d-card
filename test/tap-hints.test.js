@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { tapHintsMode, reachability, hintAlpha, HINT_RADIUS } from '../src/objects/hints.ts';
 import { chainState } from '../src/objects/logic.ts';
 

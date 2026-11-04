@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -130,16 +130,16 @@ describe('CLI', () => {
     fs.writeFileSync(file, glb({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0, 1] }], nodes: [
       { name: 'a', extras: fp({ kind: 'level', id: 'x' }) }, { name: 'b', extras: fp({ kind: 'level', id: 'x' }) }] }));
     let code = 0, out = '';
-    try { execFileSync('node', ['tools/check-model.mjs', file], { encoding: 'utf8' }); } catch (e) { code = e.status; out = e.stdout; }
+    try { execFileSync(process.execPath, ['tools/check-model.mjs', file], { encoding: 'utf8' }); } catch (e) { code = e.status; out = e.stdout; }
     expect(code).toBe(1);
     expect(out).toMatch(/ERROR .*duplicate level id "x"/);
-    const json = JSON.parse(execFileSync('node', ['tools/check-model.mjs', file, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).toString() || '{}');
+    const json = JSON.parse(execFileSync(process.execPath, ['tools/check-model.mjs', file, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).toString() || '{}');
     expect(json.ok).toBe(false);
   });
 
   it('exits 1 on unreadable file in text mode', () => {
     let code = 0, out = '';
-    try { execFileSync('node', ['tools/check-model.mjs', '/nonexistent/path.glb'], { encoding: 'utf8' }); } catch (e) { code = e.status; out = e.stdout; }
+    try { execFileSync(process.execPath, ['tools/check-model.mjs', '/nonexistent/path.glb'], { encoding: 'utf8' }); } catch (e) { code = e.status; out = e.stdout; }
     expect(code).toBe(1);
     expect(out).toMatch(/ERROR .*cannot read.*\/nonexistent\/path\.glb/);
   });
@@ -148,7 +148,7 @@ describe('CLI', () => {
     let code;
     let out;
     try {
-      out = execFileSync('node', ['tools/check-model.mjs', '/nonexistent/path.glb', '--json'], { encoding: 'utf8' });
+      out = execFileSync(process.execPath, ['tools/check-model.mjs', '/nonexistent/path.glb', '--json'], { encoding: 'utf8' });
       code = 0;
     } catch (e) {
       code = e.status;

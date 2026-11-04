@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { parseSelector, nodeIndex, matches, resolveVisibility, unmatchedSelectors,
   modelViewRules, generatedViews, migrateShowModes, resolveViews, primaryLevel, defaultFloors, markerState } from '../src/views.ts';
 import { buildManifest } from '../src/manifest.ts';

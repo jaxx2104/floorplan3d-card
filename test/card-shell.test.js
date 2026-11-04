@@ -1,10 +1,13 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
+// its own window (bun test shares one per environment + options): card-facade defines the real
+// floorplan3d-card-impl, and a custom element registry cannot take the stand-in below after that
+// @vitest-environment-options { "url": "http://localhost:3000/card-shell" }
 // The floorplan3d-card shell: HA's card API without the card module, which it imports on first connect
 // and hosts as a floorplan3d-card-impl child that gets every config and hass.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import '../src/floorplan3d-card.ts';
 
-// jsdom has no WebGL: a stand-in impl records what the shell forwards (the real one is in card-facade)
+// no WebGL in the test DOM: a stand-in impl records what the shell forwards (the real one is in card-facade)
 vi.mock('../src/card-impl.ts', () => {
   class FakeImpl extends HTMLElement {
     constructor() { super(); this.configs = []; this.hasses = []; }

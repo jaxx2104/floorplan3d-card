@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import * as THREE from 'three';
 import { normLightmap, lightmapTexCoord, uvAttribute, bakedRooms, insidePolygon, BAKED_ROOM_SHARE } from '../src/lightmap.ts';
 import { prepareLightmaps, applyLightmap } from '../src/view/indirect.ts';

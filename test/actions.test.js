@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'bun:test';
 import { normAction, resolveActions, actionCall, validateAction, popupLinks, TapSequencer, DOUBLE_TAP_MS } from '../src/actions.ts';
 
 const light = { tap_action: { action: 'toggle' }, hold_action: { action: 'popup' }, popup: ['toggle'] };

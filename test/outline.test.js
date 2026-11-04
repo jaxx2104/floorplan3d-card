@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { outlineFromTriangles, outlineFromRaster, outlineLoops, pickLoop, rasterGrid, outlineFromGrid } from '../src/outline.ts';
 import { pointInPolygon, signedArea } from '../src/placement.ts';
 

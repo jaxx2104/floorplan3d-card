@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { objectTags, controllersOf, budgetGroup, bindObjects, chainState, effectiveGroups, layoutTags, lightBudget } from '../src/objects/logic.ts';
 import { actionTarget, popupRows } from '../src/objects/popup.ts';
 import { resolveActions } from '../src/actions.ts';

@@ -3,7 +3,7 @@
 // with a tagged room group per room, furniture on the "furniture" layer, a thin ceiling slab per
 // storey on the "ceiling" layer (inside the storey above), an exterior level with the outdoor zones,
 // a roof level, model objects (ceiling lamps, a facade lamp group, a spot, a light strip, climate, mower,
-// dock, EV charger) and a window pane on the glass layer. Run: node scripts/make-demo-model.mjs
+// dock, EV charger) and a window pane on the glass layer. Run: bun scripts/make-demo-model.mjs
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import * as THREE from 'three';

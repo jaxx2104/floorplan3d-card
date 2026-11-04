@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import {
   cloudShadowParams, cloudShadowOffset, roomMaskFrame, equalize, shadeDirectional, patchCloudShadow, makeCloudUniforms, shadable,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { GroundCache, GROUND_CELL } from '../src/surface.ts';
 import { outdoorShown } from '../src/views.ts';
 

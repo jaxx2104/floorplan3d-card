@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   snapPoint, floorVertices, nearestEdge, newRoomId, upsertRoom, deleteRoom, moveVertex, insertVertex,
   removeVertex, addDoor, removeDoor, cleanPolygon, setPin, clearPin, hide, unhide, upsertFloor, deleteFloor,

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { compareMaps, bestShift, downGray, autoShare, dockBlob, CLS, pickMower, isDock, autoProcess, framePass, frameState } from '../src/mower-auto.ts';
 import { trackWindow } from '../src/mower-track.ts';
 import { makeTemplate, matchTemplate, grayOf, angleDiff } from '../src/mower-heading.ts';

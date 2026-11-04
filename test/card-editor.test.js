@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-import { describe, it, expect, beforeAll } from 'vitest';
+// @vitest-environment happy-dom
+import { describe, it, expect, beforeAll } from 'bun:test';
 
 // stand-in for HA's ha-form
 class FakeForm extends HTMLElement {}

@@ -1,5 +1,5 @@
 // test/bindings.test.js
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { parseLayout } from '../src/schema/layout.ts';
 import {
   levelsFromFloorMap, resolveLevels, resolveRoomAreas, transformPoint, modelRooms,

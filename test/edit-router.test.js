@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+// @vitest-environment happy-dom
+import { describe, it, expect, vi } from 'bun:test';
 import { clickRoute, keyRoute, onKeyDown, canvasDown, canvasUp, CLICK_SLOP_PX } from '../src/edit/router.ts';
 
 const ed = (o = {}) => ({ tab: 'rooms', view: { model: null }, drawing: null, picking: null, pivoting: false, aligning: null, colorPick: false,

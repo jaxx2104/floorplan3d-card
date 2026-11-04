@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { readTag, buildManifest, gltfAdapter, threeAdapter, summarize } from '../src/manifest.ts';
 
 // tiny tree helper: { name, extras, children }

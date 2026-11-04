@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { mergeGroups, geometrySignature, MAX_MERGE_VERTICES, MAX_MERGE_MESH_M, fnv1a, mergedName, namedGroups } from '../src/merge.ts';
 
 // fake three.js-like nodes

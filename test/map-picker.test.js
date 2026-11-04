@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { fitView, zoomAt, toImage, matchMask } from '../src/map-picker.ts';
 import { medianColor } from '../src/mower-image.ts';
 

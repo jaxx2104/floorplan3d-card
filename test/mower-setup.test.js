@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { setupChecklist, overlayAligned } from '../src/mower-setup.ts';
 
 const states = { 'lawn_mower.m': { state: 'docked' }, 'image.map': { state: 'x' } };

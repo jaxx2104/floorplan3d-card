@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { nodeIndex, resolveVisibility, levelOrders, isOverview, floorLevels, deviceState, defaultViewId, viewCut } from '../src/views.ts';
 import { buildManifest } from '../src/manifest.ts';
 

@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+// @vitest-environment happy-dom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import { LayoutStore } from '../src/storage.ts';
 import { parseLayout, emptyLayout } from '../src/schema/layout.ts';
 

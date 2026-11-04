@@ -155,7 +155,7 @@ view shows which buckets, camera per view, what follows the view).
 `fp.render` on the root node (or the single wrapper, next to `views`) tells the card how the
 model was meant to look. Every key is optional; missing keys keep the card's defaults (shown
 below), unknown keys are ignored, out-of-range numbers are clamped with a warning
-(`pnpm run check-model` lists them). The card option `render: default` ignores the recipe.
+(`bun run check-model` lists them). The card option `render: default` ignores the recipe.
 
 ```js
 house.userData.fp = { render: {
@@ -219,7 +219,7 @@ house.userData.fp = { render: { materials: {
 `none` keeps a material plain even when its name says otherwise. A material is one object for
 every mesh that uses it, so a rule that picks one of its meshes changes all of them. The card
 option `render.materials` takes the same object and comes after the model's (README). Invalid
-selectors or classes are skipped with a warning (`pnpm run check-model` lists them).
+selectors or classes are skipped with a warning (`bun run check-model` lists them).
 
 ### Indirect light: room probes and baked lightmaps (`render: { quality: high }`)
 
@@ -285,7 +285,7 @@ Blender (Cycles), per object or group of objects that shares one lightmap image:
 7. Export glTF Binary (`.glb`) with Include → Custom Properties on, Data → Mesh → UVs on (every UV
    map is exported) and Materials → Export, Images → Automatic (PNG, not JPEG, for smooth
    gradients).
-8. `node tools/check-model.mjs house.glb` lists each lightmap (material, texture, UV set, size) and
+8. `bun tools/check-model.mjs house.glb` lists each lightmap (material, texture, UV set, size) and
    fails for a missing UV set on a mesh, a missing texture, an invalid `fp_lightmap` or a lightmap
    over 4096 px.
 
@@ -414,7 +414,7 @@ don't flicker (z-fighting).
 - [ ] No lights / cameras / helpers in the export. Under ~20 MB, textures ≤ 2048 px.
 - [ ] Baked lightmaps (optional): `fp_lightmap` on the material, the lightmap on TEXCOORD_1 of
       every mesh that uses it, its image not packed with roughness / metallic.
-- [ ] `node tools/check-model.mjs house.glb` reports OK (run it in the floorplan3d-card repository).
+- [ ] `bun tools/check-model.mjs house.glb` reports OK (run it in the floorplan3d-card repository).
 
 ## Example (Three.js)
 

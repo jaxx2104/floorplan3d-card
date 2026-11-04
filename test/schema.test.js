@@ -1,5 +1,5 @@
 // Schema combinators (src/schema/core.ts) and the card YAML contract (src/schema/config.ts).
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import {
   run, object, optional, withDefault, string, number, numeric, boolean, literal, nullable, union, array, record, tuple, map, refine,
   unknownValue, toJson, jsonEqual,

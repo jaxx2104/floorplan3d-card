@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
   isDocked, dockWord, dockFrontAxis, dockPose, trackWindow, fullSearch, layerDue, tileHashes, changedTiles, tileRect, tilesOf,
   throttleStep, effectiveRefresh, mowerStatusText, durationText, rememberPosition, lastPosition, mowerDockGroup, groupedTapId, groupedHidden, dockRows,

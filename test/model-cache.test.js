@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { layoutModelVersion, headerVersion, cacheUrl, cacheBase, lruEvict, progressText, readWithProgress, withTimeout, loadModelBuffer, MODEL_TIMEOUT_MS } from '../src/model-cache.ts';
 
 describe('model cache versions', () => {

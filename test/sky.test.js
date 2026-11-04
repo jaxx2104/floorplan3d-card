@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { moonPosition, moonLight, moonLitRight, domeRadius, SUN_MIN_Y, sunPosition, sliderDate, snapMinutes, hhmm, tzMinutes, SCRUB_IDLE_MS } from '../src/sky.ts';
 
 // Reference: suncalc's published test values (2013-03-05 UTC, 50.5 N, 30.5 E):

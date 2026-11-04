@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { badgeOptions, deviceIndex, platformOf, brandUrl, integrationName, entityOptionLabel, batteryLevel, problemOn, statusKind, badgeInfo } from '../src/badges.ts';
 
 const S = (entity_id, state, attributes = {}) => ({ entity_id, state, attributes });

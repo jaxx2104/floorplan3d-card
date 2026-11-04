@@ -12,7 +12,7 @@
 // errors), never while idle or per frame; per-room light probes only in 'high', captured one room a frame per pass,
 // no capture while idle or on forced / camera frames, one pass (at most two) per input change (a sun step that
 // rebuilds the sky, a lamp switched off); frame time (render + bloom + finish, GPU included) in bounds.
-//   node scripts/perf-check.mjs [--quality-only]
+//   bun scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
 const failures = [];

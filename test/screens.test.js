@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { animOf, screenOn, frameAt, collectScreens, showFrame, setScreenOn } from '../src/screens.ts';
 

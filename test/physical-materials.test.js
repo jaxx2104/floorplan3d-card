@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import * as THREE from 'three';
 import { nameSurface, classifyMaterial, normMaterialRules, ruleMatches } from '../src/material-class.ts';
 import { setSurface, surfaceOf, materialFacts, surfaceCounts, SURFACE_LOOK, GLASS_FRESNEL } from '../src/physical-materials.ts';

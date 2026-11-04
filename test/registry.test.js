@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { buildMarkers, floorsFromHA, iconFor, isActive, displayValue } from '../src/registry.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });

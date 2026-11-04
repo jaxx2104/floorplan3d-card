@@ -1,5 +1,5 @@
 // Headless check of the demo page: fails on page errors, writes screenshots/demo-<view>.png.
-//   node scripts/screenshot.mjs [--view=3d|top] [--floor=id|all] [--out=file] [--logos=0]
+//   bun scripts/screenshot.mjs [--view=3d|top] [--floor=id|all] [--out=file] [--logos=0]
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDemo, root } from './lib/demo-browser.mjs';
