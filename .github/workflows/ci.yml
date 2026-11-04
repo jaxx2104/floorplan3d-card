@@ -6,6 +6,8 @@ on:
   pull_request:
 
 jobs:
+  # static checks, unit tests and the bundle: seconds; the slow part is the headless browser checks below,
+  # so they run as parallel jobs (the critical path is the slowest one, not their sum)
   card:
     runs-on: ubuntu-latest
     steps:
@@ -19,26 +21,24 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Headless browser checks (demo, edit mode, mower map benchmark)
-        run: node scripts/screenshot.mjs && node scripts/edit-check.mjs && (node scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && node scripts/perf-check.mjs))
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: card
           path: |
             dist/floorplan3d-card.js
             dist/chunks/
-            screenshots/
 
-  # the model checks in 3 shards (section groups), each retried once on a slow shared runner
-  model-check:
+  # demo screenshots, edit mode, perf (each retried once where timing on a slow shared runner can flake)
+  browser:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        check:
+          - { name: screenshot, run: node scripts/screenshot.mjs }
+          - { name: edit-check, run: node scripts/edit-check.mjs }
+          - { name: perf-check, run: 'node scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && node scripts/perf-check.mjs)' }
+    name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,8 +47,34 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Model checks (shard ${{ matrix.shard }} of 3)
-        run: node scripts/model-check.mjs --shard ${{ matrix.shard }}/3 || (echo "model-check retry (slow shared runner timing)" && node scripts/model-check.mjs --shard ${{ matrix.shard }}/3)
+      - run: ${{ matrix.check.run }}
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-${{ matrix.check.name }}
+          path: screenshots/
+          if-no-files-found: ignore
+
+  # the model checks, one shard per section group (7 today; --shard k/7 takes every 7th group, so a new
+  # group still runs, in a shard with another), each retried once on a slow shared runner
+  model-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Model checks (shard ${{ matrix.shard }} of 7)
+        run: node scripts/model-check.mjs --shard ${{ matrix.shard }}/7 || (echo "model-check retry (slow shared runner timing)" && node scripts/model-check.mjs --shard ${{ matrix.shard }}/7)
         env:
           CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4
@@ -65,10 +91,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
       - name: Install Home Assistant test harness
         run: |
-          pip install -r requirements-test.txt
+          uv pip install --system -r requirements-test.txt
           # the frontend package matching the installed core, needed by the frontend dependency
           FRONTEND=$(python -c "import json, importlib.resources as r; print(json.load(open(r.files('homeassistant') / 'components/frontend/manifest.json'))['requirements'][0])")
-          pip install "$FRONTEND"
+          uv pip install --system "$FRONTEND"
       - run: python -m pytest -q
