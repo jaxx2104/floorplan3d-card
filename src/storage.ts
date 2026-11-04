@@ -4,8 +4,13 @@
 // 3. browser localStorage (last resort)
 
 import { migrateModel } from './bindings.js';
+import type { Hass } from './types/ha.js';
+import type { Layout, LayoutModel } from './types/layout.js';
 
-export const EMPTY_LAYOUT = () => ({
+/** Where layouts are saved: the companion integration, HA user data, or this browser. */
+export type StorageBackend = 'shared' | 'user' | 'browser';
+
+export const EMPTY_LAYOUT = (): Layout => ({
   version: 1,
   floors: [],
   rooms: [],
@@ -15,17 +20,22 @@ export const EMPTY_LAYOUT = () => ({
 });
 
 export class LayoutStore {
-  constructor(key) {
+  key: string;
+  backend: StorageBackend | null;
+  _timer: ReturnType<typeof setTimeout> | null;
+  _pending: ((ok: boolean) => void) | null;
+
+  constructor(key?: string | null) {
     this.key = key || 'default';
     this.backend = null;
     this._timer = null;
     this._pending = null;
   }
 
-  async load(hass) {
-    let shared;
+  async load(hass: Pick<Hass, 'callWS'>): Promise<Layout> {
+    let shared: unknown;
     try {
-      const r = await hass.callWS({ type: 'floorplan3d/layout/get', key: this.key });
+      const r = await hass.callWS<{ layout?: unknown } | null>({ type: 'floorplan3d/layout/get', key: this.key });
       shared = r && r.layout;
       this.backend = 'shared';
     } catch (e) { /* integration not installed */ }
@@ -38,16 +48,16 @@ export class LayoutStore {
     return normalise(this._browser());
   }
 
-  async _userData(hass) {
+  async _userData(hass: Pick<Hass, 'callWS'>): Promise<{ ok: boolean; value: unknown }> {
     try {
-      const r = await hass.callWS({ type: 'frontend/get_user_data', key: 'floorplan3d_' + this.key });
+      const r = await hass.callWS<{ value?: unknown } | null>({ type: 'frontend/get_user_data', key: 'floorplan3d_' + this.key });
       return { ok: true, value: r && r.value };
     } catch (e) {
       return { ok: false, value: null };
     }
   }
 
-  _browser() {
+  _browser(): unknown {
     try {
       return JSON.parse(localStorage.getItem('floorplan3d_' + this.key) || 'null');
     } catch (e) {
@@ -55,11 +65,11 @@ export class LayoutStore {
     }
   }
 
-  save(hass, layout, delay = 600) {
-    clearTimeout(this._timer);
+  save(hass: Pick<Hass, 'callWS'>, layout: Layout, delay = 600): Promise<boolean> {
+    clearTimeout(this._timer ?? undefined);
     // a newer save replaces this one; settle the old promise so callers don't hang
     if (this._pending) this._pending(false);
-    return new Promise((resolve) => {
+    return new Promise<boolean>((resolve) => {
       this._pending = resolve;
       this._timer = setTimeout(async () => {
         this._pending = null;
@@ -81,21 +91,24 @@ export class LayoutStore {
   }
 }
 
-export function normalise(l) {
+// Stored JSON (any shape: older versions, hand edits, imports) -> a Layout with the arrays and maps present.
+export function normalise(input: unknown): Layout {
   const base = EMPTY_LAYOUT();
-  if (!l || typeof l !== 'object') return base;
-  const out = {
+  if (!input || typeof input !== 'object') return base;
+  const l = input as Partial<Layout>; // fields checked one by one below
+  const out: Layout = {
     ...base,
     ...l,
     floors: Array.isArray(l.floors) ? l.floors : [],
     rooms: Array.isArray(l.rooms) ? l.rooms : [],
     pins: l.pins && typeof l.pins === 'object' ? l.pins : {},
     hidden: Array.isArray(l.hidden) ? l.hidden : [],
-    model: migrateModel(l.model || null),
+    model: migrateModel(l.model || null) as LayoutModel | null,
   };
   // object bindings / tag settings: plain objects or absent (readers default to none)
-  for (const k of ['objects', 'groups', 'tags']) {
-    if (k in out && !(out[k] && typeof out[k] === 'object' && !Array.isArray(out[k]))) delete out[k];
+  for (const k of ['objects', 'groups', 'tags'] as const) {
+    const v = out[k];
+    if (k in out && !(v && typeof v === 'object' && !Array.isArray(v))) delete out[k];
   }
   // pre-0.4.5 group controllers are tags now (layout.tags wins over a leftover groups entry)
   if (out.groups) { out.tags = { ...out.groups, ...out.tags }; delete out.groups; }

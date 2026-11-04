@@ -1,29 +1,42 @@
 // The mower's device entities (pure): static map / mower picture / error code auto-detection,
 // progress, connectivity, rain, and the automatic popup rows. hass: { states, entities }.
 
-const lc = (s) => String(s || '').toLowerCase();
-// "Zone A Area" / zone_a_area -> "zone a area" (spaces for _ and repeated blanks)
-export const words = (s) => lc(s).replace(/[_\s]+/g, ' ').trim();
+import type { Hass, HassEntity } from './types/ha.js';
 
-export function deviceOf(hass, eid) {
+/** The parts of hass the device lookups read. */
+export type DeviceHass = Pick<Hass, 'states' | 'entities'>;
+
+export interface DeviceRow {
+  key: string;
+  label: string;
+  value: string;
+  entity: string;
+}
+
+const lc = (s: unknown): string => String(s || '').toLowerCase();
+// "Zone A Area" / zone_a_area -> "zone a area" (spaces for _ and repeated blanks)
+export const words = (s: unknown): string => lc(s).replace(/[_\s]+/g, ' ').trim();
+
+export function deviceOf(hass: Partial<DeviceHass> | null | undefined, eid: string): string | null {
   const e = hass && hass.entities && hass.entities[eid];
   return (e && e.device_id) || null;
 }
 
-export function deviceEntities(hass, deviceId) {
+export function deviceEntities(hass: Partial<DeviceHass> | null | undefined, deviceId: string | null | undefined): string[] {
   if (!deviceId || !hass || !hass.entities) return [];
-  return Object.keys(hass.entities).filter((eid) => hass.entities[eid] && hass.entities[eid].device_id === deviceId && (!hass.states || hass.states[eid]));
+  const reg = hass.entities, states = hass.states;
+  return Object.keys(reg).filter((eid) => reg[eid] && reg[eid].device_id === deviceId && (!states || states[eid]));
 }
 
 // id + friendly name, normalised: what keyword matching looks at
-export function label(hass, eid) {
+export function label(hass: Partial<DeviceHass>, eid: string): string {
   const st = hass.states && hass.states[eid];
   const reg = hass.entities && hass.entities[eid];
   return words(`${eid.split('.')[1] || eid} ${(reg && (reg.name || reg.original_name)) || ''} ${(st && st.attributes && st.attributes.friendly_name) || ''}`);
 }
 
 // Entities of the device of any of `from` (first one with a device), in id order.
-export function mowerDevice(hass, ...from) {
+export function mowerDevice(hass: Partial<DeviceHass> | null | undefined, ...from: (string | null | undefined)[]): { deviceId: string | null; entities: string[] } {
   for (const e of from) {
     const d = e && deviceOf(hass, e);
     if (d) return { deviceId: d, entities: deviceEntities(hass, d).sort() };
@@ -31,11 +44,11 @@ export function mowerDevice(hass, ...from) {
   return { deviceId: null, entities: [] };
 }
 
-const firstMatch = (hass, list, re, domain) => list.find((eid) => (!domain || eid.startsWith(domain + '.')) && re.test(label(hass, eid))) || null;
+const firstMatch = (hass: DeviceHass, list: string[], re: RegExp, domain?: string): string | null => list.find((eid) => (!domain || eid.startsWith(domain + '.')) && re.test(label(hass, eid))) || null;
 
 // The static lawn map: an image.* of the live map's (else the mower's) device whose id / name ends in
 // "map" and is not the live map, the mower picture or a wifi map.
-export function findStaticMap(hass, liveEntity, mowerEntity) {
+export function findStaticMap(hass: DeviceHass, liveEntity: string | null | undefined, mowerEntity: string | null | undefined): string | null {
   const { entities } = mowerDevice(hass, liveEntity, mowerEntity);
   return entities.find((eid) => {
     if (!eid.startsWith('image.') || eid === liveEntity) return false; // the live map by its id
@@ -45,23 +58,23 @@ export function findStaticMap(hass, liveEntity, mowerEntity) {
   }) || null;
 }
 
-export function findMowerPicture(hass, liveEntity, mowerEntity) {
+export function findMowerPicture(hass: DeviceHass, liveEntity: string | null | undefined, mowerEntity: string | null | undefined): string | null {
   const { entities } = mowerDevice(hass, mowerEntity, liveEntity);
   return firstMatch(hass, entities, /mower image/, 'image');
 }
 
-export function findErrorEntity(hass, mowerEntity) {
+export function findErrorEntity(hass: DeviceHass, mowerEntity: string | null | undefined): string | null {
   const { entities } = mowerDevice(hass, mowerEntity);
   return firstMatch(hass, entities, /error ?code/, 'sensor');
 }
 
 // The "Mower status" sensor (Docked / Charging / Working ...) of the mower's device.
-export function findStatusEntity(hass, mowerEntity) {
+export function findStatusEntity(hass: DeviceHass, mowerEntity: string | null | undefined): string | null {
   const { entities } = mowerDevice(hass, mowerEntity);
   return firstMatch(hass, entities, /mower status|robot status/, 'sensor');
 }
 
-export function findProgress(hass, mowerEntity) {
+export function findProgress(hass: DeviceHass, mowerEntity: string | null | undefined): string | null {
   const { entities } = mowerDevice(hass, mowerEntity);
   return entities.find((eid) => {
     if (!eid.startsWith('sensor.') || !/progress/.test(label(hass, eid))) return false;
@@ -72,22 +85,24 @@ export function findProgress(hass, mowerEntity) {
 }
 
 // Mowing progress 0..1 from the progress sensor, or null.
-export function progressValue(hass, eid) {
+export function progressValue(hass: Pick<Hass, 'states'>, eid: string | null | undefined): number | null {
   const st = eid && hass.states[eid];
   const n = st ? Number(st.state) : NaN;
   return Number.isFinite(n) ? Math.max(0, Math.min(1, n / 100)) : null;
 }
 
-const isNum = (v) => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
-const unitOf = (st) => (st && st.attributes && st.attributes.unit_of_measurement) || '';
-const fmtState = (st) => {
+const isNum = (v: unknown): boolean => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v));
+const unitOf = (st: HassEntity | null | undefined): string => (st && st.attributes && st.attributes.unit_of_measurement) || '';
+const fmtState = (st: HassEntity | null | undefined): string => {
   if (!st) return '';
   if (isNum(st.state)) { const n = Number(st.state), u = unitOf(st); return `${Math.round(n * 10) / 10}${u ? (u === '%' ? ' %' : ' ' + u) : ''}`; }
   return String(st.state);
 };
 
 // Connectivity binary sensor of the device: { entity, online, since (last_changed) } or null.
-export function connectivity(hass, mowerEntity) {
+export function connectivity(
+  hass: DeviceHass, mowerEntity: string | null | undefined,
+): { entity: string; online: boolean | null; since: string | null } | null {
   const { entities } = mowerDevice(hass, mowerEntity);
   const eid = entities.find((e) => e.startsWith('binary_sensor.') && ((hass.states[e].attributes || {}).device_class === 'connectivity' || /online|connect/.test(label(hass, e))));
   if (!eid) return null;
@@ -100,10 +115,12 @@ export function connectivity(hass, mowerEntity) {
 // Sunseeker: sensor "Rain sensor" = dry | dry_countdown | wet; binary_sensor "Rain sensor active" only
 // says the sensor is enabled, and delay / countdown sensors are minutes, so neither is the status.
 const RAIN_SETTING = /\b(active|enabled?|delay|wait|countdown|left|duration)\b/;
-export function rain(hass, mowerEntity) {
+export function rain(
+  hass: DeviceHass, mowerEntity: string | null | undefined,
+): { entity: string; wet: boolean; drying: number | null; state: string } | null {
   const { entities } = mowerDevice(hass, mowerEntity);
   const rainy = entities.filter((e) => /rain/.test(label(hass, e)));
-  const attrs = (e) => hass.states[e].attributes || {};
+  const attrs = (e: string): Record<string, unknown> => hass.states[e].attributes || {};
   const eid = rainy.find((e) => e.startsWith('sensor.') && !RAIN_SETTING.test(label(hass, e)) && !isNum(hass.states[e].state))
     || rainy.find((e) => e.startsWith('binary_sensor.') && (attrs(e).device_class === 'moisture' || !RAIN_SETTING.test(label(hass, e))));
   if (!eid) return null;
@@ -116,19 +133,25 @@ export function rain(hass, mowerEntity) {
 }
 
 // Zone entities of the current work region: "Zone A Area", "Zone A Estimated time", "Zone A Started" ...
-export function zoneEntities(hass, entities, region) {
+export interface ZoneEntities {
+  area?: string | null;
+  estimated?: string | null;
+  started?: string | null;
+  finished?: string | null;
+}
+export function zoneEntities(hass: DeviceHass, entities: string[], region: unknown): ZoneEntities {
   const r = words(region);
   if (!r || r === 'unknown' || r === 'unavailable') return {};
   // whole words: "zone 1" is not "zone 10", "zone a" is not "zone area"
   const mine = entities.filter((e) => ` ${label(hass, e)} `.includes(` ${r} `));
-  const pick = (re, domain) => mine.find((e) => (!domain || e.startsWith(domain + '.')) && re.test(label(hass, e))) || null;
+  const pick = (re: RegExp, domain?: string): string | null => mine.find((e) => (!domain || e.startsWith(domain + '.')) && re.test(label(hass, e))) || null;
   return {
     area: pick(/area/, 'sensor'), estimated: pick(/estimat/, 'sensor'),
     started: pick(/start/), finished: pick(/finish/),
   };
 }
 
-const ROWS = [
+const ROWS: [string, string, (h: DeviceHass, e: string) => boolean][] = [
   ['status', 'Mower status', (h, e) => e.startsWith('sensor.') && /(mower|robot) status/.test(label(h, e))],
   ['progress', 'Progress', (h, e) => e.startsWith('sensor.') && /progress/.test(label(h, e))],
   ['battery', 'Battery', (h, e) => e.startsWith('sensor.') && ((h.states[e].attributes || {}).device_class === 'battery' || /battery/.test(label(h, e)))],
@@ -142,12 +165,12 @@ const ROWS = [
 ];
 
 // Automatic popup rows from the mower's device: [{ key, label, value, entity }], each only when present.
-export function deviceRows(hass, mowerEntity, now = Date.now()) {
+export function deviceRows(hass: DeviceHass, mowerEntity: string, now = Date.now()): DeviceRow[] {
   const { entities } = mowerDevice(hass, mowerEntity);
   if (!entities.length) return [];
   const used = new Set([mowerEntity]);
-  const out = [];
-  const found = {};
+  const out: DeviceRow[] = [];
+  const found: Record<string, string> = {};
   for (const [key, lab, test] of ROWS) {
     const eid = entities.find((e) => !used.has(e) && !(hass.entities[e] || {}).hidden && test(hass, e));
     if (!eid) continue;
@@ -171,7 +194,7 @@ export function deviceRows(hass, mowerEntity, now = Date.now()) {
     const region = hass.states[found.region].state;
     const z = zoneEntities(hass, entities.filter((e) => !used.has(e)), region);
     const at = out.findIndex((x) => x.key === 'region') + 1;
-    const extra = [];
+    const extra: DeviceRow[] = [];
     if (z.area) extra.push({ key: 'zone_area', label: `${region} area`, value: fmtState(hass.states[z.area]), entity: z.area });
     if (z.estimated) {
       const est = hass.states[z.estimated];
@@ -186,7 +209,7 @@ export function deviceRows(hass, mowerEntity, now = Date.now()) {
   return out;
 }
 
-export function sinceText(iso, now = Date.now()) {
+export function sinceText(iso: string, now = Date.now()): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return String(iso);
   const m = Math.max(0, Math.round((now - t) / 60000));

@@ -1,9 +1,13 @@
 // Weather: cloud coverage from a weather entity, its effect on the light, and the sky keep-out (sun / moon discs).
 
-const clamp01 = (x) => Math.max(0, Math.min(1, x));
+import type { HassEntity } from './types/ha.js';
+
+type Pt = number[];
+
+const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 // Coverage (%) per condition when the entity has no numeric cloud_coverage.
-const CONDITION_COVERAGE = {
+const CONDITION_COVERAGE: Record<string, number> = {
   sunny: 0, 'clear-night': 0, partlycloudy: 40, cloudy: 85,
   fog: 100, rainy: 100, pouring: 100, snowy: 100, 'snowy-rainy': 100, lightning: 100,
   'lightning-rainy': 100, hail: 100, 'windy-variant': 100, windy: 30, exceptional: 50,
@@ -13,7 +17,7 @@ const CONDITION_COVERAGE = {
 export const COVERAGE_STEP = 5;
 
 // Coverage 0..100 of a weather state object (0 without one).
-export function cloudCoverage(st) {
+export function cloudCoverage(st: HassEntity | null | undefined): number {
   if (!st) return 0;
   const raw = st.attributes ? st.attributes.cloud_coverage : undefined;
   const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
@@ -22,16 +26,16 @@ export function cloudCoverage(st) {
 }
 
 // Wind speed (m/s) of a weather entity's state from wind_speed and wind_speed_unit (km/h when missing), else 0.
-const WIND_UNIT_MS = { 'm/s': 1, 'km/h': 1 / 3.6, mph: 0.44704, kn: 0.514444, 'ft/s': 0.3048 };
-export function windSpeed(st) {
+const WIND_UNIT_MS: Record<string, number> = { 'm/s': 1, 'km/h': 1 / 3.6, mph: 0.44704, kn: 0.514444, 'ft/s': 0.3048 };
+export function windSpeed(st: HassEntity | null | undefined): number {
   const a = st && st.attributes;
   const v = a ? Number(a.wind_speed) : NaN;
-  if (!Number.isFinite(v) || v < 0) return 0;
-  return v * (WIND_UNIT_MS[a.wind_speed_unit] ?? WIND_UNIT_MS['km/h']);
+  if (!a || !Number.isFinite(v) || v < 0) return 0;
+  return v * (WIND_UNIT_MS[String(a.wind_speed_unit)] ?? WIND_UNIT_MS['km/h']);
 }
 
 // The weather entity: option weather (entity id | 'none' | false), default the first weather.* entity.
-export function weatherEntity(config, states) {
+export function weatherEntity(config: { weather?: unknown } | null | undefined, states: Record<string, unknown> | null | undefined): string | null {
   const opt = config ? config.weather : undefined;
   if (opt === 'none' || opt === false) return null;
   if (typeof opt === 'string' && opt) return opt;
@@ -41,7 +45,7 @@ export function weatherEntity(config, states) {
 
 // Light factors for coverage (%) and night 0..1: sun intensity, sun shadow radius / intensity,
 // hemisphere fill (by day only), sun disc opacity, moon disc and moonlight.
-export function cloudLight(coverage, night = 0) {
+export function cloudLight(coverage: unknown, night: unknown = 0): { sun: number; shadowRadius: number; shadowIntensity: number; hemi: number; sunDisc: number; moon: number } {
   const c = clamp01((Number(coverage) || 0) / 100), day = 1 - clamp01(Number(night) || 0);
   return {
     sun: 1 - 0.75 * c,
@@ -55,7 +59,7 @@ export function cloudLight(coverage, night = 0) {
 
 
 // True when the coverage moved enough to re-apply (first value, >= 5 points, or reaching 0 / 100).
-export function coverageChanged(last, next) {
+export function coverageChanged(last: number | null | undefined, next: number): boolean {
   if (last === null || last === undefined) return true;
   if (next === last) return false;
   return Math.abs(next - last) >= COVERAGE_STEP || next === 0 || next === 100;
@@ -68,12 +72,12 @@ export const SKY_CLEAR = 1;
 export const SKY_TOUCH = 0.2;
 
 // Convex hull of 2D points [[x, y], ...] (monotone chain), counter-clockwise in a y-up frame.
-export function convexHull(points) {
-  const p = points.map((q) => [q[0], q[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+export function convexHull(points: Pt[]): Pt[] {
+  const p = points.map((q): Pt => [q[0], q[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   if (p.length < 3) return p;
-  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const half = (list) => {
-    const h = [];
+  const cross = (o: Pt, a: Pt, b: Pt): number => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list: Pt[]): Pt[] => {
+    const h: Pt[] = [];
     for (const q of list) {
       while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
       h.push(q);
@@ -85,7 +89,7 @@ export function convexHull(points) {
 }
 
 // Signed distance from a point to a convex polygon (from convexHull): > 0 outside, < 0 inside.
-export function hullDistance(hull, pt) {
+export function hullDistance(hull: Pt[] | null | undefined, pt: Pt): number {
   if (!hull || !hull.length) return Infinity;
   if (hull.length === 1) return Math.hypot(pt[0] - hull[0][0], pt[1] - hull[0][1]);
   let out = -Infinity, edge = Infinity, inside = true;
@@ -102,7 +106,7 @@ export function hullDistance(hull, pt) {
 }
 
 // Opacity factor 0..1 of a sky sprite with screen radius r (px) at signed distance dist from the rooms.
-export function skyKeepOut(dist, r) {
+export function skyKeepOut(dist: number, r: unknown): number {
   if (!Number.isFinite(dist)) return 1;
   const rr = Math.max(1, Number(r) || 0);
   return clamp01((dist - SKY_TOUCH * rr) / ((SKY_CLEAR - SKY_TOUCH) * rr));

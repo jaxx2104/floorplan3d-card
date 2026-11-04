@@ -10,17 +10,29 @@
 // 2 points -> similarity transform (shift, rotate, uniform scale)
 // 3+ points -> least-squares affine transform
 
+import type { Hass, HassEntity } from './types/ha.js';
+import type { LayoutMower, MowerCalibrationPoint, PlanPoint } from './types/layout.js';
+
 const R_EARTH = 6378137;
 
+/** A position reading: planar map coordinates (xy source) or a GPS fix. */
+export type MowerReading =
+  | { u: number; v: number; raw?: PlanPoint; lat?: undefined; lon?: undefined }
+  | { lat: number; lon: number; raw?: PlanPoint };
+/** Reading -> plan point [x, y] (null when there is no reading). */
+export type MowerTransform = (reading: MowerReading | null | undefined) => PlanPoint | null;
+type SourceKind = 'gps' | 'xy';
+type ReadCfg = Pick<LayoutMower, 'source' | 'x_attr' | 'y_attr' | 'track_attr'>;
+
 // Number() turns null and '' into 0, which would put the mower at the origin.
-function num(v) {
+function num(v: unknown): number {
   if (v === null || v === undefined || v === '') return NaN;
   return Number(v);
 }
 
-export function readSource(stateObj, cfg) {
+export function readSource(stateObj: HassEntity | null | undefined, cfg: ReadCfg): MowerReading | null {
   if (!stateObj) return null;
-  const a = stateObj.attributes || {};
+  const a: Record<string, unknown> = stateObj.attributes || {};
   if ((cfg.source || 'gps') === 'xy') {
     const u = num(a[cfg.x_attr || 'x']);
     const v = num(a[cfg.y_attr || 'y']);
@@ -38,15 +50,15 @@ export function readSource(stateObj, cfg) {
 
 // The path driven so far, from an xy source's track_attr: [[[u, v], ...], ...] (one list per segment,
 // a flat [[u, v], ...] is one segment) -> segments of readings for the transform, or null.
-export function readTrack(stateObj, cfg) {
+export function readTrack(stateObj: HassEntity | null | undefined, cfg: ReadCfg): { u: number; v: number }[][] | null {
   if (!stateObj || cfg.source !== 'xy' || !cfg.track_attr) return null;
   const raw = (stateObj.attributes || {})[cfg.track_attr];
   if (!Array.isArray(raw) || !raw.length) return null;
-  const segs = Array.isArray(raw[0]) && Array.isArray(raw[0][0]) ? raw : [raw];
-  const out = [];
+  const segs: unknown[] = Array.isArray(raw[0]) && Array.isArray(raw[0][0]) ? raw : [raw];
+  const out: { u: number; v: number }[][] = [];
   for (const seg of segs) {
     if (!Array.isArray(seg)) continue;
-    const pts = [];
+    const pts: { u: number; v: number }[] = [];
     for (const p of seg) {
       const u = Array.isArray(p) ? num(p[0]) : NaN, v = Array.isArray(p) ? num(p[1]) : NaN;
       if (Number.isFinite(u) && Number.isFinite(v)) pts.push({ u, v });
@@ -57,7 +69,7 @@ export function readTrack(stateObj, cfg) {
 }
 
 // Convert a reading to planar (u, v) metres. For gps, origin = first calibration point.
-export function toPlanar(reading, origin) {
+export function toPlanar(reading: MowerReading | null | undefined, origin?: { lat: number; lon: number } | null): PlanPoint | null {
   if (!reading) return null;
   if (reading.lat === undefined) return [reading.u, reading.v];
   const o = origin || { lat: reading.lat, lon: reading.lon };
@@ -67,16 +79,17 @@ export function toPlanar(reading, origin) {
 }
 
 // Fit a transform from calibration points. Returns f([u,v]) -> [x,y] or null.
-export function fitTransform(points, sourceKind) {
+export function fitTransform(points: MowerCalibrationPoint[] | null | undefined, sourceKind: SourceKind | string | undefined): MowerTransform | null {
   if (!points || !points.length) return null;
   const origin = sourceKind === 'xy' ? null : { lat: points[0].src[0], lon: points[0].src[1] };
-  const rd = (src) => (sourceKind === 'xy' ? { u: src[0], v: src[1] } : { lat: src[0], lon: src[1] });
-  const pairs = points.map((p) => ({ s: toPlanar(rd(p.src), origin), d: p.plan }));
+  const rd = (src: PlanPoint): MowerReading => (sourceKind === 'xy' ? { u: src[0], v: src[1] } : { lat: src[0], lon: src[1] });
+  // toPlanar only returns null for a missing reading; rd() always builds one
+  const pairs = points.map((p) => ({ s: toPlanar(rd(p.src), origin)!, d: p.plan }));
 
-  let f;
+  let f: (s: PlanPoint) => PlanPoint;
   if (pairs.length === 1) {
     const { s, d } = pairs[0];
-    f = ([u, v]) => [d[0] + (u - s[0]), d[1] + (v - s[1])];
+    f = ([u, v]): PlanPoint => [d[0] + (u - s[0]), d[1] + (v - s[1])];
   } else if (pairs.length === 2) {
     // similarity via complex numbers: d = a*s + b
     const [p, q] = pairs;
@@ -87,10 +100,10 @@ export function fitTransform(points, sourceKind) {
     const ai = (dv * su - du * sv) / den;
     const br = p.d[0] - (ar * p.s[0] - ai * p.s[1]);
     const bi = p.d[1] - (ar * p.s[1] + ai * p.s[0]);
-    f = ([u, v]) => [ar * u - ai * v + br, ar * v + ai * u + bi];
+    f = ([u, v]): PlanPoint => [ar * u - ai * v + br, ar * v + ai * u + bi];
   } else {
     // affine least squares: x = a u + b v + c ; y = d u + e v + f
-    const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    const A: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     const bx = [0, 0, 0], by = [0, 0, 0];
     for (const { s, d } of pairs) {
       const r = [s[0], s[1], 1];
@@ -102,15 +115,15 @@ export function fitTransform(points, sourceKind) {
     }
     const cx = solve3(A, bx), cy = solve3(A, by);
     if (!cx || !cy) return fitTransform(points.slice(0, 2), sourceKind);
-    f = ([u, v]) => [cx[0] * u + cx[1] * v + cx[2], cy[0] * u + cy[1] * v + cy[2]];
+    f = ([u, v]): PlanPoint => [cx[0] * u + cx[1] * v + cx[2], cy[0] * u + cy[1] * v + cy[2]];
   }
-  return (reading) => {
+  return (reading: MowerReading | null | undefined) => {
     const s = toPlanar(reading, origin);
     return s ? f(s) : null;
   };
 }
 
-function solve3(A, b) {
+function solve3(A: number[][], b: number[]): [number, number, number] | null {
   const m = A.map((row, i) => [...row, b[i]]);
   for (let c = 0; c < 3; c++) {
     let p = c;
@@ -127,8 +140,9 @@ function solve3(A, b) {
 }
 
 // Image URL for an image.* or camera.* entity (entity_picture carries the access token).
-export function overlayUrl(hass, entityId, bust) {
-  const st = hass && hass.states[entityId];
+export function overlayUrl(hass: Hass | null | undefined, entityId: string | null | undefined, bust?: number | string | null): string | null {
+  if (!hass || !entityId) return null;
+  const st = hass.states[entityId];
   if (!st || !st.attributes.entity_picture) return null;
   if (/^(data|blob):/.test(st.attributes.entity_picture)) return st.attributes.entity_picture; // immutable, no base
   const url = hass.hassUrl ? hass.hassUrl(st.attributes.entity_picture) : st.attributes.entity_picture;
@@ -138,12 +152,13 @@ export function overlayUrl(hass, entityId, bust) {
 
 // Root mean square distance (metres) between calibration plan points and where the fitted
 // transform puts their readings. 0 for 1-2 points (they fit exactly).
-export function calibrationError(points, sourceKind) {
+export function calibrationError(points: MowerCalibrationPoint[], sourceKind: SourceKind | string | undefined): number {
   const f = fitTransform(points, sourceKind);
   if (!f || points.length < 3) return 0;
   let sum = 0;
   for (const p of points) {
     const q = f(sourceKind === 'xy' ? { u: p.src[0], v: p.src[1] } : { lat: p.src[0], lon: p.src[1] });
+    if (!q) continue; // unreachable: f only returns null without a reading
     sum += (q[0] - p.plan[0]) ** 2 + (q[1] - p.plan[1]) ** 2;
   }
   return Math.sqrt(sum / points.length);
@@ -151,9 +166,9 @@ export function calibrationError(points, sourceKind) {
 
 // Position on the plan for the current reading, or null. Without calibration, xy readings are
 // taken as plan metres; gps needs at least one calibration point.
-export function mowerTransform(cfg) {
+export function mowerTransform(cfg: Pick<LayoutMower, 'source' | 'calibration'>): MowerTransform | null {
   const kind = cfg.source === 'xy' ? 'xy' : 'gps';
   const pts = cfg.calibration || [];
   if (pts.length) return fitTransform(pts, kind);
-  return kind === 'xy' ? (r) => (r ? [r.u, r.v] : null) : null;
+  return kind === 'xy' ? (r) => (r && r.lat === undefined ? [r.u, r.v] : null) : null;
 }

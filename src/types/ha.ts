@@ -30,6 +30,7 @@ export interface HassEntityRegistryEntry {
   area_id?: string | null;
   platform?: string;
   name?: string | null;
+  original_name?: string | null;
   icon?: string | null;
   labels?: string[];
   hidden?: boolean;

@@ -3,29 +3,160 @@
 // live map adds mowed stripes (lighter green), the mower icon and the dock icon. Pixels that did not
 // change are drawn transparent; mowed stripes light; no-mow shaded; icons hidden.
 import { headingKernel } from './mower-heading.js';
+import type { HeadingKernel, HeadingTemplate, TemplateMatch, TurnedPatch } from './mower-heading.js';
 import { mapKernel, registerAuto } from './mower-image.js';
+import type { MapKernel, Pixels } from './mower-image.js';
 import { tileKernel } from './mower-track.js';
+import type { PixelRect, TileKernel } from './mower-track.js';
+
+/** Offset of the live map against the static one (px). */
+export interface Shift {
+  dx: number;
+  dy: number;
+}
+export interface ClassCounts {
+  mowed: number;
+  lawn: number;
+  nomow: number;
+  icon: number;
+}
+export interface ClassifyOptions {
+  same?: number;
+  gain?: number;
+}
+export interface CompareOptions extends ClassifyOptions {
+  minBlob?: number;
+  maxBlob?: number;
+}
+/** A changed area that may be an icon (mower / dock); id = index + 1 after sorting. */
+export interface AutoBlob {
+  id?: number;
+  px: number;
+  py: number;
+  count: number;
+  grey: boolean;
+  idx: Int32Array;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+export interface CompareResult extends ClassCounts {
+  cls: Uint8Array;
+  mowedMask: Uint8Array;
+  data: Uint8ClampedArray;
+  changed: number;
+  mismatch: boolean;
+  label: Int32Array;
+  blobs: AutoBlob[];
+}
+/** Where the mower is on the live map (working pixels). */
+export interface MowerPose {
+  px: number;
+  py: number;
+  count: number;
+  angle: number | null;
+  source: 'picture' | 'icon' | null;
+  score: number | null;
+}
+export interface PickContext {
+  prev?: number[] | null;
+  expected?: number | null;
+  prevGrey?: number[][] | null;
+  dockAt?: number[] | null;
+  cache?: Map<string, TurnedPatch> | null;
+  leaving?: boolean;
+}
+export interface FindContext extends PickContext {
+  minBlob?: number;
+  maxBlob?: number;
+  template?: HeadingTemplate | null;
+}
+export interface FindResult {
+  pose: MowerPose | null;
+  b: AutoBlob | null;
+  blobs: AutoBlob[];
+}
+export interface AutoContext extends FindContext {
+  shift?: Shift | null;
+  detect?: boolean;
+}
+export interface AutoResult extends ClassCounts {
+  data: Uint8ClampedArray;
+  changed: number;
+  mismatch: boolean;
+  share: number | null;
+  angle: number | null;
+  grey: number[][];
+  pose: MowerPose | null;
+  dock: number[] | null;
+}
+export interface FrameContext extends FindContext {
+  shift?: Shift | null;
+  statKey?: unknown;
+  detect?: boolean;
+  layer?: boolean;
+  window?: PixelRect | null;
+  full?: boolean;
+}
+export interface FrameResult {
+  same: boolean;
+  full: boolean;
+  pose: MowerPose | null;
+  grey: number[][] | undefined;
+  dock: number[] | null | undefined;
+  mismatch: boolean;
+  share: number | null;
+  angle: number | null;
+  changed: number;
+  patches: { rects: number[][]; data: Uint8ClampedArray } | null;
+}
+/** State framePass keeps between refreshes (buffers allocated per size / shift / static map). */
+export interface FrameState {
+  w: number;
+  h: number;
+  cls: Uint8Array | null;
+  mowedMask: Uint8Array | null;
+  data: Uint8ClampedArray | null;
+  tc: Int32Array | null;
+  hashes: Uint32Array | null;
+  detHashes: Uint32Array | null;
+  mismatch: boolean;
+  share: number | null;
+  angle: number | null;
+  dcls: Uint8Array | null;
+  dmask: Uint8Array | null;
+  label: Int32Array | null;
+  gray: Float32Array | null;
+  lastDet: { pose: MowerPose | null } | null;
+  shiftKey?: string;
+  statKey?: unknown;
+}
+type ReadyFrameState = FrameState & {
+  cls: Uint8Array; mowedMask: Uint8Array; data: Uint8ClampedArray; tc: Int32Array;
+  dcls: Uint8Array; dmask: Uint8Array; label: Int32Array; gray: Float32Array;
+};
 
 export const CLS = { SAME: 0, MOWED: 1, NOMOW: 2, ICON: 3 };
 
 // Self-contained apart from its arguments (the heading, map and tile kernels), so the map worker runs
 // the very same code: H = headingKernel(), M = mapKernel(), T = tileKernel().
-export function autoKernel(H, M, T) {
+export function autoKernel(H: HeadingKernel, M: MapKernel, T: TileKernel) {
   const CL = { SAME: 0, MOWED: 1, NOMOW: 2, ICON: 3 };
   const MOWED_ALPHA = 64, NOMOW_RGB = 24, NOMOW_LINE_ALPHA = 200, NOMOW_GAP_ALPHA = 90;
   const MISMATCH_SHARE = 0.3; // changed (non-lawn) share above which the static map does not match
   const MATCH_MIN = 0.5;
   const TIE = 0.05;
 
-  const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
-  const isLawn = (r, g, b) => g > r + 12 && g > b + 12 && g > 45;
-  function isGrey(r, g, b) {
+  const lum = (r: number, g: number, b: number): number => 0.299 * r + 0.587 * g + 0.114 * b;
+  const isLawn = (r: number, g: number, b: number): boolean => g > r + 12 && g > b + 12 && g > 45;
+  function isGrey(r: number, g: number, b: number): boolean {
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
     return mx - mn <= 22 && mx >= 85 && mx <= 225;
   }
 
   // Grey copy downscaled by f (block means).
-  function downGray(rgba, w, h, f) {
+  function downGray(rgba: Pixels, w: number, h: number, f: number): { g: Float32Array; w: number; h: number } {
     const gw = Math.max(1, Math.floor(w / f)), gh = Math.max(1, Math.floor(h / f));
     const out = new Float32Array(gw * gh);
     for (let y = 0; y < gh * f; y++) for (let x = 0; x < gw * f; x++) {
@@ -38,7 +169,7 @@ export function autoKernel(H, M, T) {
 
   // Translation of b against a (grey, same size) within ±max px by the smallest mean absolute
   // difference. -> { dx, dy } (b(x + dx, y + dy) matches a(x, y))
-  function bestShift(a, b, w, h, max = 4) {
+  function bestShift(a: Float32Array, b: Float32Array, w: number, h: number, max = 4): Shift {
     let best = { dx: 0, dy: 0, sad: Infinity };
     for (let dy = -max; dy <= max; dy++) for (let dx = -max; dx <= max; dx++) {
       let s = 0, n = 0;
@@ -55,7 +186,10 @@ export function autoKernel(H, M, T) {
   // Classify the pixels of rect (all of the picture when null) into cls / mowedMask and the RGBA to
   // draw (data; null: classes only). Arrays are full-size (w x h); only rect is written.
   // -> { mowed, lawn (incl. no-mow), nomow, icon } counts of rect
-  function classify(stat, live, w, h, shift, rect, cls, mowedMask, data, opts = {}) {
+  function classify(
+    stat: Pixels, live: Pixels, w: number, h: number, shift: Shift | null | undefined, rect: PixelRect | null,
+    cls: Uint8Array, mowedMask: Uint8Array, data: Uint8ClampedArray | null, opts: ClassifyOptions = {},
+  ): ClassCounts {
     const same = opts.same ?? 26, gain = opts.gain ?? 14;
     const x0 = rect ? rect.x0 : 0, y0 = rect ? rect.y0 : 0, x1 = rect ? rect.x1 : w, y1 = rect ? rect.y1 : h;
     const dx = shift ? shift.dx : 0, dy = shift ? shift.dy : 0;
@@ -107,7 +241,7 @@ export function autoKernel(H, M, T) {
   // -> { cls, mowedMask, data (RGBA to draw), mowed, lawn, nomow, icon, changed (icon share of the
   //      picture), mismatch (changed > 30 %: the maps do not match; no blobs then), label (Int32Array,
   //      blob index + 1 per pixel), blobs: [{ id, px, py, count, grey, idx, x0, y0, x1, y1 }] }
-  function compareMaps(stat, live, w, h, shift = { dx: 0, dy: 0 }, opts = {}) {
+  function compareMaps(stat: Pixels, live: Pixels, w: number, h: number, shift: Shift = { dx: 0, dy: 0 }, opts: CompareOptions = {}): CompareResult {
     const minBlob = opts.minBlob ?? 6;
     const n = w * h;
     const cls = new Uint8Array(n), mowedMask = new Uint8Array(n), data = new Uint8ClampedArray(n * 4);
@@ -122,22 +256,25 @@ export function autoKernel(H, M, T) {
   // Connected icon pixels (8-connected, so thin outlines hold together); thin slivers (anti-aliased
   // edges) and areas larger than maxBlob are no icons. label: filled with blob id (index + 1).
   // rect: only these pixels (a search window; label cleared there), else the whole picture.
-  function iconBlobs(cls, live, w, h, minBlob = 6, maxBlob = Infinity, label = null, rect = null) {
+  function iconBlobs(
+    cls: Uint8Array, live: Pixels, w: number, h: number, minBlob = 6, maxBlob = Infinity,
+    label: Int32Array | null = null, rect: PixelRect | null = null,
+  ): AutoBlob[] {
     const rx0 = rect ? rect.x0 : 0, ry0 = rect ? rect.y0 : 0, rx1 = rect ? rect.x1 : w, ry1 = rect ? rect.y1 : h;
     const rw = rx1 - rx0, rh = ry1 - ry0;
-    const seen = new Uint8Array(rw * rh), out = [];
-    const at = (x, y) => (y - ry0) * rw + (x - rx0);
+    const seen = new Uint8Array(rw * rh), out: AutoBlob[] = [];
+    const at = (x: number, y: number) => (y - ry0) * rw + (x - rx0);
     if (label) for (let y = ry0; y < ry1; y++) label.fill(0, y * w + rx0, y * w + rx1);
-    const stack = [];
+    const stack: number[] = [];
     for (let yy = ry0; yy < ry1; yy++) for (let xx = rx0; xx < rx1; xx++) {
       const s = yy * w + xx;
       if (cls[s] !== CL.ICON || seen[at(xx, yy)]) continue;
-      const idx = [];
+      const idx: number[] = [];
       stack.push(s);
       seen[at(xx, yy)] = 1;
       let sx = 0, sy = 0, grey = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
       while (stack.length) {
-        const i = stack.pop();
+        const i = stack.pop()!; // non-empty
         idx.push(i);
         const x = i % w, y = (i - x) / w;
         sx += x;
@@ -161,16 +298,16 @@ export function autoKernel(H, M, T) {
     out.sort((a, b) => b.count - a.count);
     out.forEach((b, i) => {
       b.id = i + 1;
-      if (label) for (const j of b.idx) label[j] = b.id;
+      if (label) for (const j of b.idx) label[j] = i + 1;
     });
     return out;
   }
 
-  const autoShare = (r) => (r && r.lawn > 0 ? Math.min(1, r.mowed / r.lawn) : null);
+  const autoShare = (r: ClassCounts | null | undefined): number | null => (r && r.lawn > 0 ? Math.min(1, r.mowed / r.lawn) : null);
 
   // The dock: grey, and where a grey blob was last time (it does not move) or at the known dock
   // position. prevGrey: [[px, py], ...] of the last picture's grey blobs; dockAt: [px, py] | null.
-  function isDock(b, prevGrey, dockAt) {
+  function isDock(b: AutoBlob, prevGrey: number[][] | null | undefined, dockAt: number[] | null | undefined): boolean {
     if (!b.grey) return false;
     const r = Math.max(3, Math.sqrt(b.count) * 0.15);
     if (dockAt && Math.hypot(b.px - dockAt[0], b.py - dockAt[1]) <= r * 2) return true;
@@ -183,20 +320,23 @@ export function autoKernel(H, M, T) {
   // prevGrey, dockAt, cache, leaving }. leaving (just undocked, still over the dock icon): the dock blob
   // stays a candidate, matched around the last position at the expected size (the merged blob is
   // larger than the mower). -> { b, m } | null (m: matchTemplate result, m.score >= 0.5)
-  function pickMower(blobs, gray, w, h, t, label, ctx = {}) {
+  function pickMower(
+    blobs: AutoBlob[], gray: Float32Array, w: number, h: number, t: HeadingTemplate | null | undefined,
+    label: Int32Array | null, ctx: PickContext = {},
+  ): { b: AutoBlob; m: TemplateMatch } | null {
     if (!t || !blobs.length) return null;
     const prev = ctx.prev || null, exp = ctx.expected || null;
-    const dockOf = (b) => isDock(b, ctx.prevGrey, ctx.dockAt);
+    const dockOf = (b: AutoBlob) => isDock(b, ctx.prevGrey, ctx.dockAt);
     let cand = ctx.leaving ? blobs.slice() : blobs.filter((b) => !dockOf(b));
     if (exp) cand = cand.filter((b) => b.count >= exp / 4 && (b.count <= exp * 4 || (ctx.leaving && dockOf(b))));
-    const dist = (b) => (prev ? Math.hypot(b.px - prev[0], b.py - prev[1]) : 0);
-    const plaus = (b) => (exp ? Math.abs(Math.log(b.count / exp)) : 0) + (prev ? dist(b) / Math.max(10, Math.sqrt(b.count) * 4) : 0);
+    const dist = (b: AutoBlob) => (prev ? Math.hypot(b.px - prev[0], b.py - prev[1]) : 0);
+    const plaus = (b: AutoBlob) => (exp ? Math.abs(Math.log(b.count / exp)) : 0) + (prev ? dist(b) / Math.max(10, Math.sqrt(b.count) * 4) : 0);
     cand = cand.slice().sort((a, b) => plaus(a) - plaus(b) || b.count - a.count).slice(0, 3);
-    let best = null;
+    let best: { b: AutoBlob; m: TemplateMatch } | null = null;
     for (const b of cand) {
       // the mower over the dock icon: one blob larger than the mower, the last position inside it
-      const merged = ctx.leaving && prev && (dockOf(b) || (exp && b.count > exp * 1.5)) && prev[0] >= b.x0 - 2 && prev[0] <= b.x1 + 3 && prev[1] >= b.y0 - 2 && prev[1] <= b.y1 + 3;
-      const cx = merged ? prev[0] : b.px, cy = merged ? prev[1] : b.py;
+      const merged = !!(ctx.leaving && prev && (dockOf(b) || (exp && b.count > exp * 1.5)) && prev[0] >= b.x0 - 2 && prev[0] <= b.x1 + 3 && prev[1] >= b.y0 - 2 && prev[1] <= b.y1 + 3);
+      const cx = merged ? prev![0] : b.px, cy = merged ? prev![1] : b.py; // merged needs prev
       const count = merged && exp ? Math.min(exp, b.count) : b.count;
       const m = H.matchTemplate(gray, w, h, t, cx, cy, { scale: Math.sqrt(count / t.count), radius: merged ? 6 : 3, cache: ctx.cache, label, id: b.id, count });
       if (!m || m.score < MATCH_MIN) continue;
@@ -206,7 +346,7 @@ export function autoKernel(H, M, T) {
   }
 
   // Grey values of rect (grown by pad) into g (full size, w x h). -> g
-  function grayInto(live, w, h, rect, pad, g) {
+  function grayInto(live: Pixels, w: number, h: number, rect: PixelRect, pad: number, g: Float32Array): Float32Array {
     const x0 = Math.max(0, rect.x0 - pad), y0 = Math.max(0, rect.y0 - pad), x1 = Math.min(w, rect.x1 + pad), y1 = Math.min(h, rect.y1 + pad);
     for (let y = y0; y < y1; y++) for (let x = x0, i = y * w + x0, k = i * 4; x < x1; x++, i++, k += 4) g[i] = 0.299 * live[k] + 0.587 * live[k + 1] + 0.114 * live[k + 2];
     return g;
@@ -216,22 +356,26 @@ export function autoKernel(H, M, T) {
   // picture match, else (no picture) the blob nearest the last position / the largest that is not the
   // dock; with a picture that matched nothing, only a blob near the last position (never some other
   // changed area). -> { pose: { px, py, count, angle | null, source, score } | null, b, blobs }
-  function findMower(live, w, h, cls, label, gray, rect, ctx) {
+  function findMower(
+    live: Pixels, w: number, h: number, cls: Uint8Array, label: Int32Array | null, gray: Float32Array | null,
+    rect: PixelRect | null, ctx: FindContext,
+  ): FindResult {
     const blobs = iconBlobs(cls, live, w, h, ctx.minBlob ?? 6, ctx.maxBlob ?? Math.max(400, w * h * 0.02), label, rect);
     const t = ctx.template || null;
-    const pick = t ? pickMower(blobs, gray, w, h, t, label, ctx) : null;
-    let b = pick && pick.b, pose = null;
-    if (pick) pose = { px: pick.m.x, py: pick.m.y, count: ctx.leaving && ctx.expected && b.count > ctx.expected * 1.5 ? ctx.expected : b.count, angle: pick.m.angle, source: 'picture', score: pick.m.score };
+    // a template comes with its grey picture (both or neither)
+    const pick = t ? pickMower(blobs, gray!, w, h, t, label, ctx) : null;
+    let b: AutoBlob | null = pick && pick.b, pose: MowerPose | null = null;
+    if (pick) pose = { px: pick.m.x, py: pick.m.y, count: ctx.leaving && ctx.expected && pick.b.count > ctx.expected * 1.5 ? ctx.expected : pick.b.count, angle: pick.m.angle, source: 'picture', score: pick.m.score };
     else if (!ctx.leaving) {
       const prev = ctx.prev;
       const rest = blobs.filter((x) => !isDock(x, ctx.prevGrey, ctx.dockAt) && (!ctx.expected || x.count <= ctx.expected * 4));
       const near = prev && rest.length ? rest.reduce((a, c) => (Math.hypot(c.px - prev[0], c.py - prev[1]) < Math.hypot(a.px - prev[0], a.py - prev[1]) ? c : a)) : null;
-      const nearOk = near && Math.hypot(near.px - prev[0], near.py - prev[1]) < 40 ? near : null;
+      const nearOk = near && prev && Math.hypot(near.px - prev[0], near.py - prev[1]) < 40 ? near : null;
       b = t ? nearOk : nearOk || rest.find((x) => !x.grey) || rest.find((x) => x !== blobs.find((y) => y.grey)) || null;
       if (b) {
-        const pts = [];
+        const pts: number[][] = [];
         for (const i of b.idx) pts.push([(i % w) + 0.5, Math.floor(i / w) + 0.5]);
-        const mo = H.momentsOf(pts), hd = H.momentHeading(mo);
+        const mo = H.momentsOf(pts)!, hd = H.momentHeading(mo); // a blob has pixels
         pose = { px: mo.cx, py: mo.cy, count: b.count, angle: hd ? hd.angle : null, source: hd ? 'icon' : null, score: null };
       }
     }
@@ -241,9 +385,9 @@ export function autoKernel(H, M, T) {
   // One auto pass (main thread or worker). ctx: pickMower's ctx + { template, shift, prevBlob }.
   // -> { data, mowed, lawn, nomow, icon, changed, mismatch, share, angle (stripes), grey ([[px, py]]),
   //      pose: { px, py, count, angle | null, source, score } | null, dock: [px, py] | null }
-  function autoProcess(stat, live, w, h, ctx = {}) {
+  function autoProcess(stat: Pixels, live: Pixels, w: number, h: number, ctx: AutoContext = {}): AutoResult {
     const r = compareMaps(stat, live, w, h, ctx.shift || { dx: 0, dy: 0 }, { maxBlob: ctx.maxBlob });
-    const out = { data: r.data, mowed: r.mowed, lawn: r.lawn, nomow: r.nomow, icon: r.icon, changed: r.changed, mismatch: r.mismatch,
+    const out: AutoResult = { data: r.data, mowed: r.mowed, lawn: r.lawn, nomow: r.nomow, icon: r.icon, changed: r.changed, mismatch: r.mismatch,
       share: autoShare(r), angle: null, grey: [], pose: null, dock: null };
     if (r.mismatch) return out;
     const sa = r.mowed ? M.stripeAngle(r.mowedMask, w, h) : null;
@@ -260,7 +404,7 @@ export function autoKernel(H, M, T) {
   }
 
   // ---------- per refresh, with state kept between refreshes (the map worker's) ----------
-  function frameState() {
+  function frameState(): FrameState {
     return { w: 0, h: 0, cls: null, mowedMask: null, data: null, tc: null, hashes: null, detHashes: null, mismatch: false, share: null, angle: null,
       dcls: null, dmask: null, label: null, gray: null, lastDet: null };
   }
@@ -271,8 +415,9 @@ export function autoKernel(H, M, T) {
   // -> { same (nothing changed since the last detection: its result again), full (searched all), pose,
   //      grey, dock (undefined: not looked at), mismatch, share, angle, changed (share of tiles redrawn),
   //      patches: { rects: [[x0, y0, x1, y1]], data (their RGBA, one after the other) } | null }
-  function framePass(stat, live, w, h, ctx, S) {
+  function framePass(stat: Pixels, live: Pixels, w: number, h: number, ctx: FrameContext, state: FrameState): FrameResult {
     const n = w * h;
+    const S = state as ReadyFrameState; // the buffers are allocated just below when missing
     if (S.w !== w || S.h !== h || S.shiftKey !== `${ctx.shift ? ctx.shift.dx : 0},${ctx.shift ? ctx.shift.dy : 0}` || S.statKey !== ctx.statKey) {
       Object.assign(S, frameState(), { w, h, cls: new Uint8Array(n), mowedMask: new Uint8Array(n), data: new Uint8ClampedArray(n * 4),
         dcls: new Uint8Array(n), dmask: new Uint8Array(n), label: new Int32Array(n), gray: new Float32Array(n),
@@ -280,7 +425,7 @@ export function autoKernel(H, M, T) {
       S.tc = new Int32Array(T.tilesOf(w, h).cols * T.tilesOf(w, h).rows * 4);
     }
     const hs = T.tileHashes(live, w, h);
-    const out = { same: false, full: false, pose: null, grey: undefined, dock: undefined, mismatch: S.mismatch, share: S.share, angle: S.angle, changed: 0, patches: null };
+    const out: FrameResult = { same: false, full: false, pose: null, grey: undefined, dock: undefined, mismatch: S.mismatch, share: S.share, angle: S.angle, changed: 0, patches: null };
     if (ctx.layer || !S.hashes) {
       const changed = T.changedTiles(S.hashes, hs);
       for (const i of changed) {
@@ -318,7 +463,8 @@ export function autoKernel(H, M, T) {
       return Object.assign(out, { same: true, pose: S.lastDet.pose, full: false });
     }
     const t = ctx.template || null;
-    const run = (rect) => {
+    type Run = (FindResult & { mismatch?: false }) | { mismatch: true; pose?: undefined; b?: undefined; blobs?: undefined };
+    const run = (rect: PixelRect | null): Run => {
       const r = rect || { x0: 0, y0: 0, x1: w, y1: h };
       const c = classify(stat, live, w, h, ctx.shift, r, S.dcls, S.dmask, null);
       if (!rect && n && c.icon / n > MISMATCH_SHARE) return { mismatch: true };
@@ -327,8 +473,8 @@ export function autoKernel(H, M, T) {
     };
     let f = !ctx.full && ctx.window ? run(ctx.window) : null;
     // a window only answers with a picture match (a cut-off icon at its edge is no answer): else all of it
-    const cut = (b, r) => !!b && ((b.x0 <= r.x0 && r.x0 > 0) || (b.y0 <= r.y0 && r.y0 > 0) || (b.x1 >= r.x1 - 1 && r.x1 < w) || (b.y1 >= r.y1 - 1 && r.y1 < h));
-    if (!f || !f.pose || (t && f.pose.source !== 'picture') || cut(f.b, ctx.window)) { f = run(null); out.full = true; }
+    const cut = (b: AutoBlob | null | undefined, r: PixelRect) => !!b && ((b.x0 <= r.x0 && r.x0 > 0) || (b.y0 <= r.y0 && r.y0 > 0) || (b.x1 >= r.x1 - 1 && r.x1 < w) || (b.y1 >= r.y1 - 1 && r.y1 < h));
+    if (!f || !f.pose || (t && f.pose.source !== 'picture') || cut(f.b, ctx.window!)) { f = run(null); out.full = true; } // f is only set with a window
     if (f.mismatch) { S.mismatch = true; out.mismatch = true; return out; }
     out.pose = f.pose;
     if (out.full) {
@@ -344,6 +490,9 @@ export function autoKernel(H, M, T) {
   return { lum, isLawn, isGrey, downGray, bestShift, classify, compareMaps, iconBlobs, autoShare, isDock, pickMower, findMower, autoProcess, frameState, framePass };
 }
 
+/** The auto kernel's functions (what autoKernel() returns). */
+export type AutoKernel = ReturnType<typeof autoKernel>;
+
 const AK = autoKernel(headingKernel(), mapKernel(), tileKernel());
 registerAuto({
   source: `const H = (${headingKernel.toString()})();\nconst T = (${tileKernel.toString()})();\nconst A = (${autoKernel.toString()})(H, K, T);`,
@@ -352,6 +501,6 @@ registerAuto({
 export const { lum, isLawn, isGrey, downGray, bestShift, classify, compareMaps, iconBlobs, autoShare, isDock, pickMower, findMower, autoProcess, frameState, framePass } = AK;
 
 // The dock: the largest mostly-grey blob that is not the mower. blobs: compareMaps().blobs
-export function dockBlob(blobs, exclude = null) {
+export function dockBlob(blobs: AutoBlob[] | null | undefined, exclude: AutoBlob | null = null): AutoBlob | null {
   return (blobs || []).find((b) => b !== exclude && b.grey) || null;
 }
