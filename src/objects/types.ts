@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { lightColor, lightLevel } from './logic.ts';
+import { physicalColor } from '../photometry.ts';
 import type { ChainState } from './logic.ts';
 import type { HassEntity } from '../types/ha.ts';
 import type { ObjectUi } from '../types/layout.ts';
@@ -34,6 +35,8 @@ export interface UpdateCtx {
   states: States;
   entity: string | null;
   mowerEntity?: string | null;
+  /** Physical lamp light (render quality 'high'): lamps take their blackbody colour (photometry.ts). */
+  physical?: boolean;
   [key: string]: unknown;
 }
 
@@ -65,6 +68,8 @@ export interface Hints {
   target: number[] | null;
   castShadow: boolean;
   offset: number[] | null;
+  /** Luminous flux (lm) at full brightness for physical light (render quality 'high'); null: DEFAULT_LUMENS. */
+  lumens: number | null;
 }
 
 /** State every type's part carries (the layer reads these). */
@@ -135,6 +140,7 @@ export function hintDefaults(hints: unknown): Hints {
     target: vec3(h.target),
     castShadow: typeof h.castShadow === 'boolean' ? h.castShadow : true,
     offset: vec3(h.offset),
+    lumens: fin(h.lumens) && h.lumens >= 0 ? h.lumens : null,
   };
 }
 
@@ -243,9 +249,9 @@ function paint(glow: THREE.Mesh | null): void {
   }
 }
 
-function updateLight(part: LightPart, chain: ChainState): TypeResult {
+function updateLight(part: LightPart, chain: ChainState, ctx?: UpdateCtx): TypeResult {
   const level = chain.lit ? lightLevel(chain.source || { state: 'on', attributes: {} }) : 0;
-  const color = lightColor(chain.source);
+  const color = ctx && ctx.physical ? physicalColor(chain.source, lightColor) : lightColor(chain.source);
   part.level = level;
   part.color = color;
   paint(part.glow);

@@ -3,8 +3,10 @@
 // - no main-thread task of the card's own > 50 ms (its own timing: map refresh sections and renders)
 // - renders while idle <= refresh-driven ones; no shadow-map updates from the mower moving
 // Prints the numbers (main-thread ms per refresh, long tasks) for the release notes.
-// Then render quality 'high' (sky environment light) against 'standard': no environment rebuild while idle
-// or for a sun step under ENV_ANGLE_DEG, one (throttled) for a larger step; render time per frame in bounds.
+// Then render quality 'high' (sky environment light, physical lamps, selective bloom) against 'standard': no
+// environment rebuild while idle or for a sun step under ENV_ANGLE_DEG, one (throttled) for a larger step;
+// bloom never in 'standard', in 'high' only on frames with an emissive surface in view, nothing while idle;
+// frame time (render + bloom + finish, GPU included) in bounds.
 //   node scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
@@ -19,7 +21,8 @@ const MOVE_S = 30, IDLE_S = 16, REFRESH_MS = 2000;
 const QUALITY_ONLY = process.argv.includes('--quality-only');
 
 // One demo per tier, the sun fixed: environment builds while idle / after sun steps, and the time of 40
-// forced frames (renderer.render of the view's scene + a 1 px readPixels, so the GPU work counts).
+// forced frames (the view's frame from its start to the label render, after a 1 px readPixels so the GPU work
+// of the scene, the bloom and the finish counts).
 async function qualityRun(quality) {
   const q = await openDemo({ model: '1', view: '3d', cards: '1', ...(quality ? { quality } : {}) }, { width: 1200, height: 700 });
   try {
@@ -30,28 +33,44 @@ async function qualityRun(quality) {
     await ev('window.__setDemoSun(40, 200)');
     await sleep(3000); // the throttle (2 s) and the first build
     const builds = () => ev(`${card}._view.stats.envBuilds`);
-    const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`);
+    const bloomPasses = () => ev(`${card}._view.stats.bloomPasses`);
+    const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`), bp0 = await bloomPasses();
     await sleep(8000);
-    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`);
+    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses();
     await ev('window.__setDemoSun(40.5, 200.5)'); // < 2 degrees: light moves, environment kept
     await sleep(3000);
     const b2 = await builds();
     await ev('window.__setDemoSun(46, 215)'); // > 2 degrees: one rebuild
     await sleep(3000);
     const b3 = await builds();
-    const env = await ev(`(() => { const v = ${card}._view; return { env: !!v.scene.environment, tm: v.renderer.toneMapping, hemi: v.hemi.intensity }; })()`);
-    const times = await ev(`new Promise((done) => {
-      const v = ${card}._view, r = v.renderer, gl = r.getContext(), orig = r.render, out = [], px = new Uint8Array(4);
-      r.render = function (scene, camera) { if (scene !== v.scene) return orig.call(this, scene, camera); const t = performance.now(); orig.call(this, scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); out.push(performance.now() - t); };
-      let n = 0;
-      const tick = () => { if (n++ >= 45) { r.render = orig; done(out.slice(5)); return; } v.dirty = true; requestAnimationFrame(tick); };
+    const env = await ev(`(() => { const v = ${card}._view; return { env: !!v.scene.environment, tm: v.renderer.toneMapping, hemi: v.hemi.intensity, bloom: !!v.look._bloom, physical: !!(v.objectLayer && v.objectLayer.physical) }; })()`);
+    const forced = (n) => ev(`new Promise((done) => {
+      const v = ${card}._view, gl = v.renderer.getContext(), lr = v.labelRenderer, orig = lr.render, out = [], px = new Uint8Array(4);
+      lr.render = function (scene, camera) { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return orig.call(this, scene, camera); };
+      v.onFrameTime = (ms) => out.push(ms);
+      let i = 0;
+      const tick = () => { if (i++ >= ${n} + 5) { lr.render = orig; v.onFrameTime = null; done(out.slice(5)); return; } v.dirty = true; requestAnimationFrame(tick); };
       requestAnimationFrame(tick);
     })`);
+    const frames = () => ev(`${card}._view.stats.frames`);
+    const bp2 = await bloomPasses(), fr2 = await frames();
+    const times = await forced(40);
+    const bp3 = await bloomPasses(), fr3 = await frames();
+    // the camera turned away from the house: no emissive surface in view, the bloom pass is skipped
+    await ev(`(() => { const v = ${card}._view, p = v.persp.position.clone(), t = v.cam.controls.target.clone(), d = p.clone().sub(t);
+      window.__fpCam = [p, t]; v._moveCamera(p.clone().addScaledVector(d, 4), p.clone().addScaledVector(d, 8), true); })()`);
+    const skip0 = await ev(`${card}._view.look._bloom ? ${card}._view.look._bloom.stats.skipped : 0`);
+    const fr4 = await frames();
+    const awayTimes = await forced(10);
+    const fr5 = await frames(), bp4 = await bloomPasses(), skip1 = await ev(`${card}._view.look._bloom ? ${card}._view.look._bloom.stats.skipped : 0`);
+    await ev(`(() => { const v = ${card}._view, [p, t] = window.__fpCam; v._moveCamera(p, t, true); })()`);
     // one environment build, timed the same way (what a sun step costs once)
     const buildMs = await ev(`(() => { const v = ${card}._view, e = v.look._env, gl = v.renderer.getContext(); if (!e || !e.built) return null;
       const t = performance.now(); e._build(e.built); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
     const sorted = [...times].sort((a, b) => a - b);
     return { buildMs, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+      idleBloom: bp1 - bp0, bloomForced: bp3 - bp2, framesForced: fr3 - fr2, bloomAway: bp4 - bp3, skippedAway: skip1 - skip0, framesAway: fr5 - fr4, bloomTotal: bp4,
+      awayAvg: awayTimes.reduce((a, b) => a + b, 0) / Math.max(1, awayTimes.length),
       avg: times.reduce((a, b) => a + b, 0) / Math.max(1, times.length), p90: sorted[Math.floor(sorted.length * 0.9)] || 0, errors: q.errors };
   } finally {
     await q.close();
@@ -61,13 +80,18 @@ async function qualityRun(quality) {
 async function qualityChecks() {
   const std = await qualityRun(null), high = await qualityRun('high');
   console.log(`     render ms per frame (40 forced frames, 1200 x 700, test mode): standard avg ${std.avg.toFixed(1)} p90 ${std.p90.toFixed(1)}; high avg ${high.avg.toFixed(1)} p90 ${high.p90.toFixed(1)}`);
+  console.log(`     bloom: high ${high.bloomForced} passes in ${high.framesForced} forced frames; ${high.bloomAway} passes, ${high.skippedAway} skipped in ${high.framesAway} with no emissive in view (frame ${high.awayAvg.toFixed(1)} ms); standard ${std.bloomTotal} passes`);
   console.log(`     environment builds: standard ${std.builds}, high ${high.builds} (idle ${high.idleBuilds} over ${high.idleFrames} frames, sun +0.7 deg ${high.smallStep}, sun +16 deg ${high.bigStep}); one build ${high.buildMs?.toFixed(1)} ms`);
   check('standard: no environment, no builds', !std.env && std.builds === 0, JSON.stringify({ env: std.env, builds: std.builds }));
   check('high: sky environment on, AgX tone mapping (6)', high.env && high.tm === 6, JSON.stringify({ env: high.env, tm: high.tm }));
   check('high: no environment rebuild while idle', high.idleBuilds === 0, String(high.idleBuilds));
+  check('standard: no bloom, no physical lamps', !std.bloom && std.bloomTotal === 0 && !std.physical, JSON.stringify({ bloom: std.bloom, passes: std.bloomTotal, physical: std.physical }));
+  check('high: physical lamps, bloom on every forced frame with lamps in view', high.physical && high.bloom && high.framesForced >= 40 && high.bloomForced === high.framesForced, JSON.stringify({ physical: high.physical, passes: high.bloomForced, frames: high.framesForced }));
+  check('high: bloom skipped with no emissive surface in view', high.framesAway >= 10 && high.bloomAway === 0 && high.skippedAway === high.framesAway, `${high.bloomAway} passes, ${high.skippedAway} skipped in ${high.framesAway} frames`);
+  check('high: no bloom pass while idle', high.idleBloom === 0 && high.idleFrames === 0, `${high.idleBloom} passes over ${high.idleFrames} frames`);
   check('high: no rebuild for a sun step under 2 degrees, one for a larger step', high.smallStep === 0 && high.bigStep === 1, `${high.smallStep}, ${high.bigStep}`);
   // shared CI runners: the same bound, the ratio is what counts
-  check('high: render time per frame <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
+  check('high (bloom included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
   for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
 }
 

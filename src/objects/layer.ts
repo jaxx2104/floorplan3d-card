@@ -10,6 +10,7 @@ import { chainState, lightBudget, controllersOf, budgetGroup } from './logic.ts'
 import { typeOf, reanchor } from './types.ts';
 import { badTargets, aimPoint, aimsUp } from './aim.ts';
 import { dockFrontAxis, dockPose } from '../mower-track.ts';
+import { lampIntensity } from '../photometry.ts';
 import { WashLayer, resolveWash, washSize, placeWashes, washOpacity, clearOfWall, washSetting } from './wash.ts';
 import type { SurfaceRaySource, WashKind, WashMesh, WashPlacement } from './wash.ts';
 import type { BasePart, ModelObject, MowerPose, ObjectType, ObjectViewHost, TypeResult } from './types.ts';
@@ -95,6 +96,8 @@ export class ObjectLayer {
   _labelSig?: string | null;
   badTargets?: Map<string, BadTarget>;
   washCfg?: WashConfig | null;
+  /** Physical lamp light (render quality 'high', setPhysical): blackbody colour, candela from lumens. */
+  physical = false;
 
   constructor(view: ObjectLayerHost) {
     this.view = view;
@@ -366,6 +369,16 @@ export class ObjectLayer {
     for (const p of this.parts.values()) p.inputs = null; // re-evaluate every chain once
   }
 
+  // Physical lamp light on / off (the quality tier): every lamp is evaluated and lit again at the next update.
+  // -> true when it changed (the caller asks for that update).
+  setPhysical(on: boolean): boolean {
+    if (on === this.physical) return false;
+    this.physical = on;
+    for (const p of this.parts.values()) p.inputs = null;
+    this._budgetSig = null;
+    return true;
+  }
+
   update(states: Record<string, HassEntity>, ctx: LayerUpdateCtx = {}): void {
     if (!this.model) return;
     this.stats.updates++;
@@ -396,7 +409,7 @@ export class ObjectLayer {
         // a hidden object's chain has no controllers (as before: the field was missing)
         p.chain = hidden ? { lit: false, unavailable: false, source: null, entities: [], reason: null } as unknown as ChainState
           : chainState(p.obj, binding, this.groups, states);
-        p.result = p.type.update(p.part, p.chain, { ...ctx, states, entity: hidden ? null : (binding && binding.entity) || null, mowerEntity });
+        p.result = p.type.update(p.part, p.chain, { ...ctx, states, entity: hidden ? null : (binding && binding.entity) || null, mowerEntity, physical: this.physical });
         changed = true;
         if (p.result.moved && p.part.moving) movedParts.push(p.part.moving);
         if (prev && (prev.level !== p.result.level || colorKey(prev.color) !== colorKey(p.result.color))) recolour.push(id);
@@ -589,7 +602,7 @@ export class ObjectLayer {
       // a point light right on a wall (or door) burns a hot spot into it: kept 0.15 m off the wall it faces
       if (!(l instanceof THREE.SpotLight)) l.position.fromArray(clearOfWall(l.position.toArray(), this._wallOf(p, l.position.clone(), placeSig)));
       l.distance = h.distance;
-      l.decay = h.decay;
+      l.decay = this.physical ? 2 : h.decay; // physical: candela with inverse-square fall-off
       if (l instanceof THREE.SpotLight) {
         l.angle = h.angle * DEG;
         l.penumbra = h.penumbra;
@@ -611,7 +624,9 @@ export class ObjectLayer {
     const r = p.result!; // slots are lit fixtures: evaluated
     const c = r.color || [255, 255, 255];
     slot.light.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
-    slot.light.intensity = r.level * p.part.hints.max * slot.factor;
+    const h = p.part.hints;
+    slot.light.intensity = (this.physical ? lampIntensity(h.lumens, r.level, slot.light instanceof THREE.SpotLight ? 'spot' : 'point')
+      : r.level * h.max) * slot.factor;
   }
 
   _darken(): void {

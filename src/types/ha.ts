@@ -10,6 +10,8 @@ export interface HassEntityAttributes {
   brightness?: number;
   rgb_color?: [number, number, number];
   color_temp_kelvin?: number;
+  /** The light's current colour mode (color_temp, hs, rgb, xy, brightness, onoff ...). */
+  color_mode?: string;
   latitude?: number;
   longitude?: number;
   [key: string]: unknown;

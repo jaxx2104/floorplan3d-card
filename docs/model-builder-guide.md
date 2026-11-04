@@ -229,7 +229,7 @@ What the card reads (everything else in `fp` is kept for later and ignored):
 
 | type | look in the card | tap / hold (default) | hints read |
 |---|---|---|---|
-| `light` | glow mesh emissive in the light colour (brightness / 255 × 3, less for large glow meshes) + a real light | toggle / popup | `beam`, `max`, `distance`, `decay`, `angle`, `penumbra`, `target`, `castShadow`, `offset` |
+| `light` | glow mesh emissive in the light colour (brightness / 255 × 3, less for large glow meshes) + a real light | toggle / popup | `beam`, `max`, `distance`, `decay`, `angle`, `penumbra`, `target`, `castShadow`, `offset`, `lumens` |
 | `light_strip` | the whole glow mesh emissive; a real light only when `max` is set | toggle / popup | as `light` |
 | `mower` | the node follows the mower's live position and heading; glow green mowing, amber returning, red error | popup / more-info | `front`: `+x` / `-x` / `+z` / `-z` (which local axis is the nose, default `+x`) |
 | `dock` | LED mesh lit while the mower is docked | more-info / more-info | `led`: LED mesh name (default `led`) |
@@ -254,6 +254,7 @@ Later types (`door`, `gate`, `fan`, `vacuum`, …) can be tagged already; they b
 | `target` | `[x, y, z]` model point a spot aims at | straight down |
 | `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters | true |
 | `offset` | `[x, y, z]` metres added to the light position (model axes) | none |
+| `lumens` | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) | 800 (spots 300) |
 
 The card owns a fixed pool of 12 real lights (8 point, 4 spot) and gives them to the lit fixtures in
 view, largest `max` first; the rest glow without a light. At most 4 point fixtures without a group

@@ -42,6 +42,7 @@ export interface ViewStats {
   shadowLights: number; // per-light shadow map redraws requested
   cloudFrames: number;
   envBuilds: number; // environment maps built from the sky (render quality 'high')
+  bloomPasses: number; // frames with a selective bloom pass (render quality 'high', an emissive surface in view)
   mapUploads?: number;
 }
 
@@ -195,7 +196,7 @@ export class FloorplanView {
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
     this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
-    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure
@@ -618,6 +619,8 @@ export class FloorplanView {
       } finally {
         if (ao) ao.end();
       }
+      const bloom = this.model ? look._bloom : null;
+      if (bloom && bloom.render(this.scene, this.camera)) this.stats.bloomPasses++; // before the finish: it grades the bloom too
       if (fin) fin.apply();
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor

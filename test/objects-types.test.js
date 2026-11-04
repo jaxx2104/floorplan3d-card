@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.ts';
 
-const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null };
+const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null, lumens: null };
 
 describe('hintDefaults', () => {
   it('fills defaults for empty or missing hints', () => {
@@ -12,8 +12,8 @@ describe('hintDefaults', () => {
   });
 
   it('keeps valid hints', () => {
-    expect(hintDefaults({ beam: 'spot', max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12] }))
-      .toEqual({ beam: 'spot', up: false, max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12] });
+    expect(hintDefaults({ beam: 'spot', max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12], lumens: 450 }))
+      .toEqual({ beam: 'spot', up: false, max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12], lumens: 450 });
   });
 
   it('treats down as point, up as a spot aimed up (24 deg, penumbra 0.6) and unknown beams as point', () => {
@@ -23,7 +23,7 @@ describe('hintDefaults', () => {
   });
 
   it('replaces invalid values with defaults', () => {
-    const h = hintDefaults({ max: -1, distance: 'far', decay: NaN, penumbra: 3, target: [1, 2], castShadow: 'yes', offset: ['a', 0, 0], angle: 'wide' });
+    const h = hintDefaults({ max: -1, distance: 'far', decay: NaN, penumbra: 3, target: [1, 2], castShadow: 'yes', offset: ['a', 0, 0], angle: 'wide', lumens: -5 });
     expect(h).toEqual(DEF);
   });
 

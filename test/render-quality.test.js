@@ -33,7 +33,9 @@ describe('normRenderOption', () => {
   });
   it('tiers: standard turns nothing on, high the sky environment with AgX', () => {
     expect(QUALITIES).toEqual(['standard', 'high']);
-    expect(QUALITY_TIERS.standard).toEqual({ toneMapping: null, envLight: false, hemiScale: 1 });
+    expect(QUALITY_TIERS.standard).toEqual({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false });
+    expect(QUALITY_TIERS.high.physicalLights).toBe(true);
+    expect(QUALITY_TIERS.high.bloom).toBe(true);
     expect(QUALITY_TIERS.high.toneMapping).toBe('AgX');
     expect(QUALITY_TIERS.high.envLight).toBe(true);
     expect(QUALITY_TIERS.high.hemiScale).toBeLessThan(1);

@@ -14,6 +14,7 @@ import { ScreenFinish, normBokeh, normGrade } from '../finish.ts';
 import { normSway, swayLean } from '../cloud-shadow.ts';
 import { shadowInfo, sunDirection } from '../render-rules.ts';
 import { EnvLight, envSky, envIntensity } from './env-light.ts';
+import { SelectiveBloom } from '../bloom.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
 import type { ModelManifest } from './model.ts';
@@ -46,6 +47,7 @@ export class RenderLook {
   renderOpt: RenderOption;
   _renderWarned: string;
   _env: EnvLight | null;
+  _bloom: SelectiveBloom | null;
   renderFrom: { keys: number } | null;
   background: DayNight;
   furniture: 'color' | 'white';
@@ -77,6 +79,7 @@ export class RenderLook {
     this.renderOpt = normRenderOption(null).option; // card option render: recipe, quality, tone_mapping
     this._renderWarned = ''; // the warnings last logged for the option
     this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
+    this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
     this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
@@ -223,6 +226,16 @@ export class RenderLook {
     }
     if (!this._env) this._env = new EnvLight(this.view.renderer, this.view.scene, () => { this.view.dirty = true; });
     this._skyEnv();
+  }
+
+  // The tier's selective bloom and physical lamp light: on with a model when the tier asks for them. A change
+  // of the lamp model re-evaluates the lamps (the card's object update).
+  _syncTierLook(): void {
+    const t = this.tier(), model = !!this.view.model;
+    if (model && t.bloom && !this._bloom) this._bloom = new SelectiveBloom(this.view.renderer);
+    if (!(model && t.bloom) && this._bloom) { this._bloom.dispose(); this._bloom = null; }
+    const layer = this.view.objectLayer;
+    if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
   }
 
   _skyEnv(): void {
@@ -411,6 +424,7 @@ export class RenderLook {
       this._shadowDirty();
       r.shadowMap.type = THREE.PCFSoftShadowMap;
       this._syncEnv(); // before the lights: they set its brightness
+      this._syncTierLook();
       this._applyLights();
       sun.castShadow = true; // stays on (toggling recompiles shaders); night = intensity 0
       sun.shadow.autoUpdate = false; // redrawn only when flagged, and only while the sun is up
@@ -436,6 +450,7 @@ export class RenderLook {
       sun.castShadow = false;
       this.view.moonLight.intensity = 0;
       this._syncEnv(); // no model: no environment
+      this._syncTierLook();
       sun.position.set(-12, 30, 18);
       sun.target.position.set(0, 0, 0);
     }
@@ -525,6 +540,8 @@ export class RenderLook {
   dispose(): void {
     if (this._env) this._env.dispose();
     this._env = null;
+    if (this._bloom) this._bloom.dispose();
+    this._bloom = null;
     this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();
