@@ -43,6 +43,17 @@ async function qualityRun(quality) {
     const shadows = () => ev(`(() => { const s = ${card}._view.stats; return { shadow: s.shadow, lights: s.shadowLights }; })()`);
     const swaps = () => ev(`${card}._view.stats.materialSwaps`);
     const probes = () => ev(`(() => { const v = ${card}._view, p = v.look.indirect.probes; return { caps: v.stats.probeCaptures, passes: p ? p.stats.passes : 0, rooms: p && p.setup ? p.setup.rooms.length - p.setup.skip.size : 0, on: p ? p.uniforms.fpProbe.value.z : 0 }; })()`);
+    // settle: no probe pass running or due and the render loop asleep (frames unchanged for 1 s); slow CI runners
+    // are still capturing the load's passes after a fixed wait, and every capture frame renders (bloom included)
+    const settle = async () => {
+      for (let i = 0, last = -1, quiet = 0; i < 60 && quiet < 2; i++) {
+        await sleep(500);
+        const s = await ev(`(() => { const v = ${card}._view, p = v.look.indirect.probes; return { busy: !!(p && p.active), frames: v.stats.frames }; })()`);
+        quiet = !s.busy && s.frames === last ? quiet + 1 : 0;
+        last = s.frames;
+      }
+    };
+    await settle();
     const pr0 = await probes(); // the load's pass (after the first sky build)
     const surfaces = () => ev(`(() => { const out = { glass: 0, floor: 0, fabric: 0, physical: 0 }, seen = new Set();
       ${card}._view.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (seen.has(m)) continue; seen.add(m);
@@ -94,6 +105,7 @@ async function qualityRun(quality) {
     // a lamp turned off: one pass once the throttle allows, then nothing while idle
     await ev(`window.__setDemoStates({ 'light.demo_living': 'off' })`);
     await sleep(4000);
+    await settle();
     const pr4 = await probes();
     await ev(`${card}._view.look._applyLook()`); // a look change that leaves the light as it is (a theme): probes kept
     await sleep(3000);
