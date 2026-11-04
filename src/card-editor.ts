@@ -35,6 +35,8 @@ export const SCHEMA: FormSchema[] = [
       { name: 'zoom_to', selector: { select: { mode: 'dropdown', options: [{ value: 'center', label: 'Centre of the view' }, { value: 'cursor', label: 'Mouse cursor' }] } } },
       { name: 'lights', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Real lights' }, { value: 'off', label: 'Glow only (weak devices)' }] } } },
       { name: 'render', selector: { select: { mode: 'dropdown', options: [{ value: 'model', label: 'From the model (render recipe)' }, { value: 'default', label: 'Card defaults' }] } } },
+      { name: 'render_quality', selector: { select: { mode: 'dropdown', options: [{ value: 'standard', label: 'Standard' }, { value: 'high', label: 'High (bloom, soft shadows, materials)' }, { value: 'still', label: 'Still (path tracing when idle, experimental)' }] } } },
+      { name: 'render_tone_mapping', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto (quality / model)' }, { value: 'agx', label: 'AgX' }, { value: 'aces', label: 'ACES filmic' }, { value: 'neutral', label: 'Neutral' }, { value: 'reinhard', label: 'Reinhard' }, { value: 'cineon', label: 'Cineon' }, { value: 'linear', label: 'Linear' }, { value: 'none', label: 'None' }] } } },
       { name: 'room_labels', selector: { select: { mode: 'dropdown', options: [{ value: 'size', label: 'Name and size' }, { value: 'name', label: 'Name only' }, { value: 'none', label: 'None' }] } } },
     ],
   },
@@ -83,6 +85,8 @@ const LABELS: Record<string, string> = {
   zoom_to: 'Zoom towards',
   lights: 'Model lamps',
   render: 'Render settings',
+  render_quality: 'Render quality',
+  render_tone_mapping: 'Tone mapping',
   layout_key: 'Layout name',
   model: 'Model URL (.glb)',
   model_rotation: 'Model rotation',
@@ -106,9 +110,44 @@ const HELPERS: Record<string, string> = {
   zoom_to: 'Centre: zoom and rotate around the view\'s rotation centre (Edit → Views)',
   lights: 'With a 3D model: lamps light the house (auto) or only glow (off)',
   render: 'With a 3D model: use its render recipe (exposure, camera, shadows, day / night light) or ignore it',
+  render_quality: 'High and still cost more GPU time; still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.',
+  render_tone_mapping: 'Auto: AgX in high / still, otherwise the model\'s recipe',
   layout_key: 'Cards with the same name share one plan. Letters, digits, - and _.',
   model: 'e.g. /local/house.glb. Leave empty to upload a model on the card (Edit → Model).',
 };
+
+// The card option render is a string (the recipe) or an object { recipe, quality, tone_mapping, materials }; the
+// form shows it as three flat fields. YAML-only keys (materials, unknown ones) pass through untouched.
+const RENDER_FIELDS = { render_quality: 'quality', render_tone_mapping: 'tone_mapping' } as const;
+const RENDER_FIELD_DEFAULTS = { render: 'model', render_quality: 'standard', render_tone_mapping: 'auto' } as const;
+
+/** config.render -> the form's flat fields. */
+export function splitRender(render: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...RENDER_FIELD_DEFAULTS };
+  if (typeof render === 'string') out.render = render;
+  else if (render && typeof render === 'object') {
+    const r = render as Record<string, unknown>;
+    if (r.recipe !== undefined) out.render = r.recipe;
+    if (r.quality !== undefined) out.render_quality = r.quality;
+    if (r.tone_mapping !== undefined) out.render_tone_mapping = r.tone_mapping;
+  }
+  return out;
+}
+
+/** The form's flat fields (+ the previous config.render for its YAML-only keys) -> config.render: the short
+ * string form when only the recipe is set, undefined when everything is default. */
+export function joinRender(value: Record<string, unknown>, prev: unknown): unknown {
+  const obj: Record<string, unknown> = prev && typeof prev === 'object' ? { ...(prev as Record<string, unknown>) } : {};
+  delete obj.recipe;
+  const recipe = value.render || RENDER_FIELD_DEFAULTS.render;
+  for (const [field, key] of Object.entries(RENDER_FIELDS)) {
+    const v = value[field];
+    if (v === undefined || v === '' || v === RENDER_FIELD_DEFAULTS[field as keyof typeof RENDER_FIELD_DEFAULTS]) delete obj[key];
+    else obj[key] = v;
+  }
+  if (!Object.keys(obj).length) return recipe === RENDER_FIELD_DEFAULTS.render ? undefined : recipe;
+  return recipe === RENDER_FIELD_DEFAULTS.render ? obj : { recipe, ...obj };
+}
 
 // Drop empty values and defaults so the YAML stays short.
 export function cleanConfig<C extends Record<string, unknown>>(config: C): Partial<C> {
@@ -149,8 +188,11 @@ export class Floorplan3dCardEditor extends HTMLElement {
       form.computeHelper = (s) => HELPERS[s.name] || '';
       form.addEventListener('value-changed', (e) => {
         e.stopPropagation();
-        const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
-        const config = cleanConfig({ ...this._config, ...value, type: this._config.type }) as CardConfig; // type kept
+        const raw = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+        const value = { ...raw };
+        for (const f of Object.keys(RENDER_FIELDS)) delete value[f]; // folded back into render
+        const render = joinRender(raw, this._config.render);
+        const config = cleanConfig({ ...this._config, ...value, render, type: this._config.type }) as CardConfig; // type kept
         this._config = config;
         this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
       });
@@ -162,7 +204,7 @@ export class Floorplan3dCardEditor extends HTMLElement {
     const form = this._form;
     form.hass = this._hass;
     form.schema = SCHEMA;
-    form.data = { ...DEFAULTS, ...this._config };
+    form.data = { ...DEFAULTS, ...this._config, ...splitRender(this._config.render) };
   }
 }
 

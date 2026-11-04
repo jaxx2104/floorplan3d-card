@@ -61,3 +61,44 @@ describe('card editor', () => {
     expect(got).toEqual({ type: 'custom:floorplan3d-card', height: '600px' });
   });
 });
+
+describe('card editor: render option', () => {
+  let mod;
+  beforeAll(async () => {
+    if (!customElements.get('ha-form')) customElements.define('ha-form', class extends HTMLElement {});
+    mod = await import('../src/card-editor.ts');
+  });
+
+  it('splits the string and object forms into the flat fields', () => {
+    expect(mod.splitRender(undefined)).toEqual({ render: 'model', render_quality: 'standard', render_tone_mapping: 'auto' });
+    expect(mod.splitRender('default')).toMatchObject({ render: 'default', render_quality: 'standard' });
+    expect(mod.splitRender({ quality: 'high', tone_mapping: 'agx' })).toEqual({ render: 'model', render_quality: 'high', render_tone_mapping: 'agx' });
+  });
+
+  it('joins back to the shortest form and keeps YAML-only keys', () => {
+    const d = { render: 'model', render_quality: 'standard', render_tone_mapping: 'auto' };
+    expect(mod.joinRender(d, undefined)).toBeUndefined();
+    expect(mod.joinRender({ ...d, render: 'default' }, undefined)).toBe('default');
+    expect(mod.joinRender({ ...d, render_quality: 'still' }, 'model')).toEqual({ quality: 'still' });
+    expect(mod.joinRender({ ...d, render: 'default', render_tone_mapping: 'aces' }, undefined)).toEqual({ recipe: 'default', tone_mapping: 'aces' });
+    const materials = { 'name:Window*': 'glass' };
+    expect(mod.joinRender({ ...d, render_quality: 'high' }, { quality: 'standard', materials })).toEqual({ materials, quality: 'high' });
+    expect(mod.joinRender(d, { quality: 'high', materials })).toEqual({ materials });
+  });
+
+  it('round-trips through the form', () => {
+    const el = document.createElement('floorplan3d-card-editor');
+    document.body.append(el);
+    el.setConfig({ type: 'custom:floorplan3d-card', render: { quality: 'high' } });
+    const form = el.querySelector('ha-form');
+    expect(form.data).toMatchObject({ render: 'model', render_quality: 'high', render_tone_mapping: 'auto' });
+    expect(form.schema.flatMap((x) => x.schema || [x]).find((x) => x.name === 'render_quality').selector.select.options.map((o) => o.value))
+      .toEqual(['standard', 'high', 'still']);
+    let got;
+    el.addEventListener('config-changed', (e) => { got = e.detail.config; });
+    form.dispatchEvent(new CustomEvent('value-changed', { detail: { value: { ...form.data, render_tone_mapping: 'neutral' } } }));
+    expect(got).toEqual({ type: 'custom:floorplan3d-card', render: { quality: 'high', tone_mapping: 'neutral' } });
+    form.dispatchEvent(new CustomEvent('value-changed', { detail: { value: { ...form.data, render_quality: 'standard', render_tone_mapping: 'auto' } } }));
+    expect(got).toEqual({ type: 'custom:floorplan3d-card' });
+  });
+});
