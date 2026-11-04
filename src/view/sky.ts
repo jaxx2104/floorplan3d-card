@@ -131,6 +131,7 @@ export class SkyLayer {
     if (north) this._skyNorth = north;
     if (this._skyOn && !this.skyRing) this._makeSkyRing();
     if (this.view.model) this._applyMoonLight();
+    if (this.view.look._env) this.view.look._skyEnv(); // the night's environment follows the moon
     this._placeSkyBodies();
     this.view.dirty = true;
   }

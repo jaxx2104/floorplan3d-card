@@ -1,6 +1,14 @@
 // Card YAML config (Lovelace `type: custom:floorplan3d-card`). Options with structured values are
 // typed loosely here and normalised by the module that owns them (render-recipe, finish, views ...).
 
+/** Card option render, object form: recipe source, quality tier, tone mapping. */
+export interface RenderCardOptions {
+  recipe?: 'model' | 'default';
+  quality?: 'standard' | 'high';
+  tone_mapping?: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none';
+}
+export type RenderCardOption = 'model' | 'default' | RenderCardOptions;
+
 export interface CardConfig {
   type: string;
   layout_key?: string;
@@ -26,7 +34,8 @@ export interface CardConfig {
   clouds?: boolean;
   view_id?: string;
   views?: unknown;
-  render?: unknown;
+  /** 'model' | 'default' (the render recipe), or the object form (render-recipe.ts normRenderOption). */
+  render?: RenderCardOption;
   ao?: unknown;
   bokeh?: unknown;
   grade?: unknown;

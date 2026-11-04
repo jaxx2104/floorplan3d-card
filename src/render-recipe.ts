@@ -293,3 +293,116 @@ export const cityLightsOn = (night: unknown): number => {
   const t = Math.max(0, Math.min(1, (Number(night) - 0.35) / 0.4));
   return t * t * (3 - 2 * t);
 };
+
+// --- card option render: recipe source, quality tier, tone mapping ---
+
+/** Quality tiers, cheapest first. 'standard' is the look before tiers existed. */
+export type Quality = 'standard' | 'high';
+/** What a tier turns on. A new effect adds a field here, off in 'standard', so 'standard' stays as it was. */
+export interface QualityTier {
+  /** Tone mapping when the card sets none (null: the recipe's). */
+  toneMapping: string | null;
+  /** Image-based light from the sky (view/env-light.ts). */
+  envLight: boolean;
+  /** Hemisphere light factor (with envLight the sky's environment light takes over most of the fill). */
+  hemiScale: number;
+}
+export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
+  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1 }),
+  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35 }),
+});
+export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
+
+// Card YAML names of the tone mappings (lower case) -> three's names (TONE_MAPPINGS).
+export const TONE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  none: 'None', linear: 'Linear', reinhard: 'Reinhard', cineon: 'Cineon', aces: 'ACESFilmic', acesfilmic: 'ACESFilmic', agx: 'AgX', neutral: 'Neutral',
+});
+const TONE_NAMES = Object.keys(TONE_ALIASES).filter((a) => a !== 'acesfilmic');
+
+/** Card option render, normalised: which recipe, the quality tier, the tone mapping (null: tier / recipe). */
+export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; toneMapping: string | null }
+export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'standard', toneMapping: null });
+
+// Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
+// quality: 'standard' | 'high', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none' }
+// -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
+export function normRenderOption(opt: unknown): { option: RenderOption; warnings: string[] } {
+  const option: RenderOption = { ...RENDER_OPTION_DEFAULTS }, warnings: string[] = [];
+  if (opt === undefined || opt === null) return { option, warnings };
+  const recipe = (v: unknown, at: string) => {
+    if (v === 'model' || v === 'default') option.recipe = v;
+    else warnings.push(`${at}: "${String(v)}" is not one of model, default`);
+  };
+  if (typeof opt === 'string') { recipe(opt, 'render'); return { option, warnings }; }
+  if (!isObj(opt)) { warnings.push('render: needs model, default or an object'); return { option, warnings }; }
+  for (const [k, v] of Object.entries(opt)) {
+    if (v === undefined || v === null) continue;
+    if (k === 'recipe') recipe(v, 'render.recipe');
+    else if (k === 'quality') {
+      if (QUALITIES.includes(v as Quality)) option.quality = v as Quality;
+      else warnings.push(`render.quality: "${String(v)}" is not one of ${QUALITIES.join(', ')}`);
+    } else if (k === 'tone_mapping') {
+      const name = typeof v === 'string' ? TONE_ALIASES[v.trim().toLowerCase()] : undefined;
+      if (name) option.toneMapping = name;
+      else warnings.push(`render.tone_mapping: "${String(v)}" is not one of ${TONE_NAMES.join(', ')}`);
+    } else warnings.push(`render.${k}: unknown option, ignored`);
+  }
+  return { option, warnings };
+}
+
+const sat = (x: number) => Math.max(0, Math.min(1, x));
+
+// three's tone mapping curves (tonemapping_pars_fragment, r169) for a grey input (their matrices keep
+// greys grey): scene value x (exposure applied) -> display-linear 0..1.
+export function toneGrey(toneMapping: string, x: number): number {
+  switch (toneMapping) {
+    case 'None':
+    case 'Linear': return sat(x);
+    case 'Reinhard': return sat(x / (1 + x));
+    case 'Cineon': {
+      const c = Math.max(0, x - 0.004);
+      return Math.pow((c * (6.2 * c + 0.5)) / (c * (6.2 * c + 1.7) + 0.06), 2.2);
+    }
+    case 'AgX': {
+      const v = sat((Math.log2(Math.max(x, 1e-10)) + 12.47393) / (4.026069 + 12.47393));
+      const v2 = v * v, v4 = v2 * v2;
+      const s = 15.5 * v4 * v2 - 40.14 * v4 * v + 31.96 * v4 - 6.868 * v2 * v + 0.4298 * v2 + 0.1191 * v - 0.00232;
+      return sat(Math.pow(Math.max(0, s), 2.2));
+    }
+    case 'Neutral': {
+      const start = 0.8 - 0.04, d = 1 - start;
+      let c = x - (x < 0.08 ? x - 6.25 * x * x : 0.04);
+      if (c < start) return c;
+      const peak = c, np = 1 - (d * d) / (peak + d - start);
+      c *= np / peak;
+      const g = 1 - 1 / (0.15 * (peak - np) + 1);
+      return c + (np - c) * g;
+    }
+    default: { // ACESFilmic
+      const v = x / 0.6;
+      return sat((v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081));
+    }
+  }
+}
+
+// Exposure for tone mapping `to` that shows mid grey (0.18) as `from` at `exposure` does (bisection: the
+// curves rise monotonically), within the recipe's exposure range.
+export function matchExposure(from: string, exposure: number, to: string): number {
+  if (from === to) return exposure;
+  const [lo0, hi0] = NUM.exposure, want = toneGrey(from, 0.18 * exposure);
+  if (toneGrey(to, 0.18 * hi0) <= want) return hi0;
+  if (toneGrey(to, 0.18 * lo0) >= want) return lo0;
+  let lo = lo0, hi = hi0;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (toneGrey(to, 0.18 * mid) < want) lo = mid; else hi = mid;
+  }
+  return Math.round(((lo + hi) / 2) * 1000) / 1000;
+}
+
+// Tone mapping and exposure on screen: the card's tone_mapping, else the tier's, else the recipe's. Another
+// tone mapping than the recipe's gets the exposure that keeps mid grey where the recipe had it.
+export function renderTone(render: Pick<RenderSettings, 'toneMapping' | 'exposure'>, option: RenderOption): { toneMapping: string; exposure: number } {
+  const toneMapping = option.toneMapping ?? QUALITY_TIERS[option.quality].toneMapping ?? render.toneMapping;
+  return { toneMapping, exposure: matchExposure(render.toneMapping, render.exposure, toneMapping) };
+}

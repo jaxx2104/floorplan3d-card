@@ -3,6 +3,9 @@
 // - no main-thread task of the card's own > 50 ms (its own timing: map refresh sections and renders)
 // - renders while idle <= refresh-driven ones; no shadow-map updates from the mower moving
 // Prints the numbers (main-thread ms per refresh, long tasks) for the release notes.
+// Then render quality 'high' (sky environment light) against 'standard': no environment rebuild while idle
+// or for a sun step under ENV_ANGLE_DEG, one (throttled) for a larger step; render time per frame in bounds.
+//   node scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
 const failures = [];
@@ -13,6 +16,67 @@ const check = (name, ok, detail = '') => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const card = 'document.querySelector("floorplan3d-card-impl")';
 const MOVE_S = 30, IDLE_S = 16, REFRESH_MS = 2000;
+const QUALITY_ONLY = process.argv.includes('--quality-only');
+
+// One demo per tier, the sun fixed: environment builds while idle / after sun steps, and the time of 40
+// forced frames (renderer.render of the view's scene + a 1 px readPixels, so the GPU work counts).
+async function qualityRun(quality) {
+  const q = await openDemo({ model: '1', view: '3d', cards: '1', ...(quality ? { quality } : {}) }, { width: 1200, height: 700 });
+  try {
+    const { page } = q;
+    const ev = (expr) => page.evaluate(expr);
+    await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
+    await ev('window.__demoMowerPaused = true');
+    await ev('window.__setDemoSun(40, 200)');
+    await sleep(3000); // the throttle (2 s) and the first build
+    const builds = () => ev(`${card}._view.stats.envBuilds`);
+    const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`);
+    await sleep(8000);
+    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`);
+    await ev('window.__setDemoSun(40.5, 200.5)'); // < 2 degrees: light moves, environment kept
+    await sleep(3000);
+    const b2 = await builds();
+    await ev('window.__setDemoSun(46, 215)'); // > 2 degrees: one rebuild
+    await sleep(3000);
+    const b3 = await builds();
+    const env = await ev(`(() => { const v = ${card}._view; return { env: !!v.scene.environment, tm: v.renderer.toneMapping, hemi: v.hemi.intensity }; })()`);
+    const times = await ev(`new Promise((done) => {
+      const v = ${card}._view, r = v.renderer, gl = r.getContext(), orig = r.render, out = [], px = new Uint8Array(4);
+      r.render = function (scene, camera) { if (scene !== v.scene) return orig.call(this, scene, camera); const t = performance.now(); orig.call(this, scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); out.push(performance.now() - t); };
+      let n = 0;
+      const tick = () => { if (n++ >= 45) { r.render = orig; done(out.slice(5)); return; } v.dirty = true; requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    })`);
+    // one environment build, timed the same way (what a sun step costs once)
+    const buildMs = await ev(`(() => { const v = ${card}._view, e = v.look._env, gl = v.renderer.getContext(); if (!e || !e.built) return null;
+      const t = performance.now(); e._build(e.built); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
+    const sorted = [...times].sort((a, b) => a - b);
+    return { buildMs, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+      avg: times.reduce((a, b) => a + b, 0) / Math.max(1, times.length), p90: sorted[Math.floor(sorted.length * 0.9)] || 0, errors: q.errors };
+  } finally {
+    await q.close();
+  }
+}
+
+async function qualityChecks() {
+  const std = await qualityRun(null), high = await qualityRun('high');
+  console.log(`     render ms per frame (40 forced frames, 1200 x 700, test mode): standard avg ${std.avg.toFixed(1)} p90 ${std.p90.toFixed(1)}; high avg ${high.avg.toFixed(1)} p90 ${high.p90.toFixed(1)}`);
+  console.log(`     environment builds: standard ${std.builds}, high ${high.builds} (idle ${high.idleBuilds} over ${high.idleFrames} frames, sun +0.7 deg ${high.smallStep}, sun +16 deg ${high.bigStep}); one build ${high.buildMs?.toFixed(1)} ms`);
+  check('standard: no environment, no builds', !std.env && std.builds === 0, JSON.stringify({ env: std.env, builds: std.builds }));
+  check('high: sky environment on, AgX tone mapping (6)', high.env && high.tm === 6, JSON.stringify({ env: high.env, tm: high.tm }));
+  check('high: no environment rebuild while idle', high.idleBuilds === 0, String(high.idleBuilds));
+  check('high: no rebuild for a sun step under 2 degrees, one for a larger step', high.smallStep === 0 && high.bigStep === 1, `${high.smallStep}, ${high.bigStep}`);
+  // shared CI runners: the same bound, the ratio is what counts
+  check('high: render time per frame <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
+  for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
+}
+
+if (QUALITY_ONLY) {
+  await qualityChecks();
+  if (failures.length) { console.log(`\n${failures.length} check(s) failed`); process.exit(1); }
+  console.log('\nquality perf check passed');
+  process.exit(0);
+}
 
 const s = await openDemo({ model: '1', view: '3d', cards: '1', robotmap: '1600', debug: '1' }, { width: 1200, height: 700 });
 try {
@@ -97,6 +161,7 @@ try {
 } finally {
   await s.close();
 }
+await qualityChecks();
 if (failures.length) {
   console.log(`\n${failures.length} check(s) failed`);
   process.exit(1);

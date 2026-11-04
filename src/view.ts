@@ -41,6 +41,7 @@ export interface ViewStats {
   frames: number;
   shadowLights: number; // per-light shadow map redraws requested
   cloudFrames: number;
+  envBuilds: number; // environment maps built from the sky (render quality 'high')
   mapUploads?: number;
 }
 
@@ -194,7 +195,7 @@ export class FloorplanView {
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
     this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
-    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure
@@ -598,6 +599,7 @@ export class FloorplanView {
       this.stats.frames++;
       const t0 = this.onFrameTime ? performance.now() : 0;
       cam._updateDepth();
+      if (look._env && look._env.flush()) this.stats.envBuilds++; // a due sky environment (never more than one per ENV_THROTTLE_MS)
       sky._placeSkyBodies();
       this.labelRenderer.domElement.classList.toggle('compact', cam.pixelsPerMetre() < COMPACT_PPM);
       const ao = this.model ? look._ao : null, fin = this.model ? look._finish : null;

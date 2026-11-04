@@ -7,16 +7,17 @@ import * as THREE from 'three';
 import { paintFurniture } from '../furniture.ts';
 import { screenOn, frameAt, showFrame, setScreenOn } from '../screens.ts';
 import { domeRadius } from '../sky.ts';
-import { mergeRender, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from '../render-recipe.ts';
+import { mergeRender, normRenderOption, renderTone, QUALITY_TIERS, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from '../render-recipe.ts';
 import { cloudLight } from '../weather.ts';
 import { AmbientOcclusion, normAo } from '../ao.ts';
 import { ScreenFinish, normBokeh, normGrade } from '../finish.ts';
 import { normSway, swayLean } from '../cloud-shadow.ts';
 import { shadowInfo, sunDirection } from '../render-rules.ts';
+import { EnvLight, envSky, envIntensity } from './env-light.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
 import type { ModelManifest } from './model.ts';
-import type { RenderSettings, DayNight, CityLights } from '../render-recipe.ts';
+import type { RenderSettings, RenderOption, QualityTier, DayNight, CityLights } from '../render-recipe.ts';
 import type { SwaySettings } from '../cloud-shadow.ts';
 import type { FinishSettings } from '../finish.ts';
 import type { DepthPrepass } from '../depth-pass.ts';
@@ -41,6 +42,10 @@ export class RenderLook {
   view: FloorplanView;
   render: RenderSettings;
   renderOption: 'model' | 'default';
+  /** card option render, normalised: recipe, quality tier, tone mapping */
+  renderOpt: RenderOption;
+  _renderWarned: string;
+  _env: EnvLight | null;
   renderFrom: { keys: number } | null;
   background: DayNight;
   furniture: 'color' | 'white';
@@ -69,6 +74,9 @@ export class RenderLook {
     // render settings: the card's defaults, replaced by the model's fp.render recipe while one is loaded
     this.render = mergeRender(null);
     this.renderOption = 'model'; // card option render: model | default (ignore the recipe)
+    this.renderOpt = normRenderOption(null).option; // card option render: recipe, quality, tone_mapping
+    this._renderWarned = ''; // the warnings last logged for the option
+    this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
     this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
@@ -93,16 +101,29 @@ export class RenderLook {
     this._sunStale = false; // the sun's map was skipped while it was down (or the scrubber moved)
   }
 
-  // Card option render: 'model' (the model's fp.render recipe) or 'default' (ignore it). Applied at the next model load.
-  // A change with a model loaded re-applies the look now (the lamp pool size follows at the next load).
+  // Card option render: 'model' | 'default' (the recipe: the model's fp.render or none), or { recipe, quality,
+  // tone_mapping } (normRenderOption). A recipe change applies at the next model load, with a model loaded
+  // now too (the lamp pool size follows at the next load); quality / tone mapping apply now.
   setRenderOption(opt: unknown): void {
-    const next = opt === 'default' ? 'default' : 'model';
-    if (next === this.renderOption) return;
-    this.renderOption = next;
-    if (!this.view.model) return;
-    this._useRecipe(this.view.model.manifest);
-    if (this.view.objectLayer) this.view.objectLayer._shadowLook();
+    const { option, warnings } = normRenderOption(opt);
+    const w = warnings.join('; ');
+    if (w && w !== this._renderWarned) console.warn(`floorplan3d: card YAML ${w}`);
+    this._renderWarned = w;
+    const prev = this.renderOpt;
+    this.renderOpt = option;
+    this.renderOption = option.recipe;
+    const recipe = option.recipe !== prev.recipe, look = option.quality !== prev.quality || option.toneMapping !== prev.toneMapping;
+    if (!this.view.model || (!recipe && !look)) return;
+    if (recipe) {
+      this._useRecipe(this.view.model.manifest);
+      if (this.view.objectLayer) this.view.objectLayer._shadowLook();
+    }
     this._applyLook();
+  }
+
+  // What the quality tier turns on (QUALITY_TIERS).
+  tier(): Readonly<QualityTier> {
+    return QUALITY_TIERS[this.renderOpt.quality];
   }
 
   // Pixel ratio: 1 in test mode, else the device's up to the recipe's pixelRatioMax.
@@ -172,7 +193,7 @@ export class RenderLook {
     hemi.color.setHex(k.hemiSky);
     hemi.groundColor.setHex(k.hemiGround);
     const L = cloudLight(this.view.skyLayer.weather.applied || 0, t);
-    hemi.intensity = k.hemiIntensity * L.hemi;
+    hemi.intensity = k.hemiIntensity * L.hemi * this.tier().hemiScale;
     sun.color.setHex(k.sunColor);
     // cloud shadows on: the sun keeps its clear-sky strength (the patches and the rooms' shade dim it)
     sun.intensity = k.sunIntensity * (this.sky.sun ?? 1) * (this.view.skyLayer._cloudShadowsOn() ? 1 : L.sun);
@@ -189,6 +210,29 @@ export class RenderLook {
     U.fpCity.value = city ? cityLightsOn(t) : 0;
     if (city) U.fpCityParams.value.set(city.share, city.strength, city.street, city.glass);
     this.view.renderer.setClearColor(backgroundAt(this.background, t), 1);
+    if (this._env) this._skyEnv();
+  }
+
+  // The tier's environment light from the sky: on with a model when the tier asks for it (made then), else
+  // off (freed). Changes of the sky ask for a rebuild (throttled, see env-light.ts); the brightness follows now.
+  _syncEnv(): void {
+    const on = !!this.view.model && this.tier().envLight;
+    if (!on) {
+      if (this._env) { this._env.dispose(); this._env = null; this.view.dirty = true; }
+      return;
+    }
+    if (!this._env) this._env = new EnvLight(this.view.renderer, this.view.scene, () => { this.view.dirty = true; });
+    this._skyEnv();
+  }
+
+  _skyEnv(): void {
+    const env = this._env!, model = this.view.model;
+    if (!model) return;
+    const t = Math.max(0, Math.min(1, this.sky.night)), moon = this.view.skyLayer.skyBodies.moon, cover = this.view.skyLayer.weather.applied || 0;
+    const sunDir = this.sky.sunDir || sunDirection(model.north, this.view.modelGroup.rotation.y); // as the sun light (_fitShadow)
+    const sky = envSky(t, sunDir, moon, cover);
+    env.request(sky);
+    this.view.scene.environmentIntensity = envIntensity(t, cover, moon ? moon.illumination : 0, sky.body);
   }
 
   // Card option city_lights (true or { windows, glow, share, strength, street, glass }): lit windows, lit
@@ -358,13 +402,15 @@ export class RenderLook {
     if (this.view.model) {
       if (this._cityModel !== this.view.model) { this._cityModel = this.view.model; this._cityWindows(); } // once per model
       const rd = this.render;
-      r.toneMapping = TONE[rd.toneMapping] ?? THREE.ACESFilmicToneMapping;
-      r.toneMappingExposure = rd.exposure;
+      const tone = renderTone(rd, this.renderOpt); // the recipe's unless the card or its quality tier sets one
+      r.toneMapping = TONE[tone.toneMapping] ?? THREE.ACESFilmicToneMapping;
+      r.toneMappingExposure = tone.exposure;
       r.outputColorSpace = rd.outputColorSpace === 'srgb-linear' ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
       r.shadowMap.enabled = true;
       r.shadowMap.autoUpdate = false; // re-rendered on demand (needsUpdate), not every frame
       this._shadowDirty();
       r.shadowMap.type = THREE.PCFSoftShadowMap;
+      this._syncEnv(); // before the lights: they set its brightness
       this._applyLights();
       sun.castShadow = true; // stays on (toggling recompiles shaders); night = intensity 0
       sun.shadow.autoUpdate = false; // redrawn only when flagged, and only while the sun is up
@@ -389,6 +435,7 @@ export class RenderLook {
       sun.intensity = day ? 1.4 : 0;
       sun.castShadow = false;
       this.view.moonLight.intensity = 0;
+      this._syncEnv(); // no model: no environment
       sun.position.set(-12, 30, 18);
       sun.target.position.set(0, 0, 0);
     }
@@ -476,6 +523,8 @@ export class RenderLook {
 
   // Ambient occlusion, the finish and the depth pass (view.dispose).
   dispose(): void {
+    if (this._env) this._env.dispose();
+    this._env = null;
     this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();

@@ -37,7 +37,10 @@ function boot(params) {
       ...(params.get('merge') === '0' ? { merge: false } : {}), // ?merge=0: every model part its own mesh
       ...(params.get('logos') === '1' ? { badges: { integration: true } } : {}), // ?logos=1: integration logos on
       ...(params.get('debug') === '1' ? { debug: true } : {}), // ?debug=1: the performance overlay
-      ...(params.get('render') ? { render: params.get('render') } : {}), // ?render=default: ignore the model's render recipe
+      // ?render=default: ignore the model's render recipe; ?quality=high (and ?tone=agx|neutral|...): the render tier
+      ...(params.get('render') || params.get('quality') || params.get('tone') ? { render: params.get('quality') || params.get('tone')
+        ? { recipe: params.get('render') || 'model', ...(params.get('quality') ? { quality: params.get('quality') } : {}), ...(params.get('tone') ? { tone_mapping: params.get('tone') } : {}) }
+        : params.get('render') } : {}),
     });
   }
   push(createMockHass({ onChange: push }));
