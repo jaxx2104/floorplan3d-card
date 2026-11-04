@@ -31,23 +31,25 @@ jobs:
           V=$(node scripts/next-version.mjs)
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "next version: ${V:-none (nothing to release)}"
+      - uses: pnpm/action-setup@v4
+        if: steps.version.outputs.version
       - uses: actions/setup-node@v4
         if: steps.version.outputs.version
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
         if: steps.version.outputs.version
       - name: Stamp the version
         if: steps.version.outputs.version
         env:
           V: ${{ steps.version.outputs.version }}
         run: |
-          npm version "$V" --no-git-tag-version
+          npm pkg set version="$V"
           node -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
           sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.ts
           grep -q "const VERSION = '$V';" src/floorplan3d-card.ts
-      - run: npm run build
+      - run: pnpm run build
         if: steps.version.outputs.version
       # the card is an entry plus the chunks/ it imports on demand: both archives carry all of them
       - name: Package integration (card bundled inside) for HACS

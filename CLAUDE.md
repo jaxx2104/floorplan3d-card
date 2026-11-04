@@ -7,7 +7,7 @@ position and map overlay.
 
 ## Stack
 - Vanilla custom element, Three.js 0.169, esbuild bundle -> `dist/floorplan3d-card.js`
-- TypeScript 7 (`npm run typecheck`, strict; shared contracts in `src/types/`), oxlint (`npm run lint`).
+- TypeScript 7 (`pnpm run typecheck`, strict; shared contracts in `src/types/`), oxlint (`pnpm run lint`).
   Relative imports use `.ts` specifiers (allowImportingTsExtensions); only erasable TS syntax
   (erasableSyntaxOnly), so node runs src/ directly for scripts/ and tools/.
 - Structure: `src/floorplan3d-card.*` is the element shell (lifecycle, hass update diff, commit) over
@@ -107,14 +107,14 @@ iiseppi/sunseeker_local_control (MQTT).
 ## Repo / delivery
 - GitHub (`origin`) is the main remote; HACS installs it as an Integration from release
   `floorplan3d.zip` (integration with the card bundled; it registers the card via
-  add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `npm run build`.
+  add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `pnpm run build`.
 - CI: `.github/workflows/ci.yml` (lint, vitest, build, headless checks, pytest);
   `release.yml` runs after every green CI on main: `scripts/next-version.mjs` picks the next
   version from the conventional commits since the last tag (feat -> minor, fix/perf/refactor ->
   patch, docs/chore/ci/test/style/build -> no release), stamps it into package.json, the manifest
   and `VERSION`, builds the zip and creates the tag + release. Never bump versions by hand: the
   repository keeps `0.0.0-dev`.
-- Add `npm run deploy` that scp's dist + integration to the HA host (host from .env, not committed).
+- Add `pnpm run deploy` that scp's dist + integration to the HA host (host from .env, not committed).
 - `demo/index.html` with a mock `hass` object (few areas, floors, lights, sensors, a fake mower
   moving in a circle) for testing without HA. Verify with a headless browser screenshot.
 

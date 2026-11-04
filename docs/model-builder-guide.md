@@ -155,7 +155,7 @@ view shows which buckets, camera per view, what follows the view).
 `fp.render` on the root node (or the single wrapper, next to `views`) tells the card how the
 model was meant to look. Every key is optional; missing keys keep the card's defaults (shown
 below), unknown keys are ignored, out-of-range numbers are clamped with a warning
-(`npm run check-model` lists them). The card option `render: default` ignores the recipe.
+(`pnpm run check-model` lists them). The card option `render: default` ignores the recipe.
 
 ```js
 house.userData.fp = { render: {
@@ -219,7 +219,7 @@ house.userData.fp = { render: { materials: {
 `none` keeps a material plain even when its name says otherwise. A material is one object for
 every mesh that uses it, so a rule that picks one of its meshes changes all of them. The card
 option `render.materials` takes the same object and comes after the model's (README). Invalid
-selectors or classes are skipped with a warning (`npm run check-model` lists them).
+selectors or classes are skipped with a warning (`pnpm run check-model` lists them).
 
 ### Indirect light: room probes and baked lightmaps (`render: { quality: high }`)
 

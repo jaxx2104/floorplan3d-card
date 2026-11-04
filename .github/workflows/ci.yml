@@ -12,15 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
       - uses: actions/upload-artifact@v4
         with:
           name: card
@@ -41,12 +42,13 @@ jobs:
     name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
       - run: ${{ matrix.check.run }}
         env:
           CHROME_PATH: /usr/bin/google-chrome
@@ -67,12 +69,13 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
       - name: Model checks (shard ${{ matrix.shard }} of 7)
         run: node scripts/model-check.mjs --shard ${{ matrix.shard }}/7 || (echo "model-check retry (slow shared runner timing)" && node scripts/model-check.mjs --shard ${{ matrix.shard }}/7)
         env:

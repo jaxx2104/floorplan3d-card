@@ -16,7 +16,7 @@
     "check:model": "node scripts/model-check.mjs",
     "check:perf": "node scripts/perf-check.mjs",
     "check-model": "node tools/check-model.mjs",
-    "check": "npm run build && node scripts/screenshot.mjs && node scripts/edit-check.mjs && node scripts/model-check.mjs",
+    "check": "pnpm run build && node scripts/screenshot.mjs && node scripts/edit-check.mjs && node scripts/model-check.mjs",
     "deploy": "node scripts/deploy.mjs",
     "make-demo-model": "node scripts/make-demo-model.mjs"
   },
@@ -36,5 +36,6 @@
     "puppeteer-core": "25.12.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
-  }
+  },
+  "packageManager": "pnpm@12.16.1"
 }
