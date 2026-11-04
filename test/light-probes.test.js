@@ -13,7 +13,7 @@ vi.mock('three/addons/lights/LightProbeGenerator.js', () => ({
 }));
 
 const {
-  probePoint, probeRooms, probeFrame, probeTile, roomIdGrid, roomOpenness, lampKey, lightStep, probeDue, probeWait, LightProbes, makeProbeUniforms,
+  probePoint, probeRooms, probeFrame, probeTile, roomIdGrid, roomOpenness, lampKey, lightStep, probeDue, probeWait, LightProbes, makeProbeUniforms, packSafe,
   PROBE_MAX, PROBE_MAX_FLOORS, PROBE_THROTTLE_MS, PROBE_TEXEL_M, PROBE_MAP_MAX, PROBE_MARGIN_M,
 } = await import('../src/light-probes.ts');
 const { patchCloudShadow, makeCloudUniforms, setTierVariant, tierKey } = await import('../src/cloud-shadow.ts');
@@ -227,5 +227,21 @@ describe('probe shader variant', () => {
     patchCloudShadow(m, makeCloudUniforms());
     expect(setTierVariant(m, { pcss: false, contact: false, probe: true })).toBe(false);
     expect(tierKey(m)).toBe('');
+  });
+});
+
+describe('packSafe', () => {
+  it('unbinds the PIXEL_PACK buffer right after three starts an async read-back', async () => {
+    const calls = [];
+    const gl = { PIXEL_PACK_BUFFER: 0x88eb, bindBuffer: (t, b) => calls.push(['bind', t, b]) };
+    const renderer = { getContext: () => gl, readRenderTargetPixelsAsync: (...a) => { calls.push(['read', a.length]); return Promise.resolve('px'); }, other: 1 };
+    const safe = packSafe(renderer);
+    expect(await safe.readRenderTargetPixelsAsync(1, 2, 3)).toBe('px');
+    expect(calls).toEqual([['read', 3], ['bind', 0x88eb, null]]);
+    expect(safe.other).toBe(1); // everything else is the renderer's
+  });
+  it('passes renderers without an async read-back through', () => {
+    const r = { capabilities: {} };
+    expect(packSafe(r)).toBe(r);
   });
 });
