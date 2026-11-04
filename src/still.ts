@@ -2,35 +2,44 @@
 // path tracer. While the camera moves the 'still' tier draws exactly what 'high' draws. Once the view has been
 // idle for STILL_IDLE_MS (no frame was due: the render loop is asleep) and nothing holds the trace off, the
 // current view is path traced (three-gpu-pathtracer, loaded on demand: src/path-tracer.ts) at STILL_SCALE of
-// the drawing buffer, one tile a frame, and faded in over the raster frame as its samples add up. The budget
-// ends a session at STILL_MAX_SAMPLES samples or STILL_MAX_MS; the last image then stays on screen with the
-// loop asleep again. Any frame that is due (camera, hass state, lamp, sun step, edit mode, resize: everything
+// the drawing buffer, one tile a frame. The traced image never shows worse than the raster frame: nothing is
+// drawn before STILL_FADE_FROM samples (the raster frame stays as it is), then the denoised trace fades in until
+// STILL_FADE_TO and keeps refining to STILL_MAX_SAMPLES or STILL_MAX_MS; the last image then stays on screen with
+// the loop asleep again. A device too slow to reach STILL_FADE_FROM within the time keeps the raster frame. Any frame that is due (camera, hass state, lamp, sun step, edit mode, resize: everything
 // that sets view.dirty) ends the session first, so the raster frame that follows replaces the traced image.
 
 /** Idle time (ms) before a trace starts. */
 export const STILL_IDLE_MS = 3000;
 /** Budget of a session: samples per pixel and time (ms), whichever comes first. */
-export const STILL_MAX_SAMPLES = 256;
-export const STILL_MAX_MS = 30000;
-/** Headless checks (SwiftShader is slow): a few samples only. */
+export const STILL_MAX_SAMPLES = 512;
+export const STILL_MAX_MS = 60000;
+/** The fade: the trace shows from STILL_FADE_FROM samples (noise-free enough once denoised), fully at STILL_FADE_TO. */
+export const STILL_FADE_FROM = 128;
+export const STILL_FADE_TO = 256;
+/** Headless checks (SwiftShader is slow): a few samples only, the fade from the first to the last. */
 export const STILL_TEST_SAMPLES = 3;
+/** Denoise of the traced image (path-tracer.ts): a-trous passes (steps 1, 2, 4, ... texels of the trace), depth
+ * tolerance (share of the depth per step), luminance tolerance (tone-mapped 0..1: keeps shadow edges), normal
+ * sharpness (power of the normals' cosine). The first pass also cuts fireflies to their neighbours' brightest. */
+export const STILL_DENOISE = Object.freeze({ passes: 3, depth: 0.02, luminance: 0.15, normal: 32 });
+/** A path's radiance (linear luminance) is capped at this before it is accumulated (fireflies). */
+export const STILL_SAMPLE_MAX = 6;
 /** Trace resolution: this share of the drawing buffer per side (upscaled when drawn). */
 export const STILL_SCALE = 0.5;
 /** Tiles per sample (a tile per frame keeps every frame short). */
 export const STILL_TILES = 2;
-/** Samples to the full fade-in (the noisy first ones blend with the raster frame). */
-export const STILL_FADE_SAMPLES = 16;
 /** Bounces of a path (transmissive: through glass). */
 export const STILL_BOUNCES = 5;
 export const STILL_TRANSMISSIVE_BOUNCES = 3;
 
-/** What a session may spend. */
-export interface StillBudget { samples: number; ms: number; fade: number }
+/** What a session may spend, and when its image shows (samples). */
+export interface StillBudget { samples: number; ms: number; fadeFrom: number; fadeTo: number }
 
-// The budget: in test mode a few samples (fully faded in at the last), else STILL_MAX_SAMPLES / STILL_MAX_MS.
+// The budget: in test mode a few samples (the fade from the first sample, full at the last), else
+// STILL_MAX_SAMPLES / STILL_MAX_MS with the fade from STILL_FADE_FROM to STILL_FADE_TO.
 export function stillBudget(test: boolean): StillBudget {
-  const samples = test ? STILL_TEST_SAMPLES : STILL_MAX_SAMPLES;
-  return { samples, ms: STILL_MAX_MS, fade: Math.min(STILL_FADE_SAMPLES, samples) };
+  if (test) return { samples: STILL_TEST_SAMPLES, ms: STILL_MAX_MS, fadeFrom: 1, fadeTo: STILL_TEST_SAMPLES };
+  return { samples: STILL_MAX_SAMPLES, ms: STILL_MAX_MS, fadeFrom: STILL_FADE_FROM, fadeTo: STILL_FADE_TO };
 }
 
 /** Why no trace runs now (null: one may). */
@@ -67,10 +76,12 @@ export function stillHold(s: StillState): StillHold {
   return null;
 }
 
-// Opacity of the traced image over the raster frame: 0 before the first sample, 1 at budget.fade samples.
+// Opacity of the traced image over the raster frame: 0 below budget.fadeFrom samples (nothing drawn), rising to 1
+// at budget.fadeTo.
 export function stillFade(samples: number, budget: StillBudget): number {
-  if (!(samples > 0)) return 0;
-  return Math.min(1, samples / Math.max(1, budget.fade));
+  if (!(samples >= budget.fadeFrom)) return 0;
+  if (!(budget.fadeTo > budget.fadeFrom)) return 1;
+  return Math.min(1, (samples - budget.fadeFrom) / (budget.fadeTo - budget.fadeFrom));
 }
 
 // The session has spent its budget.

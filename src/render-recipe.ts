@@ -335,7 +335,7 @@ export interface QualityTier {
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
   standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false, pathTrace: false }),
   high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true, pathTrace: false }),
-  // 'high' while the camera moves; path traced once the view is idle
+  // experimental (desktop GPUs): 'high' while the camera moves; path traced once the view is idle (still.ts)
   still: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true, pathTrace: true }),
 });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
@@ -352,7 +352,7 @@ export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; t
 export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'standard', toneMapping: null });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'standard' | 'high' | 'still', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'standard' | 'high' | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): { option: RenderOption; warnings: string[] } {

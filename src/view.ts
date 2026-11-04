@@ -49,6 +49,7 @@ export interface ViewStats {
   materialSwaps: number; // model materials upgraded to physical or restored (render quality 'high', look changes)
   stillSessions: number; // idle path tracing sessions started (render quality 'still')
   stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
+  stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
   stillBuilds: number; // path tracer scene builds (render quality 'still', the model or its visible geometry changed)
   mapUploads?: number;
 }
@@ -206,7 +207,7 @@ export class FloorplanView {
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
     this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
-    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0, probeCaptures: 0, materialSwaps: 0, stillSessions: 0, stillSteps: 0, stillBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0, probeCaptures: 0, materialSwaps: 0, stillSessions: 0, stillSteps: 0, stillDraws: 0, stillBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure

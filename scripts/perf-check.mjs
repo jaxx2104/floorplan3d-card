@@ -199,14 +199,14 @@ async function stillChecks() {
     const ev = (expr) => page.evaluate(expr);
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
     await ev('window.__demoMowerPaused = true');
-    const st = () => ev(`JSON.stringify((() => { const v = ${card}._view, s = v.still; return { sessions: v.stats.stillSessions, steps: v.stats.stillSteps, builds: v.stats.stillBuilds, frames: v.stats.frames,
+    const st = () => ev(`JSON.stringify((() => { const v = ${card}._view, s = v.still; return { sessions: v.stats.stillSessions, steps: v.stats.stillSteps, draws: v.stats.stillDraws, builds: v.stats.stillBuilds, frames: v.stats.frames,
       active: s.active, done: s.done, hold: s.hold, spp: s.samples, after: Math.round(s.startedAfter), gl: v.renderer.getContext().getError(),
       chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) }; })())`).then(JSON.parse);
     const waitFor = (expr, timeout = 120000) => page.waitForFunction(expr, { timeout, polling: 200 }).then(() => true, () => false);
     const traced = await waitFor(`${card}._view.still.done`);
     const a = await st();
     console.log(`     still: first session ${JSON.stringify(a)}`);
-    check('still: traces once idle (>= 3 s after the last frame), its chunk loaded, done at the test cap, no GL error', traced && a.sessions === 1 && a.builds === 1 && a.after >= 2900 && a.chunk && a.spp >= 3 && a.done && a.gl === 0, JSON.stringify(a));
+    check('still: traces once idle (>= 3 s after the last frame), its chunk loaded, drawn only from the fade threshold, done at the test cap, no GL error', traced && a.sessions === 1 && a.builds === 1 && a.draws > 0 && a.draws < a.steps && a.after >= 2900 && a.chunk && a.spp >= 3 && a.done && a.gl === 0, JSON.stringify(a));
     await sleep(1500);
     const b = await st();
     check('still: nothing runs once the budget is spent (no tile, no frame)', b.steps === a.steps && b.frames === a.frames && b.sessions === 1, JSON.stringify(b));

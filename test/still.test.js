@@ -1,17 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { stillBudget, stillHold, stillFade, stillDone, stillSize, STILL_IDLE_MS, STILL_MAX_SAMPLES, STILL_MAX_MS, STILL_TEST_SAMPLES, STILL_FADE_SAMPLES } from '../src/still.ts';
+import { stillBudget, stillHold, stillFade, stillDone, stillSize, STILL_IDLE_MS, STILL_MAX_SAMPLES, STILL_MAX_MS, STILL_TEST_SAMPLES, STILL_FADE_FROM, STILL_FADE_TO } from '../src/still.ts';
 
 const base = { tier: true, model: true, onScreen: true, visible: true, editing: false, clipped: false, idleFor: STILL_IDLE_MS };
 
 describe('still: idle path tracing rules', () => {
-  it('budget: 256 spp or 30 s, a few samples in test mode', () => {
-    expect(stillBudget(false)).toEqual({ samples: STILL_MAX_SAMPLES, ms: STILL_MAX_MS, fade: STILL_FADE_SAMPLES });
-    expect(STILL_MAX_SAMPLES).toBe(256);
-    expect(STILL_MAX_MS).toBe(30000);
+  it('budget: 512 spp or 60 s, a few samples in test mode', () => {
+    expect(stillBudget(false)).toEqual({ samples: STILL_MAX_SAMPLES, ms: STILL_MAX_MS, fadeFrom: STILL_FADE_FROM, fadeTo: STILL_FADE_TO });
+    expect(STILL_MAX_SAMPLES).toBe(512);
+    expect(STILL_MAX_MS).toBe(60000);
+    expect(STILL_FADE_FROM).toBeGreaterThanOrEqual(128); // never a noisy image over the raster frame
+    expect(STILL_FADE_TO).toBeGreaterThan(STILL_FADE_FROM);
+    expect(STILL_FADE_TO).toBeLessThanOrEqual(STILL_MAX_SAMPLES);
     const t = stillBudget(true);
     expect(t.samples).toBe(STILL_TEST_SAMPLES);
     expect(t.samples).toBeLessThanOrEqual(4);
-    expect(t.fade).toBe(t.samples); // fully faded in at the last test sample
+    expect(t.fadeTo).toBe(t.samples); // fully faded in at the last test sample
   });
   it('starts only in the still tier, with a model, on screen, outside edit mode, unclipped, after the idle time', () => {
     expect(stillHold(base)).toBe(null);
@@ -27,20 +30,31 @@ describe('still: idle path tracing rules', () => {
     // the tier comes first: standard / high never get further
     expect(stillHold({ ...base, tier: false, onScreen: false, editing: true })).toBe('tier');
   });
-  it('fades in with the samples', () => {
+  it('shows nothing before the fade threshold, then fades in to full', () => {
     const b = stillBudget(false);
     expect(stillFade(0, b)).toBe(0);
-    expect(stillFade(0.25, b)).toBeCloseTo(0.25 / STILL_FADE_SAMPLES);
-    expect(stillFade(STILL_FADE_SAMPLES / 2, b)).toBeCloseTo(0.5);
-    expect(stillFade(STILL_FADE_SAMPLES, b)).toBe(1);
-    expect(stillFade(200, b)).toBe(1);
+    expect(stillFade(1, b)).toBe(0);
+    expect(stillFade(STILL_FADE_FROM - 0.25, b)).toBe(0); // a sample's tiles not all drawn yet
+    expect(stillFade(STILL_FADE_FROM, b)).toBe(0);
+    expect(stillFade((STILL_FADE_FROM + STILL_FADE_TO) / 2, b)).toBeCloseTo(0.5);
+    expect(stillFade(STILL_FADE_TO, b)).toBe(1);
+    expect(stillFade(STILL_MAX_SAMPLES, b)).toBe(1);
     expect(stillFade(NaN, b)).toBe(0);
+    // test mode: the same rule over the tiny cap
+    const t = stillBudget(true);
+    expect(stillFade(0.75, t)).toBe(0);
+    expect(stillFade(1, t)).toBe(0);
+    expect(stillFade(2, t)).toBeCloseTo(0.5);
+    expect(stillFade(3, t)).toBe(1);
+    // a degenerate fade shows at once from its start
+    expect(stillFade(5, { samples: 10, ms: 1, fadeFrom: 5, fadeTo: 5 })).toBe(1);
+    expect(stillFade(4, { samples: 10, ms: 1, fadeFrom: 5, fadeTo: 5 })).toBe(0);
   });
   it('ends at the sample cap or the time cap', () => {
     const b = stillBudget(false);
-    expect(stillDone(255, 1000, b)).toBe(false);
-    expect(stillDone(256, 1000, b)).toBe(true);
-    expect(stillDone(10, 30000, b)).toBe(true);
+    expect(stillDone(511, 1000, b)).toBe(false);
+    expect(stillDone(512, 1000, b)).toBe(true);
+    expect(stillDone(10, 60000, b)).toBe(true);
     expect(stillDone(3, 10, stillBudget(true))).toBe(true);
   });
   it('traces at half resolution', () => {
