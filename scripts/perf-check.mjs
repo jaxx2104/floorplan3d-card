@@ -9,7 +9,9 @@
 // view, nothing while idle; soft / contact shadow variants only in 'high', contact shadows rebuilt only when the
 // casters change (not while idle, not per frame), shadow requests as in 'standard'; physical materials (glass,
 // floors, fabric) only in 'high', upgraded at load and on a tier change (restored and upgraded again, without GL
-// errors), never while idle or per frame; frame time (render + bloom + finish, GPU included) in bounds.
+// errors), never while idle or per frame; per-room light probes only in 'high', captured one room a frame per pass,
+// no capture while idle or on forced / camera frames, one pass (at most two) per input change (a sun step that
+// rebuilds the sky, a lamp switched off); frame time (render + bloom + finish, GPU included) in bounds.
 //   node scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
@@ -40,6 +42,8 @@ async function qualityRun(quality) {
     const contactBuilds = () => ev(`${card}._view.stats.contactBuilds`);
     const shadows = () => ev(`(() => { const s = ${card}._view.stats; return { shadow: s.shadow, lights: s.shadowLights }; })()`);
     const swaps = () => ev(`${card}._view.stats.materialSwaps`);
+    const probes = () => ev(`(() => { const v = ${card}._view, p = v.look.indirect.probes; return { caps: v.stats.probeCaptures, passes: p ? p.stats.passes : 0, rooms: p && p.setup ? p.setup.rooms.length - p.setup.skip.size : 0, on: p ? p.uniforms.fpProbe.value.z : 0 }; })()`);
+    const pr0 = await probes(); // the load's pass (after the first sky build)
     const surfaces = () => ev(`(() => { const out = { glass: 0, floor: 0, fabric: 0, physical: 0 }, seen = new Set();
       ${card}._view.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (seen.has(m)) continue; seen.add(m);
         if (m.userData.fpSurface) out[m.userData.fpSurface]++; if (m.isMeshPhysicalMaterial) out.physical++; } });
@@ -47,13 +51,14 @@ async function qualityRun(quality) {
     const ms0 = await swaps();
     const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`), bp0 = await bloomPasses(), cb0 = await contactBuilds(), sh0 = await shadows();
     await sleep(8000);
-    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses(), cb1 = await contactBuilds();
+    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses(), cb1 = await contactBuilds(), pr1 = await probes();
     await ev('window.__setDemoSun(40.5, 200.5)'); // < 2 degrees: light moves, environment kept
     await sleep(3000);
     const b2 = await builds();
+    const pr2 = await probes();
     await ev('window.__setDemoSun(46, 215)'); // > 2 degrees: one rebuild
     await sleep(3000);
-    const b3 = await builds();
+    const b3 = await builds(), pr3 = await probes();
     const sh1 = await shadows(); // the two sun steps: shadow requests as in standard (the scheduling is the tier's same)
     const env = await ev(`(() => { const v = ${card}._view; let pcss = 0, contact = 0;
       v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (m.userData.fpPcss) pcss++; if (m.userData.fpContact) contact++; } });
@@ -79,10 +84,23 @@ async function qualityRun(quality) {
     const awayTimes = await forced(10);
     const fr5 = await frames(), bp4 = await bloomPasses(), skip1 = await ev(`${card}._view.look._bloom ? ${card}._view.look._bloom.stats.skipped : 0`);
     await ev(`(() => { const v = ${card}._view, [p, t] = window.__fpCam; v._moveCamera(p, t, true); })()`);
+    const prForced = (await probes()).caps - pr3.caps; // forced and moved-camera frames capture no probe
     // one environment build, timed the same way (what a sun step costs once)
     const buildMs = await ev(`(() => { const v = ${card}._view, e = v.look._env, gl = v.renderer.getContext(); if (!e || !e.built) return null;
       const t = performance.now(); e._build(e.built); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
     const cbForced = (await contactBuilds()) - cb1; // forced and moved-camera frames rebuild nothing
+    await sleep(3000); // the timed environment build above rebuilds the probes once
+    const prBase = await probes();
+    // a lamp turned off: one pass once the throttle allows, then nothing while idle
+    await ev(`window.__setDemoStates({ 'light.demo_living': 'off' })`);
+    await sleep(4000);
+    const pr4 = await probes();
+    await ev(`${card}._view.look._applyLook()`); // a look change that leaves the light as it is (a theme): probes kept
+    await sleep(3000);
+    const pr5 = await probes();
+    // one capture (a room's six faces), timed with the GPU
+    const probeMs = await ev(`(() => { const v = ${card}._view, p = v.look.indirect.probes, gl = v.renderer.getContext(); if (!p || !p._cam) return null;
+      const t = performance.now(); v.look.indirect._capture(p._cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
     // a change of the shadow casters (the floor chips: another storey shown) rebuilds the contact shadows once
     const cb2 = await contactBuilds();
     await ev(`${card}.shadowRoot.querySelectorAll('.chips button.chip')[2].click()`);
@@ -104,7 +122,8 @@ async function qualityRun(quality) {
       roundTrip = { down, up, surfStd, surfHigh, errStd, errHigh };
     }
     const sorted = [...times].sort((a, b) => a - b);
-    return { buildMs, msLoad: ms0, msSteady, surf, roundTrip, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+    const probe = { load: pr0, idle: pr1.caps - pr0.caps, small: pr2.caps - pr1.caps, big: pr3.caps - pr2.caps, forced: prForced, lamp: pr4.caps - prBase.caps, after: pr5.caps - pr4.caps, rooms: pr5.rooms, passes: pr5.passes, on: pr5.on, ms: probeMs };
+    return { probe, buildMs, msLoad: ms0, msSteady, surf, roundTrip, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
       idleContact: cb1 - cb0, contactForced: cbForced, contactChange: cbChange, contactMs, contactTotal: await contactBuilds(), shadowSteps: sh1.shadow - sh0.shadow, shadowLightSteps: sh1.lights - sh0.lights,
       idleBloom: bp1 - bp0, bloomForced: bp3 - bp2, framesForced: fr3 - fr2, bloomAway: bp4 - bp3, skippedAway: skip1 - skip0, framesAway: fr5 - fr4, bloomTotal: bp4,
       awayAvg: awayTimes.reduce((a, b) => a + b, 0) / Math.max(1, awayTimes.length),
@@ -142,6 +161,13 @@ async function qualityChecks() {
   const rt = high.roundTrip;
   check('high -> standard -> high: restored and upgraded again, no GL error', !!rt && rt.down === upgraded(high.surf) && rt.up === rt.down && upgraded(rt.surfStd) === 0 && rt.surfStd.physical === high.surf.physical - upgraded(high.surf)
     && JSON.stringify(rt.surfHigh) === JSON.stringify(high.surf) && rt.errStd === 0 && rt.errHigh === 0, JSON.stringify(rt));
+  const P = high.probe, Ps = std.probe;
+  console.log(`     light probes: high ${P.rooms} rooms, ${P.passes} passes; captures at load ${P.load.caps}, idle ${P.idle}, sun +0.7 deg ${P.small}, sun +16 deg ${P.big}, forced / camera frames ${P.forced}, lamp off ${P.lamp}, after it ${P.after}; one capture ${P.ms?.toFixed(1)} ms; standard ${Ps.load.caps + Ps.idle + Ps.big + Ps.lamp} captures`);
+  check('standard: no light probes', Ps.passes === 0 && Ps.load.caps + Ps.idle + Ps.small + Ps.big + Ps.forced + Ps.lamp + Ps.after === 0 && !Ps.on, JSON.stringify(Ps));
+  check('high: light probes built at load, one room a capture', P.rooms > 0 && P.load.passes >= 1 && P.load.caps >= P.rooms && P.on === 1, JSON.stringify(P.load));
+  check('high: no probe capture while idle, on forced / camera frames or a look change that keeps the light', P.idle === 0 && P.forced === 0 && P.after === 0, `${P.idle}, ${P.forced}, ${P.after}`);
+  check('high: a sky rebuild and a lamp switched each recapture every room once (at most twice)', P.big >= P.rooms && P.big <= 2 * P.rooms && P.lamp >= P.rooms && P.lamp <= 2 * P.rooms && P.small <= 2 * P.rooms,
+    `sky ${P.big}, lamp ${P.lamp}, small sun step ${P.small} for ${P.rooms} rooms`);
   check('high (bloom, PCSS, contact, physical materials included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
   for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
 }

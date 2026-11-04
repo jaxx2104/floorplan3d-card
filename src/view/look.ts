@@ -22,6 +22,7 @@ import { measuredElevations } from '../bindings.ts';
 import { classifyMaterial, type MaterialFacts, type MaterialRule } from '../material-class.ts';
 import { materialFacts, setSurface, surfaceOf } from '../physical-materials.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
+import { IndirectLight } from './indirect.ts';
 import type { FloorplanView } from '../view.ts';
 import type { ModelManifest } from './model.ts';
 import type { RenderSettings, RenderOption, QualityTier, DayNight, CityLights } from '../render-recipe.ts';
@@ -56,6 +57,8 @@ export class RenderLook {
   _bloom: SelectiveBloom | null;
   _contact: ContactShadows | null;
   _surfFacts: { model: unknown; facts: Map<THREE.Material, MaterialFacts> } | null;
+  /** per-room light probes and baked lightmaps (quality high) */
+  indirect: IndirectLight;
   renderFrom: { keys: number } | null;
   background: DayNight;
   furniture: 'color' | 'white';
@@ -90,6 +93,7 @@ export class RenderLook {
     this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
     this._contact = null; // ContactShadows while the tier grounds things on the floors (made on first use)
     this._surfFacts = null; // { model, facts }: the loaded model's material facts (physical materials, gathered once)
+    this.indirect = new IndirectLight(view); // light probes and lightmaps while the tier asks for them
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
     this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
@@ -225,6 +229,7 @@ export class RenderLook {
     if (city) U.fpCityParams.value.set(city.share, city.strength, city.street, city.glass);
     this.view.renderer.setClearColor(backgroundAt(this.background, t), 1);
     if (this._env) this._skyEnv();
+    this.indirect.skyChanged(); // baked light follows the sky's brightness
   }
 
   // The tier's environment light from the sky: on with a model when the tier asks for it (made then), else
@@ -250,13 +255,14 @@ export class RenderLook {
     if (model && t.contactShadows && !this._contact) this._contact = new ContactShadows(this.view.renderer, this.view.skyLayer._cloudU);
     if (!(model && t.contactShadows) && this._contact) { this._contact.dispose(); this._contact = null; }
     if (model) {
-      const variant = { pcss: t.softShadows, contact: t.contactShadows };
+      const variant = { pcss: t.softShadows, contact: t.contactShadows, probe: t.lightProbes || t.bakedLightmaps };
       model.root.traverse((o) => {
         if (!isMesh(o)) return;
         for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) if (m) setTierVariant(m, variant);
       });
       this._syncSurfaces(t.physicalMaterials);
     }
+    this.indirect.sync(); // after the upgrades: a probe applies to the physical materials too
     const layer = this.view.objectLayer;
     if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
   }
@@ -622,6 +628,7 @@ export class RenderLook {
     this._bloom = null;
     if (this._contact) this._contact.dispose();
     this._contact = null;
+    this.indirect.dispose();
     this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();

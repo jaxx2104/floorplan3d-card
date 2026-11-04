@@ -383,6 +383,7 @@ export class ModelLayer {
         this.view._modelVisibility = null;
         this.view.model = { id, root, manifest, tagged, north: northOf(root), opacity: 1 };
         this._liftTextured(root);
+        this.view.look.indirect.setModel(root, gltf.parser); // baked lightmaps (fp_lightmap): checked once, applied by the tier
         this.view.look._applyFurniture();
         this.view.look._screens = collectScreens(root); // fp_anim: monitors / pixel frames that play while their entity is on
         this.view.look._applyScreens();

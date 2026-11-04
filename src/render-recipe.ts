@@ -325,10 +325,14 @@ export interface QualityTier {
   contactShadows: boolean;
   /** Glass, floors and fabric as physical materials: thin glass, clear-coated floors, fabric sheen (material-class.ts). */
   physicalMaterials: boolean;
+  /** Per-room light probes: each room's captured light (sun through windows, lamps, sky) as its ambient fill (light-probes.ts). */
+  lightProbes: boolean;
+  /** Lightmaps baked into the model (extras fp_lightmap on a second UV set) as the ambient light of their surfaces (lightmap.ts). */
+  bakedLightmaps: boolean;
 }
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
-  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false }),
-  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true }),
+  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false }),
+  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true }),
 });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
 

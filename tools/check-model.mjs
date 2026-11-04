@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 // src/ is TypeScript with `.ts` specifiers: node strips the types itself.
 import { buildManifest, gltfAdapter, summarize } from '../src/manifest.ts';
+import { normLightmap, lightmapTexCoord, LIGHTMAP_MAX_PX } from '../src/lightmap.ts';
 
 const MAX_MESH_M = 60;
 const MAX_TEXTURE_PX = 2048;
@@ -74,6 +75,51 @@ function imageSize(bytes, mime) {
   return null;
 }
 
+// Baked lightmaps (material extras fp_lightmap, src/lightmap.ts): a valid spec, its texture (the occlusionTexture or
+// a texture index), the UV set on every primitive that uses the material, the image size. -> [{ material, ... }]
+function checkLightmaps(json, bin, errors, warnings) {
+  const out = [];
+  (json.materials || []).forEach((mat, mi) => {
+    const raw = mat && mat.extras ? mat.extras.fp_lightmap : undefined;
+    if (raw === undefined) return;
+    const where = `material "${mat.name || mi}"`;
+    const { spec, warnings: w } = normLightmap(raw);
+    if (!spec) { errors.push(`${where}: ${w.length ? w[w.length - 1] : 'fp_lightmap is invalid'}`); return; }
+    for (const x of w) warnings.push(`${where}: ${x}`);
+    let tex = null, texCoord;
+    if (spec.texture === 'occlusion') {
+      if (!mat.occlusionTexture) { errors.push(`${where}: fp_lightmap "occlusion" but the material has no occlusionTexture`); return; }
+      tex = mat.occlusionTexture.index;
+      texCoord = lightmapTexCoord(spec, mat.occlusionTexture.texCoord ?? 0);
+      const mr = mat.pbrMetallicRoughness && mat.pbrMetallicRoughness.metallicRoughnessTexture;
+      if (mr && mr.index === tex) { errors.push(`${where}: fp_lightmap "occlusion" shares its texture with metallicRoughness (packed by the exporter: wrong colours); keep roughness / metallic as values`); return; }
+    } else {
+      tex = spec.texture;
+      texCoord = lightmapTexCoord(spec);
+    }
+    const t = (json.textures || [])[tex];
+    if (!t) { errors.push(`${where}: fp_lightmap texture ${tex} does not exist`); return; }
+    if (texCoord === 0) warnings.push(`${where}: fp_lightmap on TEXCOORD_0; a lightmap needs its own unwrap without overlaps (a second UV map, texCoord 1)`);
+    const attr = `TEXCOORD_${texCoord}`, users = [], missing = [];
+    (json.meshes || []).forEach((m, i) => {
+      for (const p of m.primitives || []) {
+        if (p.material !== mi) continue;
+        users.push(m.name || String(i));
+        if (!p.attributes || p.attributes[attr] === undefined) missing.push(m.name || String(i));
+      }
+    });
+    if (!users.length) warnings.push(`${where}: fp_lightmap on a material no mesh uses`);
+    if (missing.length) errors.push(`${where}: fp_lightmap reads ${attr}, missing on mesh(es) ${[...new Set(missing)].join(', ')}; the card skips the lightmap`);
+    let size = null;
+    const img = (json.images || [])[t.source];
+    const bv = img && json.bufferViews && json.bufferViews[img.bufferView];
+    if (bv && bin) size = imageSize(Buffer.from(bin.subarray(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength)), img.mimeType);
+    if (size && Math.max(...size) > LIGHTMAP_MAX_PX) errors.push(`${where}: lightmap is ${size[0]} × ${size[1]} px; at most ${LIGHTMAP_MAX_PX} px (phones stop there)`);
+    out.push({ material: mat.name || String(mi), texture: tex, texCoord, type: spec.type, size });
+  });
+  return out;
+}
+
 export function checkGlb(buffer) {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   let parsed;
@@ -97,6 +143,7 @@ export function checkGlb(buffer) {
   }
 
   // meshes larger than a plot inside storeys and basements
+  let lightmaps = [];
   try {
     const nodes = json.nodes || [];
     const storeyNodes = new Set(m.levels.filter((l) => l.role === 'storey' || l.role === 'basement').map((l) => l.node));
@@ -123,6 +170,7 @@ export function checkGlb(buffer) {
       const size = imageSize(Buffer.from(bytes), img.mimeType);
       if (size && Math.max(...size) > MAX_TEXTURE_PX) warnings.push(`texture "${img.name || i}" is ${size[0]} × ${size[1]} px; keep textures at ${MAX_TEXTURE_PX} px or less`);
     });
+    lightmaps = checkLightmaps(json, bin, errors, warnings);
     if (buf.length > MAX_FILE_MB * 1024 * 1024) warnings.push(`file is ${(buf.length / 1048576).toFixed(1)} MB; keep it under ${MAX_FILE_MB} MB`);
   } catch (e) {
     errors.push(`invalid model data: ${e.message}`);
@@ -131,6 +179,7 @@ export function checkGlb(buffer) {
   return {
     ok: errors.length === 0, errors, warnings, summary: summarize(m),
     render: m.render ? { keys: m.renderKeys, recipe: m.render } : null,
+    lightmaps,
     levels: m.levels.map((l) => ({ id: l.id, role: l.role, order: l.order, elevation: l.elevation })),
     rooms: m.rooms.map((r) => ({ kind: r.kind, id: r.id, level: r.level, area: (r.suggest && r.suggest.area) || null })),
   };
@@ -162,6 +211,7 @@ function main(argv) {
     const objs = Object.entries(r.summary.objects).map(([t, n]) => `${n} ${t}`).join(', ') || 'none';
     console.log(`${file}: ${r.summary.levels} levels, ${r.summary.rooms} rooms, ${r.summary.zones} zones, objects: ${objs}`);
     if (r.render) console.log(`  render recipe: ${r.render.keys} key(s) (${Object.keys(r.render.recipe).join(', ')})`);
+    for (const l of r.lightmaps || []) console.log(`  lightmap on material ${l.material} (${l.type}, texture ${l.texture}, TEXCOORD_${l.texCoord}${l.size ? `, ${l.size[0]} × ${l.size[1]} px` : ''})`);
     for (const l of r.levels) console.log(`  level ${l.id} (${l.role}${l.order !== null ? ', order ' + l.order : ''}${l.elevation !== null ? ', elevation ' + l.elevation : ''})`);
   }
   for (const e of r.errors) console.log('ERROR ' + e);

@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { PCSS_HEAD, pcssDirectional } from './soft-shadow.ts';
 import { CONTACT_HEAD, CONTACT_BODY, makeContactUniforms, type ContactUniforms } from './contact-shadow.ts';
 import { GLASS_FRESNEL } from './physical-materials.ts';
+import { PROBE_HEAD, PROBE_BODY, makeProbeUniforms, type ProbeUniforms } from './light-probes.ts';
 
 import type { PlanPoint } from './types/layout.ts';
 
@@ -50,7 +51,7 @@ export function roomMaskFrame(polygons: PlanPoint[][] | null | undefined, margin
 }
 
 // Uniforms shared by every patched material (the soft-shadow and contact-shadow ones too).
-export interface CloudUniforms extends ContactUniforms {
+export interface CloudUniforms extends ContactUniforms, ProbeUniforms {
   [name: string]: THREE.IUniform;
   fpCloudMap: THREE.IUniform<THREE.Texture | null>;
   fpCloudOffset: THREE.IUniform<THREE.Vector2>;
@@ -98,6 +99,7 @@ export function makeCloudUniforms(): CloudUniforms {
     // soft sun shadows (quality high, soft-shadow.ts): depth range, map span (m), light tan, on
     fpPcss: { value: new THREE.Vector4(1, 1, 0, 0) },
     ...makeContactUniforms(), // contact shadows (quality high, contact-shadow.ts)
+    ...makeProbeUniforms(), // per-room light probes (quality high, light-probes.ts)
   };
 }
 
@@ -239,14 +241,17 @@ export const shadable = (m: THREE.Material | null | undefined): m is THREE.MeshS
 };
 
 // Program cache key part of the quality tier's shader variants: '' in standard (its programs untouched).
-export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}${mat.userData.fpGlass ? 'g' : ''}`;
+export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}${mat.userData.fpGlass ? 'g' : ''}${mat.userData.fpProbe ? 'l' : ''}`;
 
-// Quality tier shader variants of a patched material: soft sun shadows, contact shadows. -> true when they
-// changed (the material then recompiles).
-export function setTierVariant(mat: THREE.Material, { pcss, contact }: { pcss: boolean; contact: boolean }): boolean {
-  if (!mat.userData.fpCloud || (!!mat.userData.fpPcss === pcss && !!mat.userData.fpContact === contact)) return false;
+// Quality tier shader variants of a patched material: soft sun shadows, contact shadows, room light probes (lit
+// standard / physical materials only). -> true when they changed (the material then recompiles).
+export function setTierVariant(mat: THREE.Material, { pcss, contact, probe = false }: { pcss: boolean; contact: boolean; probe?: boolean }): boolean {
+  const pr = probe && !!(mat as Partial<THREE.MeshStandardMaterial>).isMeshStandardMaterial;
+  if (!mat.userData.fpCloud || (!!mat.userData.fpPcss === pcss && !!mat.userData.fpContact === contact && !!mat.userData.fpProbe === pr)) return false;
   mat.userData.fpPcss = pcss;
   mat.userData.fpContact = contact;
+  if (pr) mat.userData.fpProbe = true;
+  else delete mat.userData.fpProbe;
   mat.needsUpdate = true;
   return true;
 }
@@ -275,6 +280,10 @@ export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): 
     }
     if (mat.userData.fpContact) fs = fs.replace('#include <aomap_fragment>', `#include <aomap_fragment>${CONTACT_BODY}`);
     if (mat.userData.fpGlass) fs = fs.replace('#include <opaque_fragment>', `${GLASS_FRESNEL}#include <opaque_fragment>`); // thin glass (physical-materials.ts)
+    if (mat.userData.fpProbe) { // room light probes / baked lightmaps (light-probes.ts)
+      fs = fs.replace('#include <lights_pars_begin>', `#include <lights_pars_begin>${PROBE_HEAD}`)
+        .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>${PROBE_BODY}`);
+    }
     sh.fragmentShader = head + FRAG_HEAD + (mat.userData.fpContact ? CONTACT_HEAD : '') + fs.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
   };
   const key = mat.customProgramCacheKey;

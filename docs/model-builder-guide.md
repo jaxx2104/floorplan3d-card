@@ -221,6 +221,74 @@ every mesh that uses it, so a rule that picks one of its meshes changes all of t
 option `render.materials` takes the same object and comes after the model's (README). Invalid
 selectors or classes are skipped with a warning (`npm run check-model` lists them).
 
+### Indirect light: room probes and baked lightmaps (`render: { quality: high }`)
+
+The sky environment of `quality: high` has no walls: on its own it fills every surface as if it stood
+outdoors. So with `quality: high` the card also captures, per indoor room the plan knows (the model's
+rooms with an outline and the drawn rooms; not zones), a small cube view from the room's middle at
+half its storey's height, lit as now: the sun through the windows, the lamps that are on, the sky
+through the openings. Its broad light (L2 spherical harmonics) becomes that room's ambient light in
+place of the sky's, a little less towards the room's corners and along the foot and top of its walls,
+so a sunny room is warm inside, a windowless one dim, and a lamp's light bounces off its walls. A
+wall's face belongs to the room it faces. The capture sees the whole house (every level, nothing cut
+away), so showing one floor does not open a room to the sky. It is redone, one room a frame, when the
+rooms or the model change, the sky environment is rebuilt (the sun moved more than 2°, clouds, day /
+night), or a lamp turns on / off or changes brightness or colour (at most every 2 s), never while
+nothing changes. Nothing to do in the model for this: give rooms an `outline` and keep a room's
+middle at half height free (not inside a wardrobe).
+
+#### Baked lightmaps
+
+For the best interior light, bake it in Blender. A material with a lightmap says so in its glTF
+extras (a Blender custom property on the material):
+
+```js
+mat.userData.fp_lightmap = 'occlusion';  // its occlusionTexture (on TEXCOORD_1) is the lightmap
+mat.userData.fp_lightmap = {             // or the long form; every key optional
+  texture: 'occlusion',                  // 'occlusion' or the index of a texture in the glTF
+  texCoord: 1,                           // UV set (default: the occlusionTexture's, else 1)
+  intensity: 1,                          // 0..10
+  type: 'light',                         // light: baked ambient light (lightMap) | ao: baked occlusion (aoMap)
+  colorSpace: 'srgb',                    // srgb (an 8-bit PNG as Blender saves it) | linear
+};
+```
+
+With `quality: high` a `light` lightmap is the surface's ambient light instead of the sky's (and the
+room's probe); it follows the sky's brightness, so it is dark at night. The sun and the lamps stay
+live lights on top, so bake without them. A room most of whose meshes carry a lightmap gets no probe
+at all. `type: ao` uses a baked occlusion texture from `texture` as the material's ambient occlusion.
+In `standard` the extras do nothing: an occlusion texture stays the glTF occlusion it is to any viewer.
+
+Blender (Cycles), per object or group of objects that shares one lightmap image:
+
+1. Second UV map: Object Data → UV Maps → `+`, name it `Lightmap`, select it, then in Edit mode
+   UV → Lightmap Pack (or Smart UV Project, island margin 0.02): one unwrap without overlaps for
+   the whole object. Keep the first UV map (the textures') first: it is exported as TEXCOORD_0, the
+   lightmap as TEXCOORD_1.
+2. Image: Image Editor → New, 1024 px (2048 px for a large room; `check-model` warns above 2048 px
+   and fails above 4096 px), no alpha. In the material add an Image Texture node with it and a UV
+   Map node set to `Lightmap` feeding its Vector; select that image node (Cycles bakes into the
+   active image node), connected to nothing else yet.
+3. Light the bake like the card does not: hide the sun lamp and the lamps from render (the card
+   lights them live) and keep the World (sky) on.
+4. Bake: Render engine Cycles → Bake, type Diffuse, Contributions Direct and Indirect on, Color
+   off; margin 8 px; 256 samples or more. (For a `type: 'ao'` lightmap: type Ambient Occlusion.)
+   Image → Save As, PNG 8-bit.
+5. Ship it in the occlusion slot (glTF has no lightmap slot): Add → Output → glTF Material Output
+   (older Blender: a node group named `glTF Settings`), plug the baked image's Color into its
+   Occlusion socket, with the `Lightmap` UV Map node on the image. Keep the material's roughness and
+   metallic as values, not textures: otherwise the exporter packs occlusion, roughness and metalness
+   into one image and the lightmap's colours are lost (`check-model` reports it).
+6. Material Properties → Custom Properties → `+`: name `fp_lightmap`, type String, value
+   `occlusion`. (The long form is a dictionary, set in the Python console:
+   `bpy.data.materials['Wall']['fp_lightmap'] = {'texture': 'occlusion', 'intensity': 1.2}`.)
+7. Export glTF Binary (`.glb`) with Include → Custom Properties on, Data → Mesh → UVs on (every UV
+   map is exported) and Materials → Export, Images → Automatic (PNG, not JPEG, for smooth
+   gradients).
+8. `node tools/check-model.mjs house.glb` lists each lightmap (material, texture, UV set, size) and
+   fails for a missing UV set on a mesh, a missing texture, an invalid `fp_lightmap` or a lightmap
+   over 4096 px.
+
 ## Layers
 
 `fp.layer` on any node (a string, or an array of strings) groups parts across rooms and levels,
@@ -344,6 +412,8 @@ don't flicker (z-fighting).
       stable ids, glow mesh named where it matters, moving parts as separate nodes with `hinge`.
 - [ ] No mesh larger than the plot inside a storey; no world ground plane in storeys.
 - [ ] No lights / cameras / helpers in the export. Under ~20 MB, textures ≤ 2048 px.
+- [ ] Baked lightmaps (optional): `fp_lightmap` on the material, the lightmap on TEXCOORD_1 of
+      every mesh that uses it, its image not packed with roughness / metallic.
 - [ ] `node tools/check-model.mjs house.glb` reports OK (run it in the floorplan3d-card repository).
 
 ## Example (Three.js)
