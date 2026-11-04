@@ -92,8 +92,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_register_card(hass: HomeAssistant) -> None:
-    """Serve the bundled card and load it on every dashboard."""
-    path = Path(__file__).parent / "frontend" / CARD_FILENAME
+    """Serve the bundled card and load its entry on every dashboard.
+
+    The entry is a few kB; it imports the card and edit mode from frontend/chunks/ when a card is
+    shown, so the whole directory is served. Chunk names carry a content hash and the entry URL the
+    file's mtime, so everything can be cached (cache headers on).
+    """
+    frontend = Path(__file__).parent / "frontend"
+    path = frontend / CARD_FILENAME
     if not await hass.async_add_executor_job(path.is_file):
         _LOGGER.warning(
             "%s is not bundled with this install; add it as a dashboard resource manually",
@@ -102,7 +108,7 @@ async def _async_register_card(hass: HomeAssistant) -> None:
         return
     version = (await hass.async_add_executor_job(path.stat)).st_mtime_ns
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(f"{CARD_URL_BASE}/{CARD_FILENAME}", str(path), True)]
+        [StaticPathConfig(CARD_URL_BASE, str(frontend), True)]
     )
     add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={version}")
 

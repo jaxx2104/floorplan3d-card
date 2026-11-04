@@ -10,7 +10,7 @@ import { resolveActions, type ResolvedActions } from '../actions.ts';
 import { typeOf } from '../objects/types.ts';
 import { deviceRows } from '../mower-device.ts';
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { Marker } from '../registry.ts';
 import type { ObjectLayer } from '../objects/layer.ts';
 import type { HintItem, TapHints } from '../objects/hints.ts';
@@ -295,7 +295,7 @@ export class ObjectInput {
 
   // Object taps: view mode; in edit mode only on the Objects tab.
   _objectTapsOn(): boolean {
-    return !this.card._editing || (this.card._edit && this.card._edit.tab === 'objects');
+    return !this.card._editing || this.card._edit?.tab === 'objects';
   }
 
   // The nearest tappable object (visible, bound, not hidden, level shown) within radius px of a client point.
@@ -364,7 +364,7 @@ export class ObjectInput {
       this._endGesture();
       if (tap) {
         if (g.warn) { if (id === WARN_ID) this.card._moreInfo(this.card._mowerStateEntity()); else this._openObjectPopup(id); } // the warning always opens the mower popup
-        else if (this.card._editing) this.card._edit.selectObject(id);
+        else if (this.card._editing) this.card._edit?.selectObject(id);
         else this.card._taps.tap(`object:${id}`, !!this._objectActions(id).double_tap, () => this._runObjectAction(id, 'tap'), () => this._runObjectAction(id, 'double_tap'));
       }
     };

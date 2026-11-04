@@ -10,7 +10,7 @@ import { attachedPosition } from '../objects/logic.ts';
 import { badgeOptions, badgeInfo } from '../badges.ts';
 import { applyBadges } from '../badge-dom.ts';
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { LayoutPin } from '../types/layout.ts';
 import type { GlowSpec } from '../view/structure.ts';
 
@@ -210,7 +210,7 @@ export class MarkerLayer {
     const cancel = (): void => { clearTimeout(timer ?? undefined); timer = null; };
     el.addEventListener('pointerdown', (e) => {
       if (this.card._editing) {
-        this.card._edit.markerDown(m, e);
+        this.card._edit?.markerDown(m, e);
         return;
       }
       if (e.button !== 0) return;

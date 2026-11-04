@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The card element as a facade over its parts: delegated members keep their names and identities.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import '../src/floorplan3d-card.ts';
+import '../src/card-impl.ts';
 import { defineDelegates } from '../src/card/delegates.ts';
 import { ActionRunner } from '../src/card/action-runner.ts';
 
@@ -29,7 +29,7 @@ describe('defineDelegates', () => {
 });
 
 describe('Floorplan3dCard facade', () => {
-  const card = () => document.createElement('floorplan3d-card');
+  const card = () => document.createElement('floorplan3d-card-impl');
   it('keeps the members edit mode and the headless checks use', () => {
     const c = card();
     for (const name of ['_refreshMower', '_updateMowerWarning', '_warningText', '_dockGroup', 'mapInfo', 'mapZone', 'mowerStatus',

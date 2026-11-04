@@ -57,9 +57,15 @@ covers both. The integration stores the layout and makes it available to all use
 
 `floorplan3d:` in `configuration.yaml` also works; it is imported as the integration entry.
 
-The card is loaded on every dashboard automatically; you do not need to add a resource.
-If you only want the card without the integration, add `floorplan3d-card.js` from the release
-as a dashboard resource (Settings → Dashboards → ⋮ → Resources, type JavaScript module). The
+The card is loaded on every dashboard automatically; you do not need to add a resource. Only a
+small entry (a few kB) loads with every page: the card itself, with three.js, is fetched when a
+dashboard shows it, and edit mode when an admin first presses Edit.
+
+If you only want the card without the integration, extract `floorplan3d-card.tar.gz` from the
+release (or copy the whole contents of `dist/` after `npm run build`) to `/config/www/floorplan3d/`,
+so `floorplan3d-card.js` and its `chunks/` directory sit side by side, and add
+`/local/floorplan3d/floorplan3d-card.js` as a dashboard resource (Settings → Dashboards → ⋮ →
+Resources, type JavaScript module). The entry alone does not work without its chunks. The
 layout is then stored per user, or per browser on old HA versions; the Data tab says which.
 
 ## Add the card
@@ -669,9 +675,16 @@ python -m pytest      # integration tests (pip install -r requirements-test.txt 
 npm run deploy        # build and scp the integration to HA (settings in .env, see .env.example)
 ```
 
-Releases: bump the version in `package.json`, `custom_components/floorplan3d/manifest.json` and
-`src/floorplan3d-card.js`, then push a `vX.Y.Z` tag. GitHub Actions builds `floorplan3d.zip`
-(the integration with the card inside) for HACS.
+Releases are automatic: every green CI run on `main` picks the next version from the
+conventional commits since the last tag, stamps it into `package.json`, the manifest and
+`src/floorplan3d-card.ts`, and publishes `floorplan3d.zip` (the integration with the card inside,
+for HACS) and `floorplan3d-card.tar.gz` (the card entry and its chunks). The repository keeps
+`0.0.0-dev`.
+
+The build (`scripts/build.mjs`) splits the card: `src/floorplan3d-card.ts` is a small shell entry
+(`dist/floorplan3d-card.js`) that imports `src/card-impl.ts` (the card, element
+`floorplan3d-card-impl`) on first show and hosts it; edit mode and the visual editor are chunks of
+their own in `dist/chunks/`. `test/entry-size.test.js` keeps the entry under 15 kB and free of three.js.
 
 Layout: `src/placement.js` (auto placement), `src/registry.js` (HA registries to markers),
 `src/layout.js` (floors, walls, positions), `src/view.js` (Three.js), `src/editor.js` (edit

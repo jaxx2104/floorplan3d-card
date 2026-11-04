@@ -45,20 +45,26 @@ jobs:
         run: |
           npm version "$V" --no-git-tag-version
           node -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
-          sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.js
-          grep -q "const VERSION = '$V';" src/floorplan3d-card.js
+          sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.ts
+          grep -q "const VERSION = '$V';" src/floorplan3d-card.ts
       - run: npm run build
         if: steps.version.outputs.version
+      # the card is an entry plus the chunks/ it imports on demand: both archives carry all of them
       - name: Package integration (card bundled inside) for HACS
         if: steps.version.outputs.version
         run: |
+          test -f custom_components/floorplan3d/frontend/floorplan3d-card.js
+          ls custom_components/floorplan3d/frontend/chunks/*.js
           cd custom_components/floorplan3d
           zip -r "$GITHUB_WORKSPACE/floorplan3d.zip" . -x '__pycache__/*'
+      - name: Package the card alone (dashboard resource without the integration)
+        if: steps.version.outputs.version
+        run: tar -czf floorplan3d-card.tar.gz -C dist floorplan3d-card.js chunks
       - name: Create release
         if: steps.version.outputs.version
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ steps.version.outputs.version }}
         run: |
-          gh release create "$TAG" floorplan3d.zip dist/floorplan3d-card.js \
+          gh release create "$TAG" floorplan3d.zip floorplan3d-card.tar.gz \
             --target "$(git rev-parse HEAD)" --title "$TAG" --generate-notes

@@ -7,7 +7,7 @@ import { nodeIndex, unmatchedSelectors } from '../views.ts';
 import { threeAdapter } from '../manifest.ts';
 import { levelsFromFloorMap, resolveLevels, resolveRoomAreas, bindingDiff, snapshotDiff } from '../bindings.ts';
 import { mergeFloors } from '../layout.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { CardConfig } from '../types/config.ts';
 import type { LayoutModel } from '../types/layout.ts';
 import type { ModelManifest, ModelOptions } from '../view/model.ts';
@@ -155,7 +155,7 @@ export class ModelLoader {
       if (!this.card._floorOnly) this.card._applyViewVisibility();
       this.card._applyMarkerStates();
     }
-    if (this.card._editing) this.card._edit.render();
+    if (this.card._editing) this.card._edit?.render();
     this.card._scheduleSurfaces();
     this.card._schedule();
   }

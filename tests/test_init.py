@@ -7,7 +7,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
-from custom_components.floorplan3d.const import DOMAIN, STORAGE_KEY
+from custom_components.floorplan3d.const import CARD_URL_BASE, DOMAIN, STORAGE_KEY
 
 LAYOUT = {"version": 1, "rooms": [{"id": "r1", "area_id": "kitchen", "polygon": [[0, 0], [4, 0], [4, 3]]}]}
 
@@ -89,19 +89,28 @@ async def test_set_rejects_huge_layout(hass: HomeAssistant, hass_ws_client) -> N
 
 
 async def test_serves_bundled_card(hass: HomeAssistant, hass_client) -> None:
-    card = Path(__file__).parent.parent / "custom_components" / DOMAIN / "frontend" / "floorplan3d-card.js"
-    created = not card.exists()
-    if created:
-        card.parent.mkdir(exist_ok=True)
-        card.write_text("console.log('card');")
+    """The entry is loaded on every page; it and its chunks are served from frontend/, cacheable."""
+    frontend = Path(__file__).parent.parent / "custom_components" / DOMAIN / "frontend"
+    card = frontend / "floorplan3d-card.js"
+    chunk = frontend / "chunks" / "card-impl-TEST1234.js"
+    created = [p for p in (card, chunk) if not p.exists()]
+    for p in created:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("console.log('card');")
     try:
         await _setup(hass)
         urls = hass.data["frontend_extra_module_url"].urls
         url = next(u for u in urls if "floorplan3d-card.js" in u)
+        assert url.startswith(f"{CARD_URL_BASE}/floorplan3d-card.js?v=")
+        assert not any("chunks/" in u for u in urls)  # chunks load on demand, not on every page
         client = await hass_client()
-        resp = await client.get(url.split("?")[0])
-        assert resp.status == 200
-        assert "javascript" in resp.headers["Content-Type"]
+        for path in (url.split("?")[0], f"{CARD_URL_BASE}/chunks/{chunk.name}"):
+            resp = await client.get(path)
+            assert resp.status == 200, path
+            assert "javascript" in resp.headers["Content-Type"]
+            assert "max-age" in resp.headers.get("Cache-Control", ""), path
+        resp = await client.get(f"{CARD_URL_BASE}/chunks/missing-0000.js")
+        assert resp.status == 404
     finally:
-        if created:
-            card.unlink()
+        for p in created:
+            p.unlink()

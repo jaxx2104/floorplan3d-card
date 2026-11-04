@@ -11,7 +11,7 @@ const logos = args.logos !== '0';
 const { page, errors, close } = await openDemo({ view, floor: args.floor, logos: logos ? '1' : undefined }, undefined, { brands: logos, test: false });
 try {
   await new Promise((r) => setTimeout(r, 300));
-  const stats = await page.evaluate(() => [...document.querySelectorAll('floorplan3d-card')].map((c) => ({
+  const stats = await page.evaluate(() => [...document.querySelectorAll('floorplan3d-card-impl')].map((c) => ({
     markers: c.shadowRoot.querySelectorAll('.fp-marker').length,
     labels: c.shadowRoot.querySelectorAll('.fp-room-label').length,
     badges: ['.fp-logo', '.fp-status', '.fp-batt'].map((q) => c.shadowRoot.querySelectorAll('.fp-marker > ' + q).length),

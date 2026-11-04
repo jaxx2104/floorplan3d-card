@@ -2,7 +2,7 @@
 // more-info, navigation, URLs, Assist, and the in-card confirmation.
 
 import { actionCall, type ActionCall } from '../actions.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { HassServiceTarget } from '../types/ha.ts';
 
 /** An action as actions.js takes it (HA's { action, ... } shape, or a bare action name). */

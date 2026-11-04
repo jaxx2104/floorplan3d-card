@@ -11,7 +11,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures.push(name);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const card = 'document.querySelector("floorplan3d-card")';
+const card = 'document.querySelector("floorplan3d-card-impl")';
 const MOVE_S = 30, IDLE_S = 16, REFRESH_MS = 2000;
 
 const s = await openDemo({ model: '1', view: '3d', cards: '1', robotmap: '1600', debug: '1' }, { width: 1200, height: 700 });

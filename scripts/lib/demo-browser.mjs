@@ -73,10 +73,14 @@ export function demoUrl(base, query = {}, { test = true } = {}) {
   return `${base}/demo/index.html?${q}`;
 }
 
-// Markers on the first card and two rendered frames after that.
+// Every floorplan3d-card shell has loaded its card (the lazy import of the card chunk), markers on the
+// first card and two rendered frames after that. The checks then work on the floorplan3d-card-impl
+// elements (the shells' children), where the card's internals and shadow root are.
 export async function waitForDemo(page) {
   await page.waitForFunction(() => {
-    const c = document.querySelector('floorplan3d-card');
+    const shells = [...document.querySelectorAll('floorplan3d-card')];
+    if (!shells.length || !shells.every((s) => s.querySelector(':scope > floorplan3d-card-impl'))) return false;
+    const c = document.querySelector('floorplan3d-card-impl');
     return c && c.shadowRoot && c.shadowRoot.querySelectorAll('.fp-marker').length > 0 && c._view && c._view.stats.frames > 0;
   }, { timeout: 30000 }); // a loaded machine can take > 10 s for the first frame
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));

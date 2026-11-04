@@ -9,7 +9,7 @@ import { pickOutline, saveOutline } from '../load-outline.ts';
 import { levelOrders, floorLevels, defaultViewId, nodeIndex, orderViews, resolveViews, resolveVisibility, primaryLevel, defaultFloors, isOverview, zoomToFor, viewCut, shownHere, exteriorShown, roomAt, deviceState, cameraToCard, topCameraToCard, sectionPlane, sectionCamera, type ResolvedView, type Visibility } from '../views.ts';
 import { areaName } from '../registry.ts';
 import { threeAdapter } from '../manifest.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { ModelBindings } from './model-loader.ts';
 import type { ModelIndex } from '../view/model.ts';
 import type { Floor, LayoutRoom, PlanPoint, SectionPlaneConfig } from '../types/layout.ts';
@@ -407,7 +407,7 @@ export class ViewController {
     } else if (v.camera) this.card._view.setCamera(this.viewCamera(v), { instant });
     else if (!this.card._view.model || wasSection) this.card._view.fit({ instant });
     this.card._syncToolbar();
-    if (this.card._editing) this.card._edit.onViewChanged();
+    if (this.card._editing) this.card._edit?.onViewChanged();
   }
 
   // First view after load / model change: its saved camera, else frame it.
@@ -588,6 +588,6 @@ export class ViewController {
       if (cam) this.card._view.setCamera(cam, { instant: true });
     }
     this.card._syncToolbar();
-    if (this.card._editing && this.card._edit.tab === 'views') this.card._edit.render();
+    if (this.card._editing && this.card._edit?.tab === 'views') this.card._edit.render();
   }
 }

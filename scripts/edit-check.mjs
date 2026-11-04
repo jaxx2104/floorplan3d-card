@@ -15,13 +15,13 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ' – ' + detail : ''}`);
   if (!ok) failures.push(name);
 };
-const card = 'document.querySelector("floorplan3d-card")';
+const card = 'document.querySelector("floorplan3d-card-impl")';
 const ev = (fn, ...args) => page.evaluate(fn, ...args);
 const layout = () => ev(`${card}._layout`);
 const saved = () => ev('window.__savedLayout || null');
 const panelClick = async (text) => {
   const ok = await ev((t) => {
-    const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')]
+    const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')]
       .find((x) => x.textContent.trim() === t);
     if (b) b.click();
     return !!b;
@@ -31,7 +31,7 @@ const panelClick = async (text) => {
 };
 const rowButton = async (name, text) => {
   const ok = await ev((n, t) => {
-    const li = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel li')]
+    const li = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel li')]
       .find((x) => x.querySelector('.name') && x.querySelector('.name').textContent.trim().startsWith(n));
     const b = li && [...li.querySelectorAll('button')].find((x) => x.textContent.trim() === t);
     if (b) b.click();
@@ -42,7 +42,7 @@ const rowButton = async (name, text) => {
 };
 // client px of a plan point on the active floor
 const at = (x, y, z = 0) => ev((x, y, z) => {
-  const c = document.querySelector('floorplan3d-card');
+  const c = document.querySelector('floorplan3d-card-impl');
   return c._view.screenPoint(x, y, z, c._floor);
 }, x, y, z);
 const click = async (x, y) => {
@@ -100,8 +100,11 @@ try {
   off = await dotOffset();
   check('dot anchored after zoom', off.n > 0 && off.worst <= 1, JSON.stringify(off));
   check('no stems in view mode', (await stems())[0] === 0);
-  // enter edit mode
-  await ev(`${card}.shadowRoot.querySelector("button.edit").click()`);
+  // enter edit mode: its chunk loads on the first Edit, not with the card
+  const editChunks = () => ev(`performance.getEntriesByType('resource').filter((e) => /\\/chunks\\/edit-mode-/.test(e.name)).length`);
+  check('edit mode not loaded before the first Edit', (await editChunks()) === 0 && (await ev(`${card}._edit === null && !document.querySelector('.panel') && !${card}.shadowRoot.querySelector('.panel')`)));
+  await ev(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
+  check('edit mode chunk loaded on the first Edit', (await editChunks()) === 1 && (await ev(`!!${card}._edit && ${card}._editing === true`)));
   await sleep(300);
   const st = await stems();
   check('edit mode: one stem per shown marker', st[0] > 0 && st[1] === st[2] && st[3] === st[0] * 2, JSON.stringify(st));
@@ -238,11 +241,11 @@ try {
   check('mower marker follows live position', await ev(`(() => { const c = ${card}; const p = c._positions.get(c._mowerMarkerId); return !!p && p.live && Math.hypot(p.x - 16.5, p.y - 1.5) < 4.5; })()`));
   check('map overlay loaded', await ev(`!!${card}._view.mapPlane && !!${card}._view.mapPlane.material.map`));
   // integration names and logos in the entity pickers
-  const logoOf = (field) => ev((f) => { const i = document.querySelector('floorplan3d-card').shadowRoot.querySelector(`.panel input[data-field="${f}"]`);
+  const logoOf = (field) => ev((f) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector(`.panel input[data-field="${f}"]`);
     const img = i && i.previousElementSibling && i.previousElementSibling.querySelector('img.fp-logo');
     return img ? { src: img.src, title: img.title, box: i.previousElementSibling.getBoundingClientRect().width } : null; }, field);
   check('datalist option labelled with the integration', await ev(`[...${card}.shadowRoot.querySelectorAll('#fp-err-ents option')].some((o) => o.value === 'sensor.kettle_power' && o.label.endsWith(' \u00b7 Sonoff'))`));
-  const setEnt = (v) => ev((x) => { const i = document.querySelector('floorplan3d-card').shadowRoot.querySelector('.panel input[data-field="mower-error-entity"]'); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const setEnt = (v) => ev((x) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector('.panel input[data-field="mower-error-entity"]'); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
   await setEnt('sensor.kettle_power');
   let lg = await logoOf('mower-error-entity');
   check('entity input shows the integration logo', !!lg && lg.src.includes('/sonoff/') && lg.title === 'Sonoff' && lg.box === 16, JSON.stringify(lg));
@@ -447,7 +450,7 @@ try {
   await page.screenshot({ path: path.join(shots, 'edit-badges.png') });
 
   // leave edit mode: markers behave as in view mode again
-  await ev(`${card}.shadowRoot.querySelector("button.edit").click()`);
+  await ev(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
   await sleep(200);
   check('panel hidden after Done', await ev(`getComputedStyle(${card}.shadowRoot.querySelector(".panel")).display === "none"`));
   check('no handles left', (await ev(`${card}.shadowRoot.querySelectorAll(".fp-handle").length`)) === 0);
@@ -463,7 +466,7 @@ try {
 const narrow = await openDemo({ height: '520px' }, { width: 520, height: 1300 });
 try {
   const p = narrow.page;
-  await p.evaluate(`${card}.shadowRoot.querySelector("button.edit").click()`);
+  await p.evaluate(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
   await sleep(400);
   const box = await p.evaluate(`(() => { const s = ${card}.shadowRoot; const r = (q) => s.querySelector(q).getBoundingClientRect();
     return { card: r('ha-card').width, stage: [r('.stage').width, r('.stage').height], panel: r('.panel').width, panelTop: r('.panel').top, stageBottom: r('.stage').bottom }; })()`);

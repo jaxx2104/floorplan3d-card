@@ -4,7 +4,7 @@
 import { snapMinutes, SCRUB_IDLE_MS, hhmm, sliderDate, sunPosition, moonPosition, tzMinutes } from '../sky.ts';
 import { sunVector, nightFactor, clampSunDir, sunStrength } from '../objects/logic.ts';
 import { weatherEntity, cloudCoverage, windSpeed } from '../weather.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { CardConfig } from '../types/config.ts';
 import type { SkyState } from '../view/look.ts';
 import type { SkyBody } from '../view/sky.ts';

@@ -43,12 +43,18 @@ function boot(params) {
   push(createMockHass({ onChange: push }));
 }
 
+// The work of the last resets, held strongly: the checks await __demoReset over CDP, which holds
+// the promise only weakly ("Promise was collected" when a GC finds the chain unreachable, e.g. an
+// IndexedDB request whose only references are its own callbacks). Kept after settling too.
+const held = [];
+const hold = (x) => { held.push(x); if (held.length > 16) held.shift(); return x; };
+
 // The card's local caches (model blobs in IndexedDB, Cache Storage models).
 async function clearCardCaches() {
   try { if (typeof caches !== 'undefined') await caches.delete('floorplan3d-models'); } catch (e) { /* insecure context */ }
   await new Promise((resolve) => {
     try {
-      const req = indexedDB.open('floorplan3d');
+      const req = hold(indexedDB.open('floorplan3d'));
       req.onupgradeneeded = () => req.transaction.abort(); // not created yet: leave that to the card
       req.onsuccess = () => {
         const db = req.result, names = [...db.objectStoreNames];
@@ -67,10 +73,13 @@ async function clearCardCaches() {
 // Headless checks: a fresh demo without a page load. Drops the cards (their WebGL contexts too), the
 // mock, test globals, local storage and (unless opts.keepCaches) the card's caches, then boots again
 // for the query ({ key: value }). keepCaches also keeps the remembered load drawing.
-window.__demoReset = async (query = {}, opts = {}) => {
+window.__demoReset = (query = {}, opts = {}) => hold(reset(query, opts));
+
+async function reset(query, opts) {
   if (!opts.keepCaches) await clearCardCaches();
   for (const c of cards) {
-    const v = c._view;
+    const impl = c.querySelector('floorplan3d-card-impl'); // the shell's card, once loaded
+    const v = impl && impl._view;
     c.remove();
     if (v) { v.renderer.dispose(); v.renderer.forceContextLoss(); }
   }
@@ -87,7 +96,7 @@ window.__demoReset = async (query = {}, opts = {}) => {
   const q = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== null));
   history.replaceState(null, '', `${location.pathname}?${q}`);
   boot(q);
-};
+}
 
 boot(new URLSearchParams(location.search));
 

@@ -12,7 +12,7 @@ import { colorList, pixelToPlan, readImagePixels, FETCH_TIMEOUT_MS, mapWorkSize,
 import type { FrameContext } from '../mower-auto.ts';
 import { grayOf, matchTemplate, iconMoments, momentsOf, momentHeading, makeTemplate, smoothHeading, norm360, type HeadingTemplate, type TurnedPatch } from '../mower-heading.ts';
 import { pointInPolygon, signedArea } from '../placement.ts';
-import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { Floorplan3dCard } from '../card-impl.ts';
 import type { MapImageResult } from '../view.ts';
 import type { Zone } from './view-controller.ts';
 import type { LayoutMower, MowerImage, MowerOverlay, PlanPoint } from '../types/layout.ts';

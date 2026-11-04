@@ -29,6 +29,7 @@ jobs:
           name: card
           path: |
             dist/floorplan3d-card.js
+            dist/chunks/
             screenshots/
 
   # the model checks in 3 shards (section groups), each retried once on a slow shared runner

@@ -4,7 +4,7 @@
 // and the map refresh interval (doubled by the adaptive throttle).
 import { effectiveRefresh } from './mower-track.ts';
 import type { FloorplanView } from './view.ts';
-import type { Floorplan3dCard } from './floorplan3d-card.ts';
+import type { Floorplan3dCard } from './card-impl.ts';
 
 const fmt = (v: number | null): string => (v !== null && Number.isFinite(v) ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : '–');
 

@@ -23,7 +23,7 @@ import { onModelLoaded, setModelProps } from './edit/tabs/model.ts';
 import type { Mesh, Object3D } from 'three';
 import type { FloorplanView } from './view.ts';
 import type { Hass } from './types/ha.ts';
-import type { Floorplan3dCard } from './floorplan3d-card.ts';
+import type { Floorplan3dCard } from './card-impl.ts';
 import type { MarkerPosition } from './layout.ts';
 import type { ModelIndex } from './view/model.ts';
 import type { TabId } from './edit/tabs/index.ts';

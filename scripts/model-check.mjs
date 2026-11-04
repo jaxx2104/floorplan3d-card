@@ -21,7 +21,7 @@ const check = (name, ok, detail = '') => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // wait until the 400 ms camera tween has finished (fixed sleeps flake under load)
 const settle = async (page, card) => { await page.waitForFunction(`!${card}._view._tween`, { timeout: 5000 }).catch(() => {}); await idle(page); };
-const card = 'document.querySelector("floorplan3d-card")';
+const card = 'document.querySelector("floorplan3d-card-impl")';
 // Instead of fixed sleeps after camera moves, renders and state changes: two frames, then until the
 // view and card are idle (no camera tween, frame drawn, no occlusion pass, rebuild, surface job or
 // pending single tap), at most 5 s.
@@ -160,14 +160,14 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
     check('a marker behind the south wall is fp-occluded from a camera outside', await cls(occ.id), JSON.stringify(occ));
     const style = (id) => page.evaluate(`(() => { const s = getComputedStyle(${card}._view.markerObjects.get(${JSON.stringify(id)}).obj.element); return [s.opacity, s.pointerEvents]; })()`);
     check('occluded marker: faint, not clickable in view mode', JSON.stringify(await style(occ.id)) === '["0.25","none"]', JSON.stringify(await style(occ.id)));
-    await page.evaluate(`${card}._toggleEdit()`);
+    await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
     await settle(page, card);
     await camAndOcclusion(page, { position: [occ.pos[0], occ.pos[1] + 2, occ.pos[2] + 12], target: occ.pos });
     // edit mode rebuilds markers: wait until the (new) element is connected and classed
     await page.waitForFunction(`(() => { const m = ${card}._view.markerObjects.get(${JSON.stringify(occ.id)}); return m && m.obj.element.isConnected && m.obj.element.classList.contains('fp-occluded') && getComputedStyle(m.obj.element).opacity === '0.5'; })()`, { timeout: 8000 }).catch(() => {});
     const es = await style(occ.id);
     check('occluded marker in edit mode: half opacity, still draggable', (await cls(occ.id)) && JSON.stringify(es) === '["0.5","auto"]', JSON.stringify(es));
-    await page.evaluate(`${card}._toggleEdit()`);
+    await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
     await idle(page);
     await camAndOcclusion(page, { position: [occ.pos[0], occ.pos[1] + 14, occ.pos[2] + 3], target: occ.pos });
     check('same marker seen from above (no wall in between) is not occluded', !(await cls(occ.id)));
@@ -222,7 +222,7 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
     let roofShown = true; for (let o = roof; o; o = o.parent) if (!o.visible) roofShown = false;
     return { planes: v.renderer.clippingPlanes.length, roofShown, removedHidden, removedShown, keptShown, dbl, n, cam: v.getCamera(),
       on: c.shadowRoot.querySelector('button.section').classList.contains('on') }; })()`);
-  await page.waitForFunction((c0) => JSON.stringify(document.querySelector('floorplan3d-card')._view.getCamera()) !== c0, { timeout: 8000 }, JSON.stringify(cam0)).catch(() => {});
+  await page.waitForFunction((c0) => JSON.stringify(document.querySelector('floorplan3d-card-impl')._view.getCamera()) !== c0, { timeout: 8000 }, JSON.stringify(cam0)).catch(() => {});
   await settle(page, card);
   let sec = await secState();
   check('Section on: one global clipping plane, roof shown, button on', sec.planes === 1 && sec.roofShown && sec.on, JSON.stringify(sec));
@@ -262,7 +262,7 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
   check('no room fills; ground view labels its own rooms with sizes', look.fills === 0 && look.labels > 0
     && (await page.evaluate(`${card}.shadowRoot.querySelector('.fp-room-label:not(.fp-obj-label)').textContent`)).includes(' m'), JSON.stringify(look));
   check('stage has has-model, day/night button shown', look.hasModel && !look.dayHidden);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   check('edit mode shows room labels', (await page.evaluate(`${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length`)) > 0);
   const traced = await page.evaluate(`(() => {
@@ -282,7 +282,7 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
     return r.poly ? r.poly.length : 0;
   })()`);
   check('pick: a floor piece of the model gives an outline polygon', traced >= 3, String(traced));
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   check('leaving edit mode restores the view\'s labels', (await page.evaluate(`${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length`)) === look.labels);
   // framing uses the room polygons even though no fills/outlines/walls are rendered with a model
@@ -292,9 +292,9 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
   const ext = await page.evaluate(`(() => { let a = 1e9, b = -1e9, c = 1e9, d = -1e9; for (const { room } of ${card}._view._rooms) for (const [x, y] of room.polygon) { a = Math.min(a, x); b = Math.max(b, x); c = Math.min(c, y); d = Math.max(d, y); } return Math.max(b - a, d - c); })()`);
   const d0 = await dist();
   check('model + rooms: camera frames the rooms', ext > 0 && d0 < 2.5 * ext, `dist ${d0.toFixed(1)} ext ${ext.toFixed(1)}`);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await sleep(600);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await sleep(900);
   const d1 = await dist();
   check('edit mode on/off keeps the camera distance within 5 %', Math.abs(d1 - d0) / d0 < 0.05, `${d0.toFixed(2)} -> ${d1.toFixed(2)}`);
@@ -449,13 +449,13 @@ sections.add('render-recipe', { group: 'model', query: { model: '1', view: '3d' 
   check('render recipe: lamp shadow slots = min(6, device max, texture units - 9), pool = slots + 4', r.shadows === Math.max(0, Math.min(6, r.cap.max, r.units - 9)) && r.points === r.shadows + 4 && r.cast === r.shadows, JSON.stringify(r));
   check('render recipe: lamp map size at most 1024 and the device cap', r.recipeMap === Math.min(1024, r.cap.mapSize), JSON.stringify(r));
   check('render recipe: lamp / sun shadow bias from the recipe (test mode map size)', r.bias === -0.0008 && r.sunBias === -0.0003 && r.mapSize === 256, JSON.stringify(r));
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model')?.click()`);
   await idle(page);
   const line = await page.evaluate(`${card}.shadowRoot.querySelector('[data-info=render-recipe]')?.textContent || ''`);
   check('Model tab: Render recipe: from model (11 keys)', line === 'Render recipe: from model (11 keys)', line);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
 });
 sections.add('render-default', { group: 'model', query: { model: '1', view: '3d', render: 'default' }, viewport: { width: 1400, height: 560 } }, async (s) => {
   const { page } = s;
@@ -730,9 +730,9 @@ sections.add('uplights', { group: 'model', query: { model: '1', view: '3d' }, vi
   check('shared bad target: Model warning names both uplights', a.warnings.includes('spot target looks wrong (shared / too far): wall_uplight_1, wall_uplight_2'), JSON.stringify(a.warnings));
   check('shared bad target ignored: each spot aims up from its own lamp', ups.every((id) => a.out[id] && a.out[id].own && a.out[id].d[0] === 0 && a.out[id].d[2] === 0 && a.out[id].d[1] > 1.9)
     && a.out.wall_uplight_1.at[0] !== a.out.wall_uplight_2.at[0] && a.bad.wall_uplight_1 === 'shared', JSON.stringify(a));
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
-  await page.evaluate(() => { const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model'); if (b) b.click(); });
+  await page.evaluate(() => { const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model'); if (b) b.click(); });
   await idle(page);
   const report = await page.evaluate(`(${card}.shadowRoot.querySelector('.panel details.report') || {}).textContent || ''`);
   check('Model tab lists the spot target warning', /spot target looks wrong \(shared \/ too far\): wall_uplight_1, wall_uplight_2/.test(report), report.slice(0, 200));
@@ -775,16 +775,16 @@ sections.add('merge', { group: 'objects', query: { model: '1', view: '3d' }, vie
     return { bad, inObj, owners: owners.length, tagged: owners.filter(Boolean).length }; })()`);
   check('merged meshes sit under their owner at identity, none inside objects, owners resolve', placed.bad.length === 0 && placed.inObj.length === 0 && placed.owners > 0 && placed.tagged === placed.owners, JSON.stringify(placed));
   check('node index rebuilt over the merged tree', await page.evaluate(`(() => { const c = ${card}; return !!c._index && c._index.nodes.some((n) => /fp_merged_/.test(n.path)); })()`));
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(() => {
-    const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
+    const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
     if (b) b.click();
   });
   await idle(page);
   const tabText = await page.evaluate(`(${card}.shadowRoot.querySelector('.panel [data-info=merge-stats]') || {}).textContent || ''`);
   check('Model tab shows the draw calls before → after', tabText === `Draw calls: ${on.before.calls} → ${on.after.calls} (meshes ${on.before.meshes} → ${on.after.meshes})`, tabText);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   // the owner and material of a merged mesh: find one of its source meshes with merge off
   const probe = await page.evaluate(`(() => { let o = null; ${card}._view.model.root.traverse((x) => { if (!o && /^fp_merged_/.test(x.name)) o = x; });
@@ -922,7 +922,7 @@ sections.add('objects-tap', { group: 'objects', query: { model: '1', view: '3d' 
   // edit mode: object taps are off until the Objects tab exists
   await page.evaluate(`${card}.shadowRoot.querySelector('.chip[data-view=ground]').click()`);
   await settle(page, card);
-  await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   const n1 = await calls();
   p = await at();
@@ -1072,7 +1072,7 @@ sections.add('light-popup', { group: 'objects', query: { model: '1', view: '3d' 
   await page.keyboard.press('Escape');
   await idle(page);
   // layout list [toggle] is respected: edit mode, Objects tab, Popup "Only on / off"
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`);
   await idle(page);
@@ -1085,13 +1085,13 @@ sections.add('light-popup', { group: 'objects', query: { model: '1', view: '3d' 
   await idle(page);
   const saved = await page.evaluate(`JSON.stringify(${card}._layout.objects.lamp_kitchen.ui)`);
   check('Only on / off saves ui.popup = [toggle] in the layout', saved === '{"popup":["toggle"]}', saved);
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`); // leave edit mode
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`); // leave edit mode
   await idle(page);
   await open();
   check('with the layout list only the toggle row remains', (await rows()).join() === 'toggle', (await rows()).join());
   await page.keyboard.press('Escape');
   await idle(page);
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`(() => { const s = ${popSel}; s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
@@ -1477,7 +1477,7 @@ sections.add('demo-objects', { group: 'lamps', query: { model: '1', view: '3d' }
   // Objects tab: every row bound (no "entity not found"); the group controller field
   await page.evaluate('window.__setDemoSun(30, 180)');
   const sr = `${card}.shadowRoot`;
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`);
   await idle(page);
@@ -1689,11 +1689,11 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   const { page } = s;
   const panel = (sel) => `${card}.shadowRoot.querySelector(".panel ${sel}")`;
   const clickText = (t) => page.evaluate((t) => {
-    const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
+    const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
     if (b) b.click();
     return !!b;
   }, t);
-  await page.evaluate(`${card}.shadowRoot.querySelector("button.edit").click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
   await idle(page);
   await clickText('Model');
   await idle(page);
@@ -1958,7 +1958,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   const sr = `${card}.shadowRoot`;
   const clickText = async (t) => {
     const ok = await page.evaluate((t) => {
-      const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
+      const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
       if (b) b.click();
       return !!b;
     }, t);
@@ -1975,7 +1975,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   const nodeVis = (name) => page.evaluate(`(() => { const n = ${card}._view.model.root.getObjectByName(${JSON.stringify(name)}); for (let p = n; p; p = p.parent) if (!p.visible) return false; return !!n; })()`);
   // a screen point over a plan spot that is not covered by a marker or other DOM (so the click reaches the canvas)
   const freePoint = (spots, z, floor) => page.evaluate((spots, z, floor) => {
-    const c = document.querySelector('floorplan3d-card');
+    const c = document.querySelector('floorplan3d-card-impl');
     for (const [x, y] of spots) {
       const [cx, cy] = c._view.screenPoint(x, y, z, floor);
       const el = c.shadowRoot.elementFromPoint(cx, cy);
@@ -1996,7 +1996,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
     }
     return out; })()`);
 
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await upload(path.join(root, 'demo', 'house.glb'));
   await page.waitForFunction(`${card}._view.model && ${card}._view.modelManifest().levels.length === 4`, { timeout: 30000 });
@@ -2103,7 +2103,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   await idle(page);
   await clickText('Rooms');
   const pickBtn = () => page.evaluate(() => {
-    const li = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel li')].find((x) => x.querySelector('.name') && x.querySelector('.name').textContent.trim() === 'Kitchen');
+    const li = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel li')].find((x) => x.querySelector('.name') && x.querySelector('.name').textContent.trim() === 'Kitchen');
     const b = li && [...li.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Pick');
     if (b) b.click();
     return !!b;
@@ -2237,7 +2237,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
     const x = b.left + (w.x + 1) / 2 * b.width, y = b.top + (1 - w.y) / 2 * b.height;
     const hit = v.pivotPoint(x, y, v.floorElevation('ground'));
     return { x, y, hit, cam: v.getCamera() }; })()`);
-  await page.evaluate(({ x, y }) => { const e = document.querySelector('floorplan3d-card')._edit; e.canvasDown({ button: 0, clientX: x, clientY: y }); e.canvasUp({ clientX: x, clientY: y }); }, aim);
+  await page.evaluate(({ x, y }) => { const e = document.querySelector('floorplan3d-card-impl')._edit; e.canvasDown({ button: 0, clientX: x, clientY: y }); e.canvasUp({ clientX: x, clientY: y }); }, aim);
   await settle(page, card);
   const near = (a, b, tol = 0.05) => !!a && !!b && a.every((x, i) => Math.abs(x - b[i]) <= tol);
   const piv = await page.evaluate(`(() => { const c = ${card}, v = c._view; return { target: v.controls.target.toArray(), pos: v.persp.position.toArray(),
@@ -2354,14 +2354,14 @@ sections.add('magnetic', { group: 'views', query: { view: '3d', height: '560px' 
   const sr = `${card}.shadowRoot`;
   const clickText = async (t) => {
     const ok = await page.evaluate((t) => {
-      const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
+      const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
       if (b) b.click();
       return !!b;
     }, t);
     await idle(page);
     return ok;
   };
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await clickText('Model');
   const input = await page.evaluateHandle(`${sr}.querySelector('.panel [data-field=model-file]')`);
@@ -2546,13 +2546,13 @@ sections.add('surfaces', { group: 'mower', query: { model: '1', view: '3d', heig
   check('surface: a marker rebuild reuses the cached spots (no new rays, no job)', again.same && again.n === again.n2 && !again.job, JSON.stringify(again));
 
   // drag preview: edit mode, Devices tab, drag a marker over a wall
-  await page.evaluate(`${sr}.querySelector('button.edit').click()`);
+  await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`${sr}.querySelector('.chip[data-view=ground]').click()`);
   await settle(page, card);
   const clickText = async (t) => {
     const ok = await page.evaluate((t) => {
-      const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
+      const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === t);
       if (b) b.click();
       return !!b;
     }, t);
@@ -2673,7 +2673,7 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
   const wrong = { x: 15.2, y: 2.6, rotation: 17, width: 11.5, height_offset: 0 };
   await commitMower({}, wrong);
   await until(`${card}._layout.mower.overlay.x === 15.2 && (${ovSig} || '').includes('|15.2|')`, 'the wrong overlay');
-  await ev(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await until(`${card}._editing && !!${card}.shadowRoot.querySelector('.panel button')`, 'edit mode');
   await ev(`[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`);
   await until(`${card}._edit.tab === 'mower'`, 'the Mower tab');
@@ -2712,9 +2712,9 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
   // edit-only: hidden in view mode (still loaded for detection), shown again in edit mode
   await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[data-field=ov-edit-only]'); el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   check('edit-only stored, map shown while editing', await until(`${card}._layout.mower.overlay.edit_only === true && ${card}._view.mapPlane.visible`, 'edit-only while editing'));
-  await ev(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   check('edit-only: map hidden in view mode, image still loaded', await until(`(() => { const p = ${card}._view.mapPlane; return !${card}._editing && !!p && !p.visible && !!p.material.map && !!p.userData.loaded; })()`, 'the hidden map'));
-  await ev(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   check('edit-only: map back in edit mode', await until(`${card}._editing && ${card}._view.mapPlane.visible`, 'the map in edit mode'));
   await ev(`${card}._view.setCamera({ position: [16.5, 9, 8], target: [16.5, 0, -1.5] }, { instant: true })`);
   await settle(page, card);
@@ -2913,7 +2913,7 @@ sections.add('mower-auto', { group: 'mower', query: { model: '1', view: '3d' }, 
   await ev(`window.__setRobot(1.45)`);
   check('matching static map again', await until(`${card}._autoMismatch === false`, 'no mismatch'));
   // edit mode: the Mower tab shows auto mode, the checklist rows and the heading
-  await ev(`${card}.shadowRoot.querySelector('button.edit').click()`);
+  await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await until(`${card}._editing`, 'edit mode');
   await ev(`[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`);
   await until(`${card}._edit.tab === 'mower'`, 'the Mower tab');
@@ -2971,7 +2971,7 @@ sections.add('mower-docked', { group: 'mower', query: { model: '1', view: '3d' }
   check('tracking window: no full search for a small move', (await ev(`${card}._trk.lastFull`)) === fullAt, JSON.stringify(await ev(`${card}._lastFrame`)));
   check('the map never read on the page (worker)', await ev(`!!${card}._mapProc._worker`));
   const tab = await (async () => {
-    await ev(`${card}.shadowRoot.querySelector('button.edit').click()`);
+    await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
     await until(`${card}._editing`, 'edit mode');
     await ev(`[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`);
     await until(`${card}._edit.tab === 'mower'`, 'the Mower tab');
@@ -3001,7 +3001,7 @@ sections.add('no-model', { group: 'upload', query: { view: '3d' } }, async (s) =
 // 2e. edit panel keeps its scroll position and the slider being dragged
 sections.add('panel-scroll', { group: 'upload', query: { view: '3d', height: '560px' }, viewport: { width: 1500, height: 680 } }, async (s) => {
   const { page } = s;
-  await page.evaluate(`${card}.shadowRoot.querySelector("button.edit").click()`);
+  await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`[...${card}.shadowRoot.querySelectorAll(".panel button")].find((b) => b.textContent.trim() === "Model").click()`);
   const inp = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[data-field=model-file]")`);
@@ -3153,7 +3153,7 @@ sections.add('export', { group: 'upload', query: null }, async (s) => {
     await page.evaluate(`${card}._view.setCamera({ position: [30, 20, 25], target: [4, 0, -3] }, { instant: true })`);
     await idle(page);
     const before = await camNow();
-    await page.evaluate(`${card}._toggleEdit()`);
+    await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
     await idle(page);
     const inEdit = await camNow();
     // one floor on its own in edit mode (no view linked to just it), then Done: the view's chip is lit again
@@ -3162,7 +3162,7 @@ sections.add('export', { group: 'upload', query: null }, async (s) => {
     await page.evaluate(`${card}._setFloor('ground')`);
     const floorOnly = await page.evaluate(`${card}._floorOnly`);
     await page.evaluate(`${card}._view.setCamera(${JSON.stringify(before)}, { instant: true })`);
-    await page.evaluate(`${card}._toggleEdit()`);
+    await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
     await idle(page);
     const after = await camNow();
     check('edit mode on / off keeps the camera', near(before.position, inEdit.position) && near(before.position, after.position) && near(before.target, after.target), JSON.stringify([before, inEdit, after]));
@@ -3319,10 +3319,10 @@ if (optional && process.env.REAL_MODEL) {
   s = await openDemo({ view: '3d', height: '700px' }, { width: 1500, height: 820 });
   try {
     const { page } = s;
-    await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+    await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
     await idle(page);
     await page.evaluate(() => {
-      const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
+      const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
       if (b) b.click();
     });
     await idle(page);
@@ -3330,7 +3330,7 @@ if (optional && process.env.REAL_MODEL) {
     await input.uploadFile(process.env.REAL_MODEL);
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
     await sleep(500);
-    await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`); // leave edit mode
+    await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`); // leave edit mode
     await sleep(800);
     const ids = await page.evaluate(`${card}._floors.map((f) => f.id).concat('all')`);
     for (const id of ids) {
@@ -3356,10 +3356,10 @@ if (optional && process.env.USER_MODEL) {
     try {
       u = await openDemo({ view: '3d', height: '700px', ...(merge ? {} : { merge: '0' }) }, { width: 1500, height: 820 });
       const { page } = u;
-      await page.evaluate(`${card}.shadowRoot.querySelector('button.edit').click()`);
+      await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
       await idle(page);
       await page.evaluate(() => {
-        const b = [...document.querySelector('floorplan3d-card').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
+        const b = [...document.querySelector('floorplan3d-card-impl').shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model');
         if (b) b.click();
       });
       await idle(page);
