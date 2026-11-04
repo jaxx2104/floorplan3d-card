@@ -790,7 +790,9 @@ sections.add('merge', { group: 'objects', query: { model: '1', view: '3d' }, vie
   const probe = await page.evaluate(`(() => { let o = null; ${card}._view.model.root.traverse((x) => { if (!o && /^fp_merged_/.test(x.name)) o = x; });
     return { owner: o.parent.name, mat: o.material.name }; })()`);
   // settle first: leaving edit mode rebuilds its outlines over the next frames (their shaders come and go)
-  for (let i = 0, quiet = 0; i < 20 && quiet < 2; i++) { await sleep(500); quiet = (await programs()).created ? 0 : quiet + 1; }
+  // (idle first, then 3 quiet half-seconds: under the 3 parallel shards the rebuild can outlast a 1 s lull)
+  await idle(page);
+  for (let i = 0, quiet = 0; i < 30 && quiet < 3; i++) { await sleep(500); quiet = (await programs()).created ? 0 : quiet + 1; }
   await page.evaluate(`${card}.setConfig({ ...${card}._config, merge: false })`);
   await page.waitForFunction(`!!${card}._view.mergeStats && !${card}._view.mergeStats.enabled`, { timeout: 10000 });
   await idle(page);
