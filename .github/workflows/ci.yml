@@ -12,16 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run lint
-      - run: pnpm run typecheck
-      - run: pnpm test
-      - run: pnpm run build
+      # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
+      - uses: jdx/mise-action@v5
+      - run: bun install --frozen-lockfile
+      - run: bun lint
+      - run: bun check
+      - run: bun test --parallel
+      - run: bun run build
       - uses: actions/upload-artifact@v4
         with:
           name: card
@@ -36,19 +33,16 @@ jobs:
       fail-fast: false
       matrix:
         check:
-          - { name: screenshot, run: node scripts/screenshot.mjs }
-          - { name: edit-check, run: node scripts/edit-check.mjs }
-          - { name: perf-check, run: 'node scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && node scripts/perf-check.mjs)' }
+          - { name: screenshot, run: bun scripts/screenshot.mjs }
+          - { name: edit-check, run: bun scripts/edit-check.mjs }
+          - { name: perf-check, run: 'bun scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && bun scripts/perf-check.mjs)' }
     name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+      # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
+      - uses: jdx/mise-action@v5
+      - run: bun install --frozen-lockfile
+      - run: bun run build
       - run: ${{ matrix.check.run }}
         env:
           CHROME_PATH: /usr/bin/google-chrome
@@ -69,15 +63,12 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+      # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
+      - uses: jdx/mise-action@v5
+      - run: bun install --frozen-lockfile
+      - run: bun run build
       - name: Model checks (shard ${{ matrix.shard }} of 7)
-        run: node scripts/model-check.mjs --shard ${{ matrix.shard }}/7 || (echo "model-check retry (slow shared runner timing)" && node scripts/model-check.mjs --shard ${{ matrix.shard }}/7)
+        run: bun scripts/model-check.mjs --shard ${{ matrix.shard }}/7 || (echo "model-check retry (slow shared runner timing)" && bun scripts/model-check.mjs --shard ${{ matrix.shard }}/7)
         env:
           CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4

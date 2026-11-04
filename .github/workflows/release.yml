@@ -25,31 +25,25 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+      - uses: jdx/mise-action@v5
       - name: Next version
         id: version
         run: |
-          V=$(node scripts/next-version.mjs)
+          V=$(bun scripts/next-version.mjs)
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "next version: ${V:-none (nothing to release)}"
-      - uses: pnpm/action-setup@v4
-        if: steps.version.outputs.version
-      - uses: actions/setup-node@v4
-        if: steps.version.outputs.version
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bun install --frozen-lockfile
         if: steps.version.outputs.version
       - name: Stamp the version
         if: steps.version.outputs.version
         env:
           V: ${{ steps.version.outputs.version }}
         run: |
-          npm pkg set version="$V"
-          node -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
+          bun pm pkg set version="$V"
+          bun -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
           sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.ts
           grep -q "const VERSION = '$V';" src/floorplan3d-card.ts
-      - run: pnpm run build
+      - run: bun run build
         if: steps.version.outputs.version
       # the card is an entry plus the chunks/ it imports on demand: both archives carry all of them
       - name: Package integration (card bundled inside) for HACS
