@@ -670,7 +670,8 @@ sections.add('weather', { group: 'model', query: { model: '1', view: '3d' }, vie
   const rf0 = (await fall()).frames, rt0 = Date.now();
   await sleep(2000);
   const rf1 = (await fall()).frames, rsecs = (Date.now() - rt0) / 1000, rnew = await page.evaluate('window.__newPrograms.length');
-  check('rain animates: 5..30 frames a second, no new shader programs', (rf1 - rf0) / rsecs >= 5 && (rf1 - rf0) / rsecs <= 31.5 && rnew === 0, `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`);
+  // the floor only proves it animates: the software-GL CI runner draws the full scene at about 5 fps
+  check('rain animates: 2..30 frames a second, no new shader programs', (rf1 - rf0) / rsecs >= 2 && (rf1 - rf0) / rsecs <= 31.5 && rnew === 0, `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`);
   await page.screenshot({ path: path.join(root, 'screenshots', 'weather-rain.png') });
   await wx(90, 'snowy');
   await sleep(300);
