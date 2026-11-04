@@ -6,7 +6,12 @@ by device type, with mouse-drag for exact placement. Plus Sunseeker robot mower 
 position and map overlay.
 
 ## Stack
-- Vanilla custom element (no Lit), Three.js 0.169, esbuild bundle -> `dist/floorplan3d-card.js`
+- Vanilla custom element, Three.js 0.169, esbuild bundle -> `dist/floorplan3d-card.js`
+- TypeScript 7 (`npm run typecheck`, strict; shared contracts in `src/types/`), oxlint (`npm run lint`).
+  Import specifiers stay `./x.js` (bundler resolution maps them to `.ts`).
+- Structure: `src/floorplan3d-card.*` is the element shell (lifecycle, hass update diff, commit) over
+  parts in `src/card/`; `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
+  coordinates the edit panel (`src/edit/tabs/*` registered by data-act / data-field, `src/edit/tools/*`)
 - OrbitControls, CSS2DRenderer (markers/labels as DOM, so `<ha-icon>` works), GLTFLoader
 - Companion integration `custom_components/floorplan3d/` for shared server-side storage
 - Respect HA theme CSS vars (--card-background-color, --primary-color, --primary-text-color,
@@ -113,7 +118,7 @@ iiseppi/sunseeker_local_control (MQTT).
   moving in a circle) for testing without HA. Verify with a headless browser screenshot.
 
 ## Order of work
-1. Scaffold (package.json, esbuild, vitest, eslint), tests for existing modules.
+1. Scaffold (package.json, esbuild, vitest, oxlint, TypeScript), tests for existing modules.
 2. Card: scene, floors, rooms, walls, markers, glow, view mode. Demo page.
 3. Edit mode: room drawing/editing, marker drag + pins, storage.
 4. Companion integration.

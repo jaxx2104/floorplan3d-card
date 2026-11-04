@@ -763,7 +763,7 @@ export class MapProcessor {
         if (w) w(e.data);
       };
       this._worker.onerror = (e) => {
-        e.preventDefault && e.preventDefault();
+        e.preventDefault?.();
         for (const w of this._waiting.values()) w({ error: 'worker error' });
       };
     } catch (e) {

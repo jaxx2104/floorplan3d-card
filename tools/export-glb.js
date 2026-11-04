@@ -29,7 +29,7 @@
   const drop = [];
   copy.traverse((o) => {
     if (o === copy) return;
-    if (o.isLight || o.isCamera || o.isSprite || o.isPoints || /Helper$/.test(o.type) ||
+    if (o.isLight || o.isCamera || o.isSprite || o.isPoints || o.type.endsWith('Helper') ||
         o.isCSS2DObject || o.isCSS3DObject || (o.userData && o.userData.noExport)) drop.push(o);
   });
   for (const o of drop) if (o.parent) o.parent.remove(o);

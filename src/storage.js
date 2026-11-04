@@ -98,6 +98,6 @@ export function normalise(l) {
     if (k in out && !(out[k] && typeof out[k] === 'object' && !Array.isArray(out[k]))) delete out[k];
   }
   // pre-0.4.5 group controllers are tags now (layout.tags wins over a leftover groups entry)
-  if (out.groups) { out.tags = { ...out.groups, ...(out.tags || {}) }; delete out.groups; }
+  if (out.groups) { out.tags = { ...out.groups, ...out.tags }; delete out.groups; }
   return out;
 }

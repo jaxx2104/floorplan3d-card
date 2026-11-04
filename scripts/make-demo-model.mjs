@@ -13,11 +13,11 @@ import { wallSegments } from '../src/layout.js';
 
 // GLTFExporter reads blobs with FileReader, which Node lacks
 globalThis.FileReader = class {
-  readAsArrayBuffer(blob) { blob.arrayBuffer().then((r) => { this.result = r; this.onloadend && this.onloadend(); }); }
+  readAsArrayBuffer(blob) { blob.arrayBuffer().then((r) => { this.result = r; this.onloadend?.(); }); }
   readAsDataURL(blob) {
     blob.arrayBuffer().then((r) => {
       this.result = `data:${blob.type};base64,` + Buffer.from(r).toString('base64');
-      this.onloadend && this.onloadend();
+      this.onloadend?.();
     });
   }
 };

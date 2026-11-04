@@ -222,7 +222,7 @@ const acts = {
   'md-forget': (ed, btn) => {
     const m = ed.layout.model || {};
     const k = btn.dataset.kind;
-    const next = { ...(m[k] || {}) };
+    const next = { ...m[k] };
     delete next[btn.dataset.id];
     ed.setModelProps({ [k]: next });
   },
@@ -242,7 +242,7 @@ const fields = {
   'md-level': (ed, el) => {
     const v = el.value;
     const m = ed.layout.model || {};
-    const levels = { ...(m.levels || {}) };
+    const levels = { ...m.levels };
     const id = el.dataset.id;
     if (v === 'auto') delete levels[id]; // back to automatic
     else if (v.startsWith('floor:')) levels[id] = { floor: v.slice(6) };
@@ -250,7 +250,7 @@ const fields = {
     else return;
     // a legacy show mode on this level becomes view rules before the binding drops it
     const c = ed.card._config;
-    const saved = { ...(c.model ? levelsFromFloorMap(c.model_floors) : {}), ...(m.levels || {}) };
+    const saved = { ...(c.model ? levelsFromFloorMap(c.model_floors) : {}), ...m.levels };
     const mb = ed.card._mb;
     const views = mb ? legacyShowRules(ed.layout.views, ed.card._views, id, saved, mb.manifest.levels) : ed.layout.views;
     ed.commit({ ...ed.layout, model: { ...m, levels }, ...(views !== ed.layout.views ? { views } : {}) });
@@ -258,7 +258,7 @@ const fields = {
   },
   'md-room': (ed, el) => {
     const m = ed.layout.model || {};
-    const rooms = { ...(m.rooms || {}) };
+    const rooms = { ...m.rooms };
     if (el.value === 'auto') delete rooms[el.dataset.id];
     else rooms[el.dataset.id] = { area: el.value || null };
     ed.setModelProps({ rooms });

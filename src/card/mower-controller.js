@@ -765,7 +765,7 @@ export class MowerController {
   // fixed: { heading } of the dock / the last known pose (no heading from movement or the icon).
   _poseMowerObject(p, floorId, fixed = null) {
     const layer = this.card._objects;
-    if (!layer || !layer.mowerBound()) { this._mowerHeadFrom = null; layer && layer.setMowerPose(null); return; }
+    if (!layer || !layer.mowerBound()) { this._mowerHeadFrom = null; layer?.setMowerPose(null); return; }
     if (!p) return;
     const from = this._mowerHeadFrom;
     const icon = this.card._layout.mower && this.card._layout.mower.source === 'image' ? this._iconHead : null;

@@ -173,7 +173,7 @@ export class ModelLoader {
 
   _computeBindings(manifest) {
     const saved = (this.card._layout && this.card._layout.model) || {};
-    const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...(saved.levels || {}) };
+    const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...saved.levels };
     const haFloors = mergeFloors(this.card._hass, this.card._layout || {}); // HA floors plus layout-only floors
     return {
       manifest,

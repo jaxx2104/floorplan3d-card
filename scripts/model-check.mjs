@@ -257,7 +257,7 @@ sections.add('model', { group: 'model', query: { model: '1', view: '3d' }, viewp
     labels: ${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length, tagged: v.isTagged(),
     hasModel: ${card}._stage.classList.contains('has-model'), dayHidden: ${card}.shadowRoot.querySelector('button.daynight').hidden }; })()`);
   check('ACES tone mapping with a model', look.tm === 4, String(look.tm));
-  check('shadows on, shadow camera fitted to the model', look.sm === true && look.sr < 200 && look.sr < 40, `${look.sm} ${look.sr}`);
+  check('shadows on, shadow camera fitted to the model', look.sm === true && look.sr < 40, `${look.sm} ${look.sr}`);
   check('pixel ratio capped', look.pr <= 1.5, String(look.pr));
   check('no room fills; ground view labels its own rooms with sizes', look.fills === 0 && look.labels > 0
     && (await page.evaluate(`${card}.shadowRoot.querySelector('.fp-room-label:not(.fp-obj-label)').textContent`)).includes(' m'), JSON.stringify(look));
@@ -720,7 +720,7 @@ sections.add('uplights', { group: 'model', query: { model: '1', view: '3d' }, vi
     && !a.warnings.some((w) => /spot target/.test(w)), JSON.stringify(a));
   const bad = path.join(root, 'screenshots', 'uplights-bad.glb');
   fs.writeFileSync(bad, rewriteGlbJson(fs.readFileSync(path.join(root, 'demo', 'house.glb')), (json) => {
-    for (const n of json.nodes || []) if (n.extras && n.extras.fp && /^wall_uplight_/.test(n.extras.fp.id)) n.extras.fp.hints = { ...n.extras.fp.hints, target: [6.25, 0, 0.5] };
+    for (const n of json.nodes || []) if (n.extras && n.extras.fp && n.extras.fp.id.startsWith('wall_uplight_')) n.extras.fp.hints = { ...n.extras.fp.hints, target: [6.25, 0, 0.5] };
     return json;
   }));
   await page.evaluate(`${card}.setConfig({ ...${card}._config, model: '/screenshots/uplights-bad.glb' })`);

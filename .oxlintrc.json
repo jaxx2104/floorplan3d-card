@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "caughtErrors": "none"
+      }
+    ],
+    "unicorn/no-new-array": "off",
+    "unicorn/no-useless-spread": "off"
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "design/**",
+    "custom_components/*/frontend/**",
+    ".claude/**"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "scripts/**",
+        "test/**",
+        "tools/*.mjs",
+        "*.config.js"
+      ],
+      "env": {
+        "node": true
+      }
+    }
+  ]
+}

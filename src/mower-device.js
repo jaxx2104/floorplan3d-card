@@ -41,7 +41,7 @@ export function findStaticMap(hass, liveEntity, mowerEntity) {
     if (!eid.startsWith('image.') || eid === liveEntity) return false; // the live map by its id
     const id = lc(eid.split('.')[1]);
     if (/mower_image|wifi/.test(id) || /wifi|mower image/.test(label(hass, eid))) return false;
-    return /map$/.test(id);
+    return id.endsWith('map');
   }) || null;
 }
 

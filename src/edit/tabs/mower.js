@@ -368,14 +368,14 @@ const fields = {
   // readings of the other kind cannot be mixed into the same calibration
   'mower-source': (ed, el) => { setMower(ed, { source: el.value, calibration: [] }); },
   'mower-img-entity': (ed, el) => {
-    const ic = { ...(mower(ed).image || {}) };
+    const ic = { ...mower(ed).image };
     const v = el.value.trim();
     if (v) ic.entity = v;
     else delete ic.entity;
     setMower(ed, { image: ic });
   },
   'mower-img-tolerance': (ed, el) => {
-    setMower(ed, { image: { ...(mower(ed).image || {}), tolerance: Math.max(0, Math.min(255, Number(el.value) || 0)) } });
+    setMower(ed, { image: { ...mower(ed).image, tolerance: Math.max(0, Math.min(255, Number(el.value) || 0)) } });
   },
   'mower-xattr': (ed, el) => { setMower(ed, { x_attr: el.value.trim() || 'x' }); },
   'mower-yattr': (ed, el) => { setMower(ed, { y_attr: el.value.trim() || 'y' }); },

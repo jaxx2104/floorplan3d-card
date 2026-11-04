@@ -517,7 +517,7 @@ export function legacyShowRules(layoutViews, views, levelId, savedLevels, levels
   if (!b || typeof b !== 'object' || !['hidden', 'always', 'all-only', 'only'].includes(b.show)) return layoutViews;
   const one = { [levelId]: b };
   const mig = migrateShowModes(one);
-  const out = { ...(layoutViews || {}) };
+  const out = { ...layoutViews };
   let changed = false;
   for (const v of views || []) {
     if (v.source !== 'generated') continue;

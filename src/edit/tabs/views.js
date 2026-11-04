@@ -195,7 +195,7 @@ const acts = {
     const card = ed.card;
     const { id, n } = nextViewId([...card._views.map((x) => x.id), ...Object.keys(ed.layout.views || {})]);
     // a copy of the current view: all its rules (model / generated base + saved), so it looks the same
-    const views = { ...(ed.layout.views || {}), [id]: { added: true, label: `View ${n}`, rules: (v.rules || []).map((r) => ({ ...r })) } };
+    const views = { ...ed.layout.views, [id]: { added: true, label: `View ${n}`, rules: (v.rules || []).map((r) => ({ ...r })) } };
     ed.vwSel = null;
     ed.commit({ ...ed.layout, views });
     after(() => card._setView(id));
@@ -203,7 +203,7 @@ const acts = {
   'vw-hide': onView((ed, v) => {
     const card = ed.card;
     if (v.source === 'added') {
-      const views = { ...(ed.layout.views || {}) };
+      const views = { ...ed.layout.views };
       delete views[v.id];
       const order = ed.layout.view_order;
       ed.vwSel = null;

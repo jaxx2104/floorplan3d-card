@@ -123,7 +123,7 @@ export function setPin(layout, id, pin, { grid = true } = {}) {
   const g = (v) => round(grid ? snap(v, GRID) : v);
   const p = { x: g(pin.x), y: g(pin.y), z: round(pin.z), floor_id: pin.floor_id };
   if (pin.on_model) p.on_model = true; // placed on the model: follows its alignment (realignPins)
-  return { ...layout, pins: { ...(layout.pins || {}), [id]: p } };
+  return { ...layout, pins: { ...layout.pins, [id]: p } };
 }
 
 // Attach a marker to a model object: it follows the object's anchor + offset (world metres).
@@ -133,7 +133,7 @@ export function attachPin(layout, id, objectId, offset, at) {
   const src = at || prev;
   const p = { x: round(src.x ?? 0), y: round(src.y ?? 0), z: round(src.z ?? 1.2), floor_id: src.floor_id ?? prev.floor_id,
     on_model: true, attach: objectId, offset: offset.map((v) => round(v)) };
-  return { ...layout, pins: { ...(layout.pins || {}), [id]: p } };
+  return { ...layout, pins: { ...layout.pins, [id]: p } };
 }
 
 // The model was moved / rotated / scaled from oldAlign to newAlign: pins placed on the model
@@ -158,7 +158,7 @@ export function realignPins(layout, oldAlign, newAlign) {
 }
 
 export function clearPin(layout, id) {
-  const pins = { ...(layout.pins || {}) };
+  const pins = { ...layout.pins };
   delete pins[id];
   return { ...layout, pins };
 }
@@ -289,13 +289,13 @@ export function migrateLegacyPins(layout, boundFloors) {
 // layout.objects[id] = { entity?, hidden? }: merge a patch. `entity: undefined` removes the key
 // (back to automatic binding); `hidden: false` drops the flag. An entry with nothing left is removed.
 export function setObject(layout, id, patch) {
-  const cur = { ...((layout.objects || {})[id] || {}) };
+  const cur = { ...(layout.objects || {})[id] };
   for (const [k, raw] of Object.entries(patch)) {
     const v = k === 'label' && typeof raw === 'string' ? raw.trim() : raw;
     if (v === undefined || (k === 'hidden' && !v) || (k === 'label' && !v)) delete cur[k]; // no label: the model's
     else cur[k] = v;
   }
-  const objects = { ...(layout.objects || {}) };
+  const objects = { ...layout.objects };
   if (Object.keys(cur).length) objects[id] = cur;
   else delete objects[id];
   return { ...layout, objects };
@@ -319,7 +319,7 @@ export function setObjectUi(layout, id, which, action) {
 const WASH_DIRS = ['down', 'up', 'both', 'none'];
 export function setTag(layout, name, patch) {
   const all = layoutTags(layout);
-  const cur = { ...(all[name] || {}), ...patch };
+  const cur = { ...all[name], ...patch };
   if (typeof cur.entity === 'string') cur.entity = cur.entity.trim();
   if (!cur.entity || typeof cur.entity !== 'string' || cur.entity.toLowerCase() === 'none') delete cur.entity;
   if (typeof cur.label === 'string') cur.label = cur.label.trim();

@@ -38,7 +38,7 @@ export function pickRoom(ed, e) {
     const cur = ed.layout.model || {};
     ed.picking = null;
     ed.message = { text: `Linked ${owner.kind === 'object' ? ed.card.objectLabel(owner) : owner.label || owner.id} to ${areaName(ed.hass, pk.areaId)}` };
-    ed.setModelProps({ rooms: { ...(cur.rooms || {}), [owner.id]: { ...(cur.rooms || {})[owner.id], area: pk.areaId } } });
+    ed.setModelProps({ rooms: { ...cur.rooms, [owner.id]: { ...(cur.rooms || {})[owner.id], area: pk.areaId } } });
     refreshOverlay(ed);
     return;
   }

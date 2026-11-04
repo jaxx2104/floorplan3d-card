@@ -394,7 +394,7 @@ export function createMockHass({ onChange }) {
   window.__setDemoStates = (changes) => update(Object.fromEntries(Object.entries(changes).map(([eid, v]) => {
     const s = current.states[eid] || { entity_id: eid, attributes: {} };
     const nv = typeof v === 'object' ? v : { state: v };
-    return [eid, { ...s, state: String(nv.state ?? s.state), attributes: { ...s.attributes, ...(nv.attributes || {}) }, last_changed: nv.last_changed || new Date().toISOString() }];
+    return [eid, { ...s, state: String(nv.state ?? s.state), attributes: { ...s.attributes, ...nv.attributes }, last_changed: nv.last_changed || new Date().toISOString() }];
   })));
 
   // headless checks: window.__setDemoSun(elevation, azimuth) adds / updates sun.sun

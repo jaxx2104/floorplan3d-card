@@ -19,7 +19,7 @@ export function levelsFromFloorMap(map) {
 export function migrateModel(model) {
   if (!isPlainObject(model) || !('floor_map' in model)) return model;
   const { floor_map: fm, ...rest } = model;
-  return { ...rest, levels: { ...levelsFromFloorMap(fm), ...(model.levels || {}) } };
+  return { ...rest, levels: { ...levelsFromFloorMap(fm), ...model.levels } };
 }
 
 const byOrder = (a, b) => {

@@ -71,10 +71,10 @@ export function onMenuClick(ed, e) {
       setRule(ed, cur.id, pick.sel, btn.dataset.act === 'vw-show-here' ? 'shown' : 'hidden', { keepObjects: btn.dataset.act === 'vw-hide-keep' });
       return;
     case 'vw-hide-all': {
-      const views = { ...(ed.layout.views || {}) };
+      const views = { ...ed.layout.views };
       for (const v of ed.card._views) {
         if (v.hidden) continue;
-        views[v.id] = { ...(views[v.id] || {}), rules: setRuleState(layoutRules(ed, v.id), pick.sel, 'hidden') };
+        views[v.id] = { ...views[v.id], rules: setRuleState(layoutRules(ed, v.id), pick.sel, 'hidden') };
       }
       ed.vwPick = null;
       ed.view.highlightModelNode(null);

@@ -196,7 +196,7 @@ export class ViewController {
     b.viewInputs = inputs;
     const manifest = mb ? mb.manifest : null;
     const haFloors = mergeFloors(this.card._hass, manifest ? { floors: [] } : l);
-    const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...((l.model && l.model.levels) || {}) };
+    const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...(l.model && l.model.levels) };
     const key = JSON.stringify([haFloors.map((f) => [f.id, f.name]), this.card._config.views || null, savedLevels, mb ? mb.levels : null]);
     const vkey = JSON.stringify([l.views || null, l.view_order || null]);
     if (manifest === b.viewManifest && key === b.viewKey && vkey === b.viewsKey) return false;
@@ -479,7 +479,7 @@ export class ViewController {
     if ('section' in patch && id === this._viewId) this._sectionPreview = null; // the saved plane takes over
     const l = this.card._layout;
     const views = l.views || {};
-    this.card._commit({ ...l, views: { ...views, [id]: { ...(views[id] || {}), ...patch } } });
+    this.card._commit({ ...l, views: { ...views, [id]: { ...views[id], ...patch } } });
   }
 
   // One HA floor (edit mode): the view linked to just that floor, else that floor on its own

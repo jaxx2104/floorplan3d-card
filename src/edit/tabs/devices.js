@@ -169,7 +169,7 @@ const fields = {
     ed.commit(E.setPin(ed.layout, ed.selectedMarker, { x: pos.x, y: pos.y, z: v, floor_id: pos.floorId, on_model: onModel(ed, ed.selectedMarker) }, { grid: !pin }));
   },
   badge: (ed, el) => {
-    ed.commit({ ...ed.layout, badges: { ...(ed.layout.badges || {}), [el.dataset.key]: el.checked } });
+    ed.commit({ ...ed.layout, badges: { ...ed.layout.badges, [el.dataset.key]: el.checked } });
     ed.render();
   },
 };
