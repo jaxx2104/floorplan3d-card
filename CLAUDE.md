@@ -103,7 +103,11 @@ iiseppi/sunseeker_local_control (MQTT).
   `floorplan3d.zip` (integration with the card bundled; it registers the card via
   add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `npm run build`.
 - CI: `.github/workflows/ci.yml` (lint, vitest, build, headless checks, pytest);
-  `release.yml` on `v*` tags builds the zip and creates the release.
+  `release.yml` runs after every green CI on main: `scripts/next-version.mjs` picks the next
+  version from the conventional commits since the last tag (feat -> minor, fix/perf/refactor ->
+  patch, docs/chore/ci/test/style/build -> no release), stamps it into package.json, the manifest
+  and `VERSION`, builds the zip and creates the tag + release. Never bump versions by hand: the
+  repository keeps `0.0.0-dev`.
 - Add `npm run deploy` that scp's dist + integration to the HA host (host from .env, not committed).
 - `demo/index.html` with a mock `hass` object (few areas, floors, lights, sensors, a fake mower
   moving in a circle) for testing without HA. Verify with a headless browser screenshot.

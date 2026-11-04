@@ -1,37 +1,64 @@
 name: Release
 
+# every green CI run on main releases the commits since the last tag (scripts/next-version.mjs);
+# the version is stamped here, the repository keeps 0.0.0-dev
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - name: Next version
+        id: version
+        run: |
+          V=$(node scripts/next-version.mjs)
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "next version: ${V:-none (nothing to release)}"
       - uses: actions/setup-node@v4
+        if: steps.version.outputs.version
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
-      - name: Check versions match the tag
+        if: steps.version.outputs.version
+      - name: Stamp the version
+        if: steps.version.outputs.version
+        env:
+          V: ${{ steps.version.outputs.version }}
         run: |
-          TAG=${GITHUB_REF_NAME#v}
-          test "$(node -p "require('./package.json').version")" = "$TAG"
-          test "$(node -p "require('./custom_components/floorplan3d/manifest.json').version")" = "$TAG"
-          grep -q "const VERSION = '$TAG'" src/floorplan3d-card.js
+          npm version "$V" --no-git-tag-version
+          node -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
+          sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.js
+          grep -q "const VERSION = '$V';" src/floorplan3d-card.js
       - run: npm run build
+        if: steps.version.outputs.version
       - name: Package integration (card bundled inside) for HACS
+        if: steps.version.outputs.version
         run: |
           cd custom_components/floorplan3d
           zip -r "$GITHUB_WORKSPACE/floorplan3d.zip" . -x '__pycache__/*'
       - name: Create release
+        if: steps.version.outputs.version
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" floorplan3d.zip dist/floorplan3d-card.js \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          gh release create "$TAG" floorplan3d.zip dist/floorplan3d-card.js \
+            --target "$(git rev-parse HEAD)" --title "$TAG" --generate-notes
