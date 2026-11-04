@@ -92,9 +92,8 @@ export function traceOutline(ed: EditMode, mesh: Mesh, hit: number[]): { poly: P
     entry = tris.length / 9 > DENSE_TRIS ? { grid: rasterGrid(tris, hit[1]) } : { loops: outlineLoops(tris, hit[1]) };
     ed._outlineCache.set(key(b), entry);
   }
-  // outline points are [x, y] pairs (outline.ts types them as number[])
-  const poly = (entry.grid ? outlineFromGrid(entry.grid, hit) : entry.loops ? pickLoop(entry.loops, [hit[0], -hit[2]]) : null) as PlanPoint[] | null;
-  return poly ? { poly } : { poly: ed.view.meshPlanRect(mesh) as PlanPoint[], note: "Used the floor piece's bounding rectangle — reshape it if needed" };
+  const poly = entry.grid ? outlineFromGrid(entry.grid, hit) : entry.loops ? pickLoop(entry.loops, [hit[0], -hit[2]]) : null;
+  return poly ? { poly } : { poly: ed.view.meshPlanRect(mesh), note: "Used the floor piece's bounding rectangle — reshape it if needed" };
 }
 
 export function usePickedOutline(ed: EditMode) {

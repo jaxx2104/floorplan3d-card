@@ -239,7 +239,9 @@ export const TRACK_MAX_MISSES = 3;
 // found = the position moved to this frame's blob. An unmatched pick keeps the old track (and the
 // last known position) until TRACK_MAX_MISSES frames in a row, so a brief miss never hands the
 // track to a look-alike.
-export function stepTrack(track: BlobTrack | null | undefined, blob: PickedBlob | null | undefined): { track: BlobTrack | null; found: boolean } {
+/** A track after stepTrack: misses counted. found: the track moved to this frame's blob. */
+export type TrackStep = { track: BlobTrack & { misses: number }; found: true } | { track: (BlobTrack & { misses: number }) | null; found: false };
+export function stepTrack(track: BlobTrack | null | undefined, blob: PickedBlob | null | undefined): TrackStep {
   if (!blob) return { track: track ? { ...track, misses: (track.misses || 0) + 1 } : null, found: false };
   if (!track || blob.matched || (track.misses || 0) + 1 >= TRACK_MAX_MISSES) {
     return { track: { px: blob.px, py: blob.py, count: blob.count, misses: 0 }, found: true };
@@ -248,9 +250,10 @@ export function stepTrack(track: BlobTrack | null | undefined, blob: PickedBlob 
 }
 
 // Smallest move (m) that turns the mower object: image positions jitter by a pixel or so.
-export function headingMinStep(source: string | undefined, overlayWidth: unknown, sampleWidth: number): number {
+export function headingMinStep(source: string | null | undefined, overlayWidth: unknown, sampleWidth: number | null | undefined): number {
   if (source !== 'image') return 0.05;
-  const mpp = sampleWidth > 0 ? (Number(overlayWidth) || 20) / sampleWidth : 0;
+  const sw = sampleWidth ?? 0;
+  const mpp = sw > 0 ? (Number(overlayWidth) || 20) / sw : 0;
   return Math.max(0.25, 3 * mpp);
 }
 

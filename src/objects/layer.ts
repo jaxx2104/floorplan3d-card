@@ -17,15 +17,16 @@ import type { BadTarget } from './aim.ts';
 import type { BudgetFixture, ChainState, ObjectBinding } from './logic.ts';
 import type { HassEntity } from '../types/ha.ts';
 import type { LayoutObject, LayoutTag } from '../types/layout.ts';
-import type { ManifestLevel } from '../types/manifest.ts';
+import type { Manifest } from '../types/manifest.ts';
+import type { LampShadowSetting, RenderSettings } from '../render-recipe.ts';
 
-interface LampShadows { mapSize: number; bias: number; normalBias: number; radius: number }
+type LampShadows = Pick<LampShadowSetting, 'mapSize' | 'bias' | 'normalBias' | 'radius'>;
 
 /** What the layer needs from the view (a narrow interface: tests pass a fake view). */
 export interface ObjectLayerHost extends ObjectViewHost, Partial<SurfaceRaySource> {
   objectsGroup: THREE.Object3D;
-  render?: { glowIntensityPerBrightness?: unknown; lampShadows?: LampShadows; [key: string]: unknown } | null;
-  test?: boolean;
+  render?: Partial<Pick<RenderSettings, 'glowIntensityPerBrightness' | 'lampShadows'>> | null;
+  test?: { drift: boolean } | boolean | null;
   modelClip?: THREE.Plane | null;
   objectLayer?: ObjectLayer | null;
   lampShadowCount?(): number;
@@ -36,7 +37,7 @@ export interface ObjectLayerHost extends ObjectViewHost, Partial<SurfaceRaySourc
 /** A loaded model as the layer sees it. */
 export interface LayerModel {
   root: THREE.Object3D;
-  manifest: { levels?: Pick<ManifestLevel, 'id' | 'elevation'>[]; objects?: ModelObject[] };
+  manifest: Pick<Manifest<THREE.Object3D | null>, 'levels' | 'objects'>;
 }
 
 type Wall = { point: number[]; normal: number[] } | null;

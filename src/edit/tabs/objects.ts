@@ -4,17 +4,15 @@ import * as E from '../../editor.ts';
 import { objectTags, layoutTags } from '../../objects/logic.ts';
 import { actionTarget } from '../../objects/popup.ts';
 import { typeOf } from '../../objects/types.ts';
-import { resolveWash, WASH_DIRS } from '../../objects/wash.ts';
+import { resolveWash, washSetting, WASH_DIRS } from '../../objects/wash.ts';
 import { resolveActions, validateAction } from '../../actions.ts';
 import { entOption, logoBox, esc } from '../html.ts';
 import { defineTab } from './tab.ts';
 import type { ActHandler, FieldEl, FieldHandler } from './tab.ts';
 import type { EditMode } from '../../edit-mode.ts';
-import type { ManifestLevel, ManifestObject, ObjectBinding } from '../host.ts';
+import type { ManifestLevel, ManifestObject } from '../../types/manifest.ts';
+import type { ObjectBinding } from '../../objects/logic.ts';
 import type { LayoutObject } from '../../types/layout.ts';
-
-// actions.js is still JS: its destructured defaults are inferred as the only option types
-const resolveActionsFor = resolveActions as unknown as (opts: Record<string, unknown>) => Record<string, { action: string } | null | undefined>;
 
 /** A saved action (layout.objects[id].ui.<which>_action). */
 interface UiAction { action: string; target?: { entity_id?: string }; [key: string]: unknown }
@@ -53,7 +51,7 @@ export function objectsTab(ed: EditMode): string {
   const washSelect = (field: string, id: string, cur: string | undefined, def: string) => `<label class="owash">Light on wall <select data-field="${field}" data-id="${esc(id)}">
       <option value="">Default (${esc(WASH_LABEL[def] || def)})</option>${WASH_DIRS.map((d) => `<option value="${d}"${cur === d ? ' selected' : ''}>${WASH_LABEL[d]}</option>`).join('')}</select></label>`;
   const rowHtml = (o: ManifestObject) => {
-    const b: ObjectBinding = bindings.get(o.id) || {};
+    const b: Partial<ObjectBinding> = bindings.get(o.id) || {};
     const t = DOMAINS[o.type] ? o.type : 'other';
     const saved: LayoutObject = lo[o.id] || {};
     const explicit = saved.entity !== undefined;
@@ -89,7 +87,7 @@ export function objectsTab(ed: EditMode): string {
   const filter = ed.objTagFilter && allTags.includes(ed.objTagFilter) ? ed.objTagFilter : '';
   const shownObjs = filter ? objs.filter((o) => tagsOf(o).includes(filter)) : objs;
   for (const id of [...ed.objPicked]) if (!objs.some((o) => o.id === id)) ed.objPicked.delete(id);
-  const levelOf = new Map<string | undefined, ManifestLevel>(mb.manifest.levels.map((l) => [l.id, l]));
+  const levelOf = new Map<string | null, ManifestLevel>(mb.manifest.levels.map((l) => [l.id, l]));
   const roomOf = new Map(mb.manifest.rooms.map((r) => [r.id, r]));
   const order = [...new Set([...mb.manifest.levels.map((l) => l.id), ...objs.map((o) => o.level)])];
   let out = datalists + `<datalist id="fp-tag-names">${allTags.map((x) => `<option value="${esc(x)}">`).join('')}</datalist>`
@@ -139,14 +137,14 @@ export function objectsTab(ed: EditMode): string {
 export function objTags(ed: EditMode, id: string): { cur: string[]; def: string[] } {
   const mb = ed.card.modelBindings();
   const o = mb && mb.manifest.objects.find((x) => x.id === id);
-  const b: ObjectBinding = (ed.card._bindings && ed.card._bindings.get(id)) || {};
+  const b: Partial<ObjectBinding> = (ed.card._bindings && ed.card._bindings.get(id)) || {};
   if (!o) return { cur: [], def: [] };
   return { cur: objectTags(o, (ed.layout.objects || {})[id], b.entity, ed.hass), def: objectTags(o, null, b.entity, ed.hass) };
 }
 
 // Objects tab: Tap / Hold / Double tap selects (Default = the model / type action) with the fields each needs.
 export function objActionsHtml(ed: EditMode, o: ManifestObject, ui: Record<string, unknown> | undefined = {}): string {
-  const def = resolveActionsFor({ modelUi: o.ui, kind: 'object', id: o.id, typeDefaults: typeOf(o.type).defaults });
+  const def = resolveActions({ modelUi: o.ui, kind: 'object', id: o.id, typeDefaults: typeOf(o.type).defaults });
   const KINDS = ['toggle', 'more-info', 'popup', 'navigate', 'url', 'perform-action', 'none'];
   const FIELDS: Record<string, [string, string][]> = {
     navigate: [['navigation_path', '/lovelace/0']], url: [['url_path', 'https://… or /local/…']],
@@ -154,7 +152,7 @@ export function objActionsHtml(ed: EditMode, o: ManifestObject, ui: Record<strin
   };
   const id = esc(o.id);
   let sels = '', fields = '', warn = '';
-  for (const [w, label] of [['tap', 'Tap'], ['hold', 'Hold'], ['double_tap', 'Double tap']]) {
+  for (const [w, label] of [['tap', 'Tap'], ['hold', 'Hold'], ['double_tap', 'Double tap']] as const) {
     const cur = ((ui || {})[`${w}_action`] || null) as UiAction | null; // saved by setObjAction
     const dw = def[w];
     const d = dw ? dw.action : 'none';
@@ -284,11 +282,11 @@ const fields: Record<string, FieldHandler> = {
     ed.render();
   },
   'obj-wash': (ed, el) => {
-    ed.commit(E.setObject(ed.layout, idOf(el), { wash: el.value || undefined }));
+    ed.commit(E.setObject(ed.layout, idOf(el), { wash: washSetting(el.value) ?? undefined }));
     ed.render();
   },
   'grp-wash': (ed, el) => {
-    ed.commit(E.setTag(ed.layout, idOf(el), { wash: el.value }));
+    ed.commit(E.setTag(ed.layout, idOf(el), { wash: washSetting(el.value) ?? undefined }));
     ed.render();
   },
   'grp-entity': (ed, el) => {

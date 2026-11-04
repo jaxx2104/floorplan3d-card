@@ -109,7 +109,7 @@ export interface FrameResult {
   share: number | null;
   angle: number | null;
   changed: number;
-  patches: { rects: number[][]; data: Uint8ClampedArray } | null;
+  patches: { rects: number[][]; data: Uint8ClampedArray<ArrayBuffer> } | null;
 }
 /** State framePass keeps between refreshes (buffers allocated per size / shift / static map). */
 export interface FrameState {

@@ -30,7 +30,7 @@ function num(v: unknown): number {
   return Number(v);
 }
 
-export function readSource(stateObj: HassEntity | null | undefined, cfg: ReadCfg): MowerReading | null {
+export function readSource(stateObj: HassEntity | null | undefined, cfg: ReadCfg): (MowerReading & { raw: PlanPoint }) | null {
   if (!stateObj) return null;
   const a: Record<string, unknown> = stateObj.attributes || {};
   if ((cfg.source || 'gps') === 'xy') {

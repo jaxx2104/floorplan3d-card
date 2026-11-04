@@ -195,7 +195,8 @@ export interface LayoutModel {
   name?: string;
   size?: number;
   uploaded?: string | number;
-  version?: unknown;
+  /** Content hash of the uploaded file (integration model.py). */
+  version?: string;
   /** Level / room ids the user has been shown (the regeneration notice reports changes since). */
   known?: { levels: string[]; rooms: string[] };
   /** level id -> { floor } (bound) | { show } (older visibility rule). */

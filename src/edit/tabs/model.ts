@@ -7,7 +7,7 @@ import { esc, sliderHtml, copyText } from '../html.ts';
 import { defineTab } from './tab.ts';
 import type { ActHandler, FieldHandler } from './tab.ts';
 import type { EditMode } from '../../edit-mode.ts';
-import type { Align } from '../../editor.ts';
+import type { Align } from '../../bindings.ts';
 import type { Layout, LayoutModel } from '../../types/layout.ts';
 
 // ---------- model ----------
@@ -64,7 +64,7 @@ export async function uploadModel(ed: EditMode, file: File) {
     const body = new FormData();
     body.append('file', file, file.name);
     const r = await ed.hass.fetchWithAuth(modelApi(ed), { method: 'POST', body });
-    const j: { message?: string; name?: string; size?: number; version?: unknown } = await r.json().catch(() => ({}));
+    const j: { message?: string; name?: string; size?: number; version?: string } = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || 'Upload failed (HTTP ' + r.status + ')');
     const cur = ed.layout.model || { position: [0, 0, 0], rotation: 0, scale: 1, opacity: 1 };
     ed._freshModel = true;

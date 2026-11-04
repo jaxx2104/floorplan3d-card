@@ -48,3 +48,6 @@ export interface CardConfig {
   debug?: boolean;
   [key: string]: unknown;
 }
+
+/** The card config after setConfig: its defaults applied. */
+export type ResolvedCardConfig = CardConfig & { layout_key: string };

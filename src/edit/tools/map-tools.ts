@@ -6,9 +6,9 @@ import { MapPicker } from '../../map-picker.ts';
 import { readImagePixels, imagePixels, medianColor, colorList, addColorPatch, removeColorPatch, MAX_COLORS, fitOverlay } from '../../mower-image.ts';
 import { mapPoint } from '../router.ts';
 import { mower, setMower, setOverlay } from '../tabs/mower.ts';
-import type { EditMode, MapColorKind } from '../../edit-mode.ts';
+import type { EditMode } from '../../edit-mode.ts';
 import type { PickerImage, PickerPoint, RGB } from '../../map-picker.ts';
-import type { MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.ts';
+import type { MapColorKind, MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.ts';
 
 
 /** Colour categories: the mower icon or one of the map colours. */
@@ -16,8 +16,6 @@ export type ColorKind = 'icon' | MapColorKind;
 /** What the map overlay plane keeps of its last load (mapPlane.userData.loaded). */
 interface LoadedMap { image?: PickerImage & { naturalWidth?: number; naturalHeight?: number } }
 
-// mower-image.js is still JS: its `kind = null` default is inferred as the parameter's only type
-export const colorsOf = colorList as (obj: unknown, kind?: string | null) => RGB[];
 
 // the overlay picture as loaded, if any
 function loadedMap(ed: EditMode): LoadedMap | null {
@@ -69,10 +67,10 @@ export async function openColorPicker(ed: EditMode, kind: ColorKind) {
     ed.picker = new MapPicker(ed.card._stage, {
       image, mode: 'color', kind,
       title: `Click the ${names[kind]} colour (up to ${MAX_COLORS})`,
-      colors: () => colorsOf(cur(), icon ? null : kind),
+      colors: () => colorList(cur(), kind === 'icon' ? null : kind),
       tolerance: () => Number(icon ? cur().tolerance ?? 40 : cur()[`${kind}_tolerance`] ?? 30),
       onColor: (rgb, q) => {
-        if (colorsOf(cur(), icon ? null : kind).length >= MAX_COLORS) { ed.message = { text: `At most ${MAX_COLORS} colours: remove one first.`, error: true }; ed.render(); return; }
+        if (colorList(cur(), kind === 'icon' ? null : kind).length >= MAX_COLORS) { ed.message = { text: `At most ${MAX_COLORS} colours: remove one first.`, error: true }; ed.render(); return; }
         ed.message = null;
         if (icon) addMowerColor(ed, rgb, q, { imgW: q.imgW, imgH: q.imgH, width: q.imgW });
         else addMapColor(ed, kind as MapColorKind, rgb); // not the icon

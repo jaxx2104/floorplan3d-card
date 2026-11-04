@@ -8,9 +8,11 @@ import { setOverlay } from '../tabs/mower.ts';
 import { refreshOverlay } from './handles.ts';
 import { onModel } from '../tabs/devices.ts';
 import type { Drag, EditMode, MarkerDrag } from '../../edit-mode.ts';
+import type { ManifestEntry } from '../../types/manifest.ts';
+import type { Object3D } from 'three';
 
-/** A model part under the pointer (view.surfaceAt(...).owner / pickModel). */
-interface HitOwner { kind: string; id: string; level?: string; node?: unknown }
+/** A model part under the pointer (view.surfaceAt(...).owner). */
+type HitOwner = ManifestEntry<Object3D>;
 
 // ---------- drags (corners, midpoints, markers) ----------
 export function startWindowDrag(ed: EditMode, drag: Drag) {
@@ -129,7 +131,7 @@ export function magnet(ed: EditMode, d: MarkerDrag) {
     ed.view.setSurfacePreview(null);
     return;
   }
-  const owner: HitOwner | null | undefined = hit.owner;
+  const owner = hit.owner;
   const level = owner ? (owner.kind === 'level' ? owner.id : owner.level) : null;
   const lf = (ed.card._levels && ed.card._levels.levelFloor) || {};
   // the HA floor bound to the hit's level, else the floor the hit stands on, else the current one

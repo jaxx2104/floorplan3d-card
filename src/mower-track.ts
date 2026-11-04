@@ -202,10 +202,19 @@ export function mowerStatusText(st: MowerStatus | null | undefined): string {
 }
 
 // ---------- last known position (per layout, in memory) ----------
-const LAST = new Map<unknown, Record<string, unknown>>();
-export function rememberPosition(key: unknown, pos: object | null | undefined): void {
+/** Where the mower was last seen (plan metres) and the icon size it had then (image source). */
+export interface LastPosition {
+  x: number;
+  y: number;
+  heading?: number | null;
+  entity?: string;
+  count?: number | null;
+  imgW?: number | null;
+}
+const LAST = new Map<unknown, LastPosition>();
+export function rememberPosition(key: unknown, pos: LastPosition | null | undefined): void {
   if (key == null) return;
   if (pos) LAST.set(key, { ...pos });
   else LAST.delete(key);
 }
-export const lastPosition = (key: unknown): Record<string, unknown> | null => (LAST.has(key) ? { ...LAST.get(key) } : null);
+export const lastPosition = (key: unknown): LastPosition | null => { const p = LAST.get(key); return p ? { ...p } : null; };

@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import type { LayoutRoom } from '../types/layout.ts';
+import type { LayoutRoom, Vec3 } from '../types/layout.ts';
 
 declare global {
   interface Window {
@@ -58,8 +58,6 @@ export interface ViewTheme {
 }
 /** Marker visibility override per marker id (setMarkerStates). */
 export interface MarkerState { shown?: boolean; faded?: boolean }
-/** A [x, y, z] triple (card world or model space). */
-export type Vec3 = [number, number, number];
 /** Saved 3D camera. */
 export interface CameraPose { position: Vec3 | number[]; target: Vec3 | number[] }
 /** Saved top camera: centre in plan metres, zoom 1 = 10 m half height. */

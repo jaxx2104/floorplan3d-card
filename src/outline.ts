@@ -1,9 +1,11 @@
 // Room outline from a mesh's upward-facing triangles at the clicked height (pick a room from the model).
 import { pointInPolygon, signedArea } from './placement.ts';
+import type { PlanPoint } from './types/layout.ts';
 
 const COS_UP = Math.cos((25 * Math.PI) / 180);
 const MERGE = 200; // points within 5 mm share a key
-type Pt = number[];
+/** A world point [x, y, z] (the pick hit). */
+type Hit = readonly number[];
 /** Flat triangle soup: 9 numbers (3 x [x, y, z], world metres) per triangle. */
 export type Triangles = ArrayLike<number>;
 /** Rasterised up-facing triangles (see rasterGrid). */
@@ -16,10 +18,14 @@ export interface OutlineGrid {
   c: number;
 }
 
+// snapped to 5 cm, rounded to mm
+const snap = (v: number): number => Math.round(Math.round(v / 0.05) * 0.05 * 1000) / 1000;
+const snapPoint = ([x, y]: PlanPoint): PlanPoint => [snap(x), snap(y)];
+
 const key = (x: number, z: number): string => Math.round(x * MERGE) + ',' + Math.round(z * MERGE);
 
-export function outlineLoops(tris: Triangles, y: number): Pt[][] {
-  const pts = new Map<string, Pt>(); // key -> [x, z]
+export function outlineLoops(tris: Triangles, y: number): PlanPoint[][] {
+  const pts = new Map<string, PlanPoint>(); // key -> [x, z]
   const edgeCount = new Map<string, number>(); // undirected key -> count
   const edgeDir = new Map<string, [string, string]>(); // undirected key -> [p, q] as it appeared in a triangle
   for (let i = 0; i + 8 < tris.length; i += 9) {
@@ -50,7 +56,7 @@ export function outlineLoops(tris: Triangles, y: number): Pt[][] {
     edgesByStart.get(p)!.push(idx);
   }
   const used = new Set<number>();
-  const loops: Pt[][] = [];
+  const loops: PlanPoint[][] = [];
   for (let startIdx = 0; startIdx < boundaryEdges.length; startIdx++) {
     if (used.has(startIdx)) continue;
     const loop: string[] = [];
@@ -91,30 +97,30 @@ export function outlineLoops(tris: Triangles, y: number): Pt[][] {
       if (next === startIdx && loop.length > 2) break;
       edgeIdx = next;
     }
-    if (loop.length >= 3) loops.push(loop.map((k) => { const [x, z] = pts.get(k)!; return [x, -z]; }));
+    if (loop.length >= 3) loops.push(loop.map((k): PlanPoint => { const [x, z] = pts.get(k)!; return [x, -z]; }));
   }
-  return loops.map(finishLoopLocal).filter((l): l is Pt[] => !!l);
+  return loops.map(finishLoopLocal).filter((l): l is PlanPoint[] => !!l);
 }
 
 // the smallest loop around the point (a merged mesh can span several rooms), else the largest loop whose box (+10 cm) holds it
-export function pickLoop(loops: Pt[][], target: [number, number]): Pt[] | null {
-  const area = (l: Pt[]) => Math.abs(signedArea(l));
+export function pickLoop(loops: PlanPoint[][], target: [number, number]): PlanPoint[] | null {
+  const area = (l: PlanPoint[]) => Math.abs(signedArea(l));
   let candidates = loops.filter((l) => pointInPolygon(target, l)).sort((a, b) => area(a) - area(b));
   if (!candidates.length) {
-    const near = (l: Pt[]) => l.some(([x]) => x <= target[0] + 0.1) && l.some(([x]) => x >= target[0] - 0.1)
+    const near = (l: PlanPoint[]) => l.some(([x]) => x <= target[0] + 0.1) && l.some(([x]) => x >= target[0] - 0.1)
       && l.some(([, y]) => y <= target[1] + 0.1) && l.some(([, y]) => y >= target[1] - 0.1);
     candidates = loops.filter(near).sort((a, b) => area(b) - area(a));
   }
   return candidates.length ? candidates[0] : null;
 }
 
-export function outlineFromTriangles(tris: Triangles, hit: Pt): Pt[] | null {
+export function outlineFromTriangles(tris: Triangles, hit: Hit): PlanPoint[] | null {
   return pickLoop(outlineLoops(tris, hit[1]), [hit[0], -hit[2]]);
 }
 
 // collinear removal (0.02 m) BEFORE snapping to 5 cm
-function finishLoopLocal(simplified: Pt[]): Pt[] | null {
-  const simp: Pt[] = [];
+function finishLoopLocal(simplified: PlanPoint[]): PlanPoint[] | null {
+  const simp: PlanPoint[] = [];
   for (let i = 0; i < simplified.length; i++) {
     const p = simp.length ? simp[simp.length - 1] : simplified[simplified.length - 1];
     const c = simplified[i], n = simplified[(i + 1) % simplified.length];
@@ -124,8 +130,8 @@ function finishLoopLocal(simplified: Pt[]): Pt[] | null {
     simp.push(c);
   }
   simplified = simp;
-  const snapped = simplified.map(([x, y]) => [Math.round(x / 0.05) * 0.05, Math.round(y / 0.05) * 0.05].map((v) => Math.round(v * 1000) / 1000));
-  const out: Pt[] = [];
+  const snapped = simplified.map(snapPoint);
+  const out: PlanPoint[] = [];
   for (let i = 0; i < snapped.length; i++) {
     const p = out.length ? out[out.length - 1] : snapped[snapped.length - 1];
     const c = snapped[i];
@@ -183,7 +189,7 @@ export function rasterGrid(tris: Triangles, yLevel: number, { cell = 0.02 }: { c
 }
 
 // flood fill from the hit cell (or a filled cell within 2 cells of it), then walk the region boundary
-export function outlineFromGrid(g: OutlineGrid, hit: Pt): Pt[] | null {
+export function outlineFromGrid(g: OutlineGrid, hit: Hit): PlanPoint[] | null {
   const { grid, W, H, x0, y0, c } = g;
   const hx = Math.floor((hit[0] - x0) / c), hy = Math.floor((-hit[2] - y0) / c);
   let start = -1;
@@ -222,7 +228,7 @@ export function outlineFromGrid(g: OutlineGrid, hit: Pt): Pt[] | null {
       if (i === 0 || !reg[j * W + i - 1]) add(v + V, v);
     }
   }
-  let best: Pt[] | null = null, bestArea = 0;
+  let best: PlanPoint[] | null = null, bestArea = 0;
   for (const [s0, starts] of out) {
     if (!starts.length) continue;
     const loop: number[] = [];
@@ -234,7 +240,7 @@ export function outlineFromGrid(g: OutlineGrid, hit: Pt): Pt[] | null {
       cur = l.pop()!; // non-empty
       if (cur === s0) break;
     }
-    const pts = loop.map((v): Pt => [x0 + (v % V) * c, y0 + Math.floor(v / V) * c]);
+    const pts = loop.map((v): PlanPoint => [x0 + (v % V) * c, y0 + Math.floor(v / V) * c]);
     const a = pts.length >= 3 ? signedArea(pts) : 0;
     if (a > bestArea) { bestArea = a; best = pts; }
   }
@@ -242,13 +248,13 @@ export function outlineFromGrid(g: OutlineGrid, hit: Pt): Pt[] | null {
   return finishLoop(best, 0.03);
 }
 
-export function outlineFromRaster(tris: Triangles, hit: Pt, opts?: { cell?: number }): Pt[] | null {
+export function outlineFromRaster(tris: Triangles, hit: Hit, opts?: { cell?: number }): PlanPoint[] | null {
   const g = rasterGrid(tris, hit[1], opts);
   return g ? outlineFromGrid(g, hit) : null;
 }
 
 // merge exactly collinear points, Douglas-Peucker, snap to 5 cm, drop repeats
-function finishLoop(poly: Pt[], tol: number): Pt[] | null {
+function finishLoop(poly: PlanPoint[], tol: number): PlanPoint[] | null {
   let p = poly.filter((c, i) => {
     const a = poly[(i + poly.length - 1) % poly.length], b = poly[(i + 1) % poly.length];
     return Math.abs((c[0] - a[0]) * (b[1] - c[1]) - (c[1] - a[1]) * (b[0] - c[0])) > 1e-9;
@@ -256,7 +262,7 @@ function finishLoop(poly: Pt[], tol: number): Pt[] | null {
   if (p.length < 3) return null;
   let far = 0, fd = -1;
   for (let i = 1; i < p.length; i++) { const d = Math.hypot(p[i][0] - p[0][0], p[i][1] - p[0][1]); if (d > fd) { fd = d; far = i; } }
-  const rdp = (pts: Pt[]): Pt[] => {
+  const rdp = (pts: PlanPoint[]): PlanPoint[] => {
     const keepIdx: boolean[] = new Array(pts.length).fill(false);
     keepIdx[0] = keepIdx[pts.length - 1] = true;
     const st: [number, number][] = [[0, pts.length - 1]];
@@ -273,8 +279,8 @@ function finishLoop(poly: Pt[], tol: number): Pt[] | null {
     return pts.filter((_, i) => keepIdx[i]);
   };
   p = [...rdp(p.slice(0, far + 1)).slice(0, -1), ...rdp([...p.slice(far), p[0]]).slice(0, -1)];
-  const snapped = p.map(([x, y]) => [Math.round(x / 0.05) * 0.05, Math.round(y / 0.05) * 0.05].map((v) => Math.round(v * 1000) / 1000));
-  const res: Pt[] = [];
+  const snapped = p.map(snapPoint);
+  const res: PlanPoint[] = [];
   for (let i = 0; i < snapped.length; i++) {
     const q = res.length ? res[res.length - 1] : snapped[snapped.length - 1];
     if (Math.hypot(snapped[i][0] - q[0], snapped[i][1] - q[1]) < 1e-6) continue;

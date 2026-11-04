@@ -20,15 +20,17 @@ import { selectObject } from './edit/tabs/objects.ts';
 import { onViewChanged } from './edit/tabs/views.ts';
 import { onModelLoaded, setModelProps } from './edit/tabs/model.ts';
 
-import type { Mesh } from 'three';
+import type { Mesh, Object3D } from 'three';
 import type { FloorplanView } from './view.ts';
 import type { Hass } from './types/ha.ts';
-import type { EditCard, MarkerPosition, ViewIndex } from './edit/host.ts';
+import type { Floorplan3dCard } from './floorplan3d-card.ts';
+import type { MarkerPosition } from './layout.ts';
+import type { ModelIndex } from './view/model.ts';
 import type { TabId } from './edit/tabs/index.ts';
 import type { TreeRows } from './edit/tabs/views.ts';
 import type { MapPicker, PickerPoint } from './map-picker.ts';
 import type { PinInput, SnapResult } from './editor.ts';
-import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.ts';
+import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, MapColorKind, PlanPoint } from './types/layout.ts';
 import type { OutlineGrid } from './outline.ts';
 
 
@@ -37,7 +39,6 @@ export { sliderHtml } from './edit/html.ts';
 // ---------- edit state ----------
 export interface Drawing { areaId: string; floorId: string; points: PlanPoint[]; cursor: SnapResult | null }
 export interface Picking { areaId: string; busy: boolean; poly: PlanPoint[] | null; floorId?: string }
-export type MapColorKind = 'bg' | 'mowed' | 'nomow';
 /** false: off; true: the mower icon colour; else the map colour category (3D click on the overlay). */
 export type ColorPick = boolean | MapColorKind;
 export interface AlignPair extends PickerPoint { plan: PlanPoint }
@@ -82,12 +83,12 @@ export interface OverlayDrag extends DragBase {
 export type Drag = RoomDrag | MarkerDrag | OverlayDrag;
 
 /** Traced floor outlines per mesh piece and height (pick-outline). */
-export interface OutlineEntry { grid?: OutlineGrid | null; loops?: number[][][] }
+export interface OutlineEntry { grid?: OutlineGrid | null; loops?: PlanPoint[][] }
 
 const SNAP_PX = 10; // snap radius never smaller than this many screen pixels
 
 export class EditMode {
-  card: EditCard;
+  card: Floorplan3dCard;
   tab: TabId;
   selectedRoom: string | null;
   selectedMarker: string | null;
@@ -122,8 +123,8 @@ export class EditMode {
   _advancedOpen: boolean;
   _setupOpen: boolean;
   _setupLast: string | null;
-  _treeCache: { idx: ViewIndex; objs: unknown; tree: TreeRows } | null;
-  _posCache: { idx: ViewIndex; map: Map<unknown, number> } | null;
+  _treeCache: { idx: ModelIndex; objs: unknown; tree: TreeRows } | null;
+  _posCache: { idx: ModelIndex; map: Map<Object3D, number> } | null;
   panel: HTMLDivElement;
   _onKey: (e: KeyboardEvent) => void;
   _onWinMove: (e: PointerEvent) => void;
@@ -140,7 +141,7 @@ export class EditMode {
   menu: HTMLDivElement | null;
   _onMenuAway: (e: PointerEvent) => void;
 
-  constructor(card: EditCard) {
+  constructor(card: Floorplan3dCard) {
     this.card = card;
     this.tab = 'rooms';
     this.selectedRoom = null;
@@ -195,7 +196,7 @@ export class EditMode {
     this._onMenuAway = (e: PointerEvent) => { if (this.menu && !e.composedPath().includes(this.menu)) closeMenu(this); };
   }
 
-  get layout(): Layout { return this.card._layout; }
+  get layout(): Layout { return this.card._layout!; } // edit mode opens on a loaded layout
   get hass(): Hass { return this.card._hass; }
   get view(): FloorplanView { return this.card._view; }
   get floors(): Floor[] { return this.card._floors || []; }

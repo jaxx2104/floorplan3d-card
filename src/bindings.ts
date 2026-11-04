@@ -30,8 +30,8 @@ export interface Align {
   rotation?: number;
   scale?: number;
 }
-/** A model room / zone as a layout room (card plan). */
-export interface ModelRoom {
+/** A model room / zone as a layout room (card plan). A type alias: assignable to LayoutRoom's index signature. */
+export type ModelRoom = {
   id: string;
   modelId: string;
   label: string;
@@ -41,7 +41,7 @@ export interface ModelRoom {
   doors: PlanPoint[];
   outdoor: boolean;
   fromModel: true;
-}
+};
 export interface FloorOverride { id: string; elevation: number; height?: number }
 export interface IdDiff { added: string[]; missing: string[] }
 

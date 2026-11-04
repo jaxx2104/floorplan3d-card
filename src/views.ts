@@ -17,7 +17,7 @@ export interface NodeTag {
   role: string | null;
   type: string | null;
   group: string | null;
-  tags?: string[];
+  tags?: string[] | null;
 }
 
 /** One node of the model tree: parent / children are positions in index.nodes (-1 = root). */
@@ -642,12 +642,12 @@ export function nextViewId(ids: Iterable<string> | null | undefined): { id: stri
 // migration adds to generated views, put before each view's own layout rules. Used before the
 // "belongs to HA floor" dropdown drops the show mode. Returns layoutViews unchanged when there is none.
 export function legacyShowRules<L extends Record<string, LayoutView>>(
-  layoutViews: L,
+  layoutViews: L | undefined,
   views: readonly Pick<ResolvedView, 'id' | 'source'>[] | null | undefined,
   levelId: string,
   savedLevels: SavedLevels | null | undefined,
   levels: readonly ViewLevel[] | null | undefined,
-): L | Record<string, LayoutView> {
+): L | Record<string, LayoutView> | undefined {
   const b = (savedLevels || {})[levelId];
   if (!b || typeof b !== 'object' || !['hidden', 'always', 'all-only', 'only'].includes(b.show as string)) return layoutViews;
   const one = { [levelId]: b };

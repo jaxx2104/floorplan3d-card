@@ -4,16 +4,14 @@
 import { snap } from './placement.ts';
 import { normalise } from './storage.ts';
 import { layoutTags } from './objects/logic.ts';
-import { transformPoint, inverseTransformPoint } from './bindings.ts';
-import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, LayoutRoom, LayoutTag, PlanPoint } from './types/layout.ts';
+import { transformPoint, inverseTransformPoint, type Align } from './bindings.ts';
+import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, LayoutRoom, LayoutTag, PlanPoint, Vec3 } from './types/layout.ts';
 
 export type SnapKind = 'vertex' | 'align' | 'grid';
 export interface SnapResult { point: PlanPoint; kind: SnapKind }
 export interface Edge { index: number; point: PlanPoint; t: number; dist: number }
 /** A pin as handed to setPin / attachPin (z missing: NaN, as before). */
 export interface PinInput { x: number; y: number; z?: number; floor_id?: string; on_model?: boolean }
-/** Model alignment (layout.model / YAML): position, rotation (deg), scale. */
-export interface Align { position?: number[]; rotation?: number; scale?: number }
 /** A parsed import: normalise() guarantees the lists. */
 export type ParsedLayout = NormalisedLayout;
 
@@ -140,11 +138,11 @@ export function setPin(layout: Layout, id: string, pin: PinInput, { grid = true 
 
 // Attach a marker to a model object: it follows the object's anchor + offset (world metres).
 // `at` (plan position at drop time) is kept as the fallback while the object is not there.
-export function attachPin(layout: Layout, id: string, objectId: string, offset: number[], at?: PinInput | null): Layout {
+export function attachPin(layout: Layout, id: string, objectId: string, offset: Vec3, at?: PinInput | null): Layout {
   const prev: Partial<LayoutPin> = (layout.pins || {})[id] || {};
   const src: Partial<PinInput> = at || prev;
   const p: LayoutPin = { x: round(src.x ?? 0), y: round(src.y ?? 0), z: round(src.z ?? 1.2), floor_id: src.floor_id ?? prev.floor_id,
-    on_model: true, attach: objectId, offset: offset.map((v) => round(v)) };
+    on_model: true, attach: objectId, offset: [round(offset[0]), round(offset[1]), round(offset[2])] };
   return { ...layout, pins: { ...layout.pins, [id]: p } };
 }
 

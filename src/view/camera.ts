@@ -10,6 +10,7 @@ import { recipeFar } from '../render-recipe.ts';
 import { depthRange, depthChanged } from '../render-rules.ts';
 import { planToWorld, frameInterval, isMesh, type CameraPose, type TopCameraPose } from './core.ts';
 import type { FloorplanView } from '../view.ts';
+import type { PlanPoint } from '../types/layout.ts';
 
 type CameraTween =
   | { top: true; t0: number; from: { target: THREE.Vector3; zoom: number }; to: { target: THREE.Vector3; zoom: number } }
@@ -144,7 +145,7 @@ export class CameraRig {
   }
 
   // Plan point [x, y] under a screen position, on the horizontal plane at world height `height`.
-  planPoint(clientX: number, clientY: number, height: number): [number, number] | null {
+  planPoint(clientX: number, clientY: number, height: number): PlanPoint | null {
     const r = this.view.renderer.domElement.getBoundingClientRect();
     if (!r.width || !r.height) return null;
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);

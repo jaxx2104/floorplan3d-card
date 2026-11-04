@@ -4,16 +4,10 @@ import { normSection, normTopCamera } from './views.ts';
 import { badTargets, aimWarning, aimsUp } from './objects/aim.ts';
 import { normRender } from './render-recipe.ts';
 
-/** Walks any node tree: three.js nodes (threeAdapter) or glTF node indices (gltfAdapter). */
-export interface ManifestAdapter<N> {
-  roots(): N[];
-  children(n: N): N[];
-  name(n: N): string;
-  extras(n: N): Record<string, unknown>;
-  parent(n: N): N | null;
-  /** Node origin in the root's frame (optional: enables the spot aim check). */
-  position?(n: N): number[];
-}
+import type { LevelRole, Manifest, ManifestEntry, ManifestLevel, ManifestObject, ManifestRoom, ManifestSuggest, ManifestView, ModelAdapter } from './types/manifest.ts';
+import type { PlanPoint, Vec3 } from './types/layout.ts';
+
+export type { LevelRole, Manifest, ManifestEntry, ManifestKind, ManifestLevel, ManifestObject, ManifestRoom, ManifestView, ModelAdapter } from './types/manifest.ts';
 
 /** A node's fp tag (extras.fp, an fp:<kind>:<id> name or a legacy top-level name). */
 export interface FpTag {
@@ -26,63 +20,9 @@ export interface FpTag {
   [key: string]: unknown;
 }
 
-export type ManifestKind = 'level' | 'room' | 'zone' | 'object';
-interface EntryBase<N> {
-  kind: ManifestKind;
-  id: string;
-  label: string;
-  node: N;
-  path: string;
-  source: FpTag['source'];
-}
-export interface ManifestLevel<N = unknown> extends EntryBase<N> {
-  role: string;
-  order: number | null;
-  elevation: number | null;
-  height: number | null;
-}
-export interface ManifestRoom<N = unknown> extends EntryBase<N> {
-  level: string | null;
-  outline: number[][] | null;
-  doors: number[][];
-  suggest: Record<string, unknown>;
-}
-export interface ManifestObject<N = unknown> extends EntryBase<N> {
-  type: string;
-  level: string | null;
-  room: string | null;
-  group: string | null;
-  glow: unknown;
-  anchor: number[] | null;
-  hints: Record<string, unknown>;
-  suggest: Record<string, unknown>;
-  ui: Record<string, unknown>;
-}
-export type ManifestEntry<N = unknown> = ManifestLevel<N> | ManifestRoom<N> | ManifestObject<N>;
-export interface ManifestView {
-  id: string;
-  label: string;
-  show: string[];
-  hide: string[];
-  camera: { position: number[]; target: number[] } | null;
-  section?: NonNullable<ReturnType<typeof normSection>>;
-  camera_top?: NonNullable<ReturnType<typeof normTopCamera>>;
-}
-export interface Manifest<N = unknown> {
-  levels: ManifestLevel<N>[];
-  rooms: ManifestRoom<N>[];
-  objects: ManifestObject<N>[];
-  views: ManifestView[];
-  errors: string[];
-  warnings: string[];
-  byNode: Map<N, ManifestEntry<N>>;
-  ownerOf: (node: N) => ManifestEntry<N> | null;
-  render: ReturnType<typeof normRender>['recipe'];
-  renderKeys: number;
-}
-
 export const KINDS = ['level', 'room', 'zone', 'object'];
-export const ROLES = ['storey', 'basement', 'exterior', 'roof'];
+export const ROLES: readonly LevelRole[] = ['storey', 'basement', 'exterior', 'roof'];
+const isRole = (r: string): r is LevelRole => (ROLES as readonly string[]).includes(r);
 export const ID_RE = /^[a-z0-9_-]{1,64}$/;
 
 const isPoint = (p: unknown): p is number[] => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
@@ -107,12 +47,12 @@ export function readTag(name: string | null | undefined, extras: Record<string, 
   return null;
 }
 
-export function buildManifest<N>(adapter: ManifestAdapter<N>): Manifest<N> {
+export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
   const byNode = new Map<N, ManifestEntry<N>>();
   const m: Manifest<N> = { levels: [], rooms: [], objects: [], views: [], errors: [], warnings: [], byNode, ownerOf: () => null, render: null, renderKeys: 0 };
   const seen: Record<'level' | 'room' | 'object', Set<unknown>> = { level: new Set(), room: new Set(), object: new Set() };
   m.ownerOf = (node) => {
-    for (let n: N | null = node; n !== null && n !== undefined; n = adapter.parent(n)) {
+    for (let n: N | null | undefined = node; n !== null && n !== undefined; n = adapter.parent(n)) {
       const e = m.byNode.get(n);
       if (e) return e;
     }
@@ -130,9 +70,9 @@ export function buildManifest<N>(adapter: ManifestAdapter<N>): Manifest<N> {
   }
 
   type Fp = { views?: unknown; render?: unknown };
-  const fpOf = (n: N): Fp | undefined => { const e = adapter.extras(n); return e && (e.fp as Fp | undefined); };
+  const fpOf = (n: N): Fp | undefined => { const e = adapter.extras(n); return e ? (e.fp as Fp | undefined) : undefined; };
   const viewHolder = adapter.roots().find((r) => { const fp = fpOf(r); return fp && Array.isArray(fp.views); });
-  const isNum3 = (a: unknown): a is number[] => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
+  const isNum3 = (a: unknown): a is Vec3 => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
   const strs = (a: unknown): string[] => (Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : []);
   type RawView = { id?: unknown; label?: unknown; show?: unknown; hide?: unknown; camera?: { position?: unknown; target?: unknown }; section?: unknown; camera_top?: unknown } | null | undefined;
   const rawViews = (viewHolder !== undefined ? fpOf(viewHolder)!.views : []) as RawView[]; // checked by find()
@@ -170,33 +110,36 @@ export function buildManifest<N>(adapter: ManifestAdapter<N>): Manifest<N> {
       return null;
     }
     seen[ns].add(tag.id);
-    const base = { kind: tag.kind as ManifestKind, id: tag.id, label: tag.label || tag.id, node, path, source: tag.source };
+    const base = { id: tag.id, label: tag.label || tag.id, node, path, source: tag.source };
     let entry: ManifestEntry<N>;
     if (tag.kind === 'level') {
       let role = tag.role || 'storey';
-      if (!ROLES.includes(role)) { m.warnings.push(`${where}: unknown role "${role}", using storey`); role = 'storey'; }
+      if (!isRole(role)) { m.warnings.push(`${where}: unknown role "${role}", using storey`); role = 'storey'; }
       if (ctx.level) m.warnings.push(`${where} is inside level "${ctx.level}"; levels should be top-level`);
-      entry = { ...base, role, order: num(tag.order), elevation: num(tag.elevation), height: num(tag.height) };
-      m.levels.push(entry);
+      const level: ManifestLevel<N> = { ...base, kind: 'level', role: role as LevelRole, order: num(tag.order), elevation: num(tag.elevation), height: num(tag.height) };
+      m.levels.push(level);
+      entry = level;
     } else if (tag.kind === 'room' || tag.kind === 'zone') {
       if (!ctx.level) m.errors.push(`${where} is not inside a level`);
-      let outline: number[][] | null = null;
+      let outline: PlanPoint[] | null = null;
       if (tag.outline !== undefined) {
-        if (Array.isArray(tag.outline) && tag.outline.length >= 3 && tag.outline.every(isPoint)) outline = tag.outline.map((p) => [p[0], p[1]]);
+        if (Array.isArray(tag.outline) && tag.outline.length >= 3 && tag.outline.every(isPoint)) outline = tag.outline.map((p): PlanPoint => [p[0], p[1]]);
         else m.warnings.push(`${where}: outline needs at least 3 [x, y] points`);
       }
-      const doors = Array.isArray(tag.doors) ? tag.doors.filter(isPoint).map((p) => [p[0], p[1]]) : [];
-      entry = { ...base, level: ctx.level, outline, doors, suggest: (tag.suggest as Record<string, unknown>) || {} };
-      m.rooms.push(entry);
+      const doors = Array.isArray(tag.doors) ? tag.doors.filter(isPoint).map((p): PlanPoint => [p[0], p[1]]) : [];
+      const room: ManifestRoom<N> = { ...base, kind: tag.kind, level: ctx.level, outline, doors, suggest: (tag.suggest as ManifestSuggest) || {} };
+      m.rooms.push(room);
+      entry = room;
     } else {
       if (!ctx.level) m.errors.push(`${where} is not inside a level`);
-      entry = {
+      const obj: ManifestObject<N> = {
         // tag fields are the model author's JSON: passed through as before
-        ...base, type: tag.type || 'generic', level: ctx.level, room: ctx.room, group: (tag.group as string) || null,
-        glow: tag.glow || null, anchor: isPoint(tag.anchor) ? tag.anchor : null, hints: (tag.hints as Record<string, unknown>) || {},
-        suggest: (tag.suggest as Record<string, unknown>) || {}, ui: (tag.ui as Record<string, unknown>) || {},
+        ...base, kind: 'object', type: tag.type || 'generic', level: ctx.level, room: ctx.room, group: (tag.group as string) || null,
+        glow: (tag.glow as string) || null, anchor: isPoint(tag.anchor) ? tag.anchor : null, hints: (tag.hints as Record<string, unknown>) || {},
+        suggest: (tag.suggest as ManifestSuggest) || {}, ui: (tag.ui as Record<string, unknown>) || {},
       };
-      m.objects.push(entry);
+      m.objects.push(obj);
+      entry = obj;
     }
     m.byNode.set(node, entry);
     return entry;
@@ -217,10 +160,12 @@ export function buildManifest<N>(adapter: ManifestAdapter<N>): Manifest<N> {
   for (const t of tops) walk(t, { level: null, room: null }, '', true);
   if (adapter.position) {
     const position = adapter.position;
-    const v3 = (a: unknown) => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
-    const spots = m.objects.filter((o) => o.hints && (o.hints.beam === 'spot' || o.hints.beam === 'up') && v3(o.hints.target))
-      .map((o) => ({ id: o.id, group: o.group, pos: position(o.node), target: o.hints.target, distance: o.hints.distance,
-        up: aimsUp(o), targetOk: o.hints.target_ok === true }));
+    const v3 = (a: unknown): a is number[] => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
+    const spots = m.objects.flatMap((o) => {
+      const target = o.hints && o.hints.target;
+      if (!o.hints || (o.hints.beam !== 'spot' && o.hints.beam !== 'up') || !v3(target)) return [];
+      return [{ id: o.id, group: o.group, pos: position(o.node), target, distance: o.hints.distance, up: aimsUp(o), targetOk: o.hints.target_ok === true }];
+    });
     const w = aimWarning(badTargets(spots));
     if (w) m.warnings.push(w);
   }
@@ -251,7 +196,7 @@ export interface ThreeNodeLike {
   scale: { toArray(): number[] };
 }
 
-export function threeAdapter<N extends ThreeNodeLike>(root: N): ManifestAdapter<N> {
+export function threeAdapter<N extends ThreeNodeLike>(root: N): ModelAdapter<N> {
   return {
     // children / parents of an N tree are N nodes again
     roots: () => root.children as N[],
@@ -284,7 +229,7 @@ export interface GltfJson {
   scene?: number;
 }
 
-export function gltfAdapter(json: GltfJson): ManifestAdapter<number> {
+export function gltfAdapter(json: GltfJson): ModelAdapter<number> {
   const nodes = json.nodes || [];
   const parent = new Map<number, number>();
   nodes.forEach((n, i) => (n.children || []).forEach((c) => parent.set(c, i)));

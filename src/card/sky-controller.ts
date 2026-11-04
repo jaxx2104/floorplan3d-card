@@ -6,6 +6,8 @@ import { sunVector, nightFactor, clampSunDir, sunStrength } from '../objects/log
 import { weatherEntity, cloudCoverage, windSpeed } from '../weather.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
 import type { CardConfig } from '../types/config.ts';
+import type { SkyState } from '../view/look.ts';
+import type { SkyBody } from '../view/sky.ts';
 
 declare global {
   interface Window {
@@ -22,12 +24,6 @@ const NIGHT_MOON: [number, number] = [160, 35]; // manual Night: moon azimuth / 
 
 export type SkyMode = 'auto' | 'day' | 'night';
 
-/** What the view was last given (setSky): night factor, the sun's light direction and strength. */
-interface SkyState {
-  night: number;
-  sunDir: number[] | null;
-  sun?: number;
-}
 
 export function readSkyMode(): SkyMode {
   try {
@@ -211,7 +207,7 @@ export class SkyController {
     const scrub = sunTime !== null && sunTime !== undefined && !!c;
     const at = scrub ? sliderDate(this._now(), sunTime, this._timeZone()).getTime() : null; // the scrubbed time, today (HA's time zone)
     const north = v.model.north || 0, rot = this.card._modelAlign().rotation || 0;
-    let sky: SkyState = { night: 0, sunDir: null }, sunBody: { dir: number[] } | null = null, auto = false;
+    let sky: SkyState = { night: 0, sunDir: null }, sunBody: SkyBody | null = null, auto = false;
     if (this._skyMode === 'night') sky = { night: 1, sunDir: null };
     else if (this._skyMode === 'day') sunBody = { dir: sunVector(...DAY_SUN, north, rot) };
     else {
@@ -238,7 +234,7 @@ export class SkyController {
       this._syncNightMarkers();
       v.setSky(sky, { shadow });
     }
-    let moonBody: { dir: number[]; phase: number; illumination: number; latitude?: number } | null = null;
+    let moonBody: SkyBody | null = null;
     if (this._skyMode === 'night') moonBody = { dir: sunVector(...NIGHT_MOON, north, rot), phase: 0.4, illumination: 0.8 };
     else if (auto) {
       const m = c ? moonPosition(scrub ? at! : now, Number(c.latitude), Number(c.longitude)) : null; // scrub: at set

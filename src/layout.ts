@@ -7,18 +7,21 @@ import type { Marker } from './registry.ts';
 import type { Hass, HassEntity } from './types/ha.ts';
 import type { Floor, Layout, LayoutFloor, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.ts';
 import type { CardConfig } from './types/config.ts';
+import type { PlanXYZ } from './surface.ts';
 
 /** A wall piece between two plan points (door gaps already cut out). */
 export interface WallSegment { a: PlanPoint; b: PlanPoint }
 
-/** Where a marker is drawn: plan metres on a floor. attached: the model object id a pin follows. */
-export interface MarkerPosition {
-  x: number;
-  y: number;
-  z: number;
+/** Where a marker is drawn: plan metres on a floor (auto placed, pinned, attached or the live mower). */
+export interface MarkerPosition extends PlanXYZ {
   floorId: string;
   auto: boolean;
+  /** Attached to this model object (pin.attach). */
   attached?: string;
+  /** The live mower (set by the card). */
+  live?: boolean;
+  /** Auto placed: the computed point, before the card moves it onto a model surface. */
+  base?: PlanXYZ;
 }
 
 export type AttachResolver = (pin: LayoutPin, floorId: string) => { x: number; y: number; z: number } | null;

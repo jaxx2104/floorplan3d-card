@@ -10,31 +10,30 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries, deinterleaveAttribute } from 'three/addons/utils/BufferGeometryUtils.js';
 import { measuredElevations } from '../bindings.ts';
 import { buildManifest, threeAdapter } from '../manifest.ts';
-import { sectionLevels, unionBox, nodeIndex, parseSelector, matches, viewTree, escapeName } from '../views.ts';
+import type { Manifest } from '../types/manifest.ts';
+import { sectionLevels, unionBox, nodeIndex, parseSelector, matches, viewTree, escapeName, type NodeIndex, type Visibility } from '../views.ts';
 import { mergeGroups, namedGroups, mergedName } from '../merge.ts';
 import { mergeRender } from '../render-recipe.ts';
 import { patchCloudShadow } from '../cloud-shadow.ts';
 import { castsShadow, shadowInfo, isCoplanarOverlay, coplanarWinners, ghostMaterial, pickable } from '../render-rules.ts';
-import { isMesh, meshMaterials, type BoxData, type Drawable, type ModelMaterial, type PlaneData, type TexKey, type Vec3 } from './core.ts';
+import { isMesh, meshMaterials, type BoxData, type Drawable, type ModelMaterial, type PlaneData, type TexKey } from './core.ts';
 import type { FloorplanView } from '../view.ts';
-import type { PlanPoint } from '../types/layout.ts';
+import type { PlanPoint, Vec3 } from '../types/layout.ts';
 
-/** The model's tag manifest (manifest.js). */
-export type Manifest = ReturnType<typeof buildManifest>;
-/** Node index of a model (views.js). */
-export type NodeIndex = ReturnType<typeof nodeIndex>;
+/** The tag manifest of the loaded model (three.js nodes). */
+export type ModelManifest = Manifest<THREE.Object3D>;
+/** Node index of the loaded model (three.js nodes). */
+export type ModelIndex = NodeIndex<THREE.Object3D>;
 /** The loaded GLB underlay (view.model). */
 export interface LoadedModel {
   id: string;
   root: THREE.Object3D;
-  manifest: Manifest;
+  manifest: ModelManifest;
   tagged: boolean;
   north: number | null;
   opacity: number;
 }
-/** Per index node: shown; selfHidden[i]: on only to keep a descendant visible (applyModelVisibility). */
-export type VisibilityFlags = ArrayLike<unknown> & { selfHidden?: ArrayLike<unknown> | null };
-export interface ModelVisibility { index: NodeIndex; flags: VisibilityFlags; masks: Map<THREE.Object3D, number> }
+export interface ModelVisibility { index: ModelIndex; flags: Visibility; masks: Map<THREE.Object3D, number> }
 /** Model bytes, or a function that resolves to them (the card's cache). */
 type ModelBytes = ArrayBuffer | (() => ArrayBuffer | Promise<ArrayBuffer>);
 type KeepSelectors = string[] | null | undefined;
@@ -60,7 +59,7 @@ interface SurfaceMesh { mesh: THREE.Mesh; box: THREE.Box3 }
 /** One surfaceRays hit (arrays, card world). */
 export interface SurfaceRayHit { point: number[]; normal: number[]; distance: number; dir: number[]; object: THREE.Object3D }
 /** Drag preview on the model surface (setSurfacePreview). */
-export interface SurfacePreview { point: Vec3 | THREE.Vector3; normal: Vec3 | THREE.Vector3; tri?: (Vec3 | THREE.Vector3)[] | null; label?: string }
+export interface SurfacePreview { point: Vec3 | THREE.Vector3; normal: Vec3 | THREE.Vector3; tri?: (Vec3 | THREE.Vector3)[] | null; label?: string | null }
 
 const TEX_KEYS: readonly TexKey[] = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'bumpMap', 'alphaMap'];
 
@@ -130,7 +129,7 @@ function flipWinding(g: THREE.BufferGeometry): void {
 // unitScale: model units -> metres (the model scale), for the 30 m / 10 m cell limits.
 // Every node keeps its original path segment (userData.fpSeg / fpDup), so node: paths do not shift when
 // siblings are merged away. Returns { groups, merged (source meshes), failed }.
-export function mergeStaticMeshes(root: THREE.Object3D, manifest: Manifest, selectors: string[] = [], { unitScale = 1 }: { unitScale?: number } = {}):
+export function mergeStaticMeshes(root: THREE.Object3D, manifest: ModelManifest, selectors: string[] = [], { unitScale = 1 }: { unitScale?: number } = {}):
   { groups: number; merged: number; failed: number } {
   root.updateMatrixWorld(true);
   const index = nodeIndex(threeAdapter(root), manifest);
@@ -210,8 +209,8 @@ const firstMaterial = (o: THREE.Object3D): ModelMaterial | undefined => {
 };
 
 // World corners of the face a raycast hit ([[x, y, z] x 3]) or null.
-function faceTriangle(hit: THREE.Intersection): number[][] | null {
-  const geo = (hit.object as Drawable).geometry;
+function faceTriangle(hit: THREE.Intersection<THREE.Mesh>): Vec3[] | null {
+  const geo = hit.object.geometry;
   const pos = hit.face && geo && geo.attributes.position;
   if (!pos || !hit.face) return null;
   return [hit.face.a, hit.face.b, hit.face.c].map((i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(hit.object.matrixWorld).toArray());
@@ -341,8 +340,8 @@ export class ModelLayer {
         const tagged = manifest.levels.some((l) => l.source === 'extras' || l.source === 'name');
         // heights a flat sheet can lie on: level floors, the terrain / floor layers, the model bottom
         const floorYs: number[] = [0];
-        for (const l of manifest.levels) if (Number.isFinite(l.elevation)) floorYs.push(l.elevation);
-        for (const m of Object.values(measuredElevations(manifest.levels)) as { elevation: number }[]) floorYs.push(m.elevation);
+        for (const l of manifest.levels) if (l.elevation !== null && Number.isFinite(l.elevation)) floorYs.push(l.elevation);
+        for (const m of Object.values(measuredElevations(manifest.levels))) floorYs.push(m.elevation);
         const all = new THREE.Box3();
         root.traverse((o) => {
           if (!isMesh(o)) return;
@@ -527,7 +526,7 @@ export class ModelLayer {
     return { meshes, triangles, calls };
   }
 
-  modelManifest(): Manifest | null {
+  modelManifest(): ModelManifest | null {
     return this.view.model ? this.view.model.manifest : null;
   }
 
@@ -676,7 +675,7 @@ export class ModelLayer {
   }
 
   // First visible model intersection under a screen point (raycaster left set to that ray).
-  _modelHit(clientX: number, clientY: number): THREE.Intersection | null {
+  _modelHit(clientX: number, clientY: number): THREE.Intersection<THREE.Mesh> | null {
     if (!this.view.model) return null;
     const r = this.view.renderer.domElement.getBoundingClientRect();
     if (!r.width || !r.height) return null;
@@ -693,7 +692,7 @@ export class ModelLayer {
       });
     };
     const hit = this.view.raycaster.intersectObject(this.view.model.root, true)
-      .find((h) => candidate(h.object) && shown(h.object) && h.point.y <= this.view.modelClip.constant + 1e-6 && !this.view._cutAway(h.point));
+      .find((h): h is THREE.Intersection<THREE.Mesh> => isMesh(h.object) && candidate(h.object) && shown(h.object) && h.point.y <= this.view.modelClip.constant + 1e-6 && !this.view._cutAway(h.point));
     return hit || null;
   }
 
@@ -741,7 +740,7 @@ export class ModelLayer {
   }
 
   // flags[i] -> index.nodes[i].node.visible; null returns to the level rules.
-  applyModelVisibility(index: NodeIndex | null | undefined, flags: VisibilityFlags | null | undefined): void {
+  applyModelVisibility(index: ModelIndex | null | undefined, flags: Visibility | null | undefined): void {
     this._restoreModelVisibility();
     if (flags && index) {
       index.nodes.forEach((n: { node: THREE.Object3D }, i: number) => { n.node.visible = !!flags[i]; });
@@ -794,10 +793,10 @@ export class ModelLayer {
   }
 
   // a point in model world (glTF scene coordinates) -> card world, through the model's placement
-  modelPointToWorld(p: Vec3): Vec3 | number[] {
-    if (!this.view.model) return p;
+  modelPointToWorld(p: readonly number[]): Vec3 {
+    if (!this.view.model) return [p[0], p[1], p[2]];
     this.view.modelGroup.updateMatrixWorld(true);
-    return new THREE.Vector3(...p).applyMatrix4(this.view.model.root.matrixWorld).toArray();
+    return new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(this.view.model.root.matrixWorld).toArray();
   }
 
   // World-space triangle vertices of a mesh (flat x,y,z list).
@@ -815,11 +814,11 @@ export class ModelLayer {
   }
 
   // Plan-space bounding rectangle of a mesh (fallback when its floor cannot be traced).
-  meshPlanRect(mesh: THREE.Object3D): number[][] {
+  meshPlanRect(mesh: THREE.Object3D): PlanPoint[] {
     const b = new THREE.Box3().setFromObject(mesh);
     const x0 = b.min.x, x1 = b.max.x, y0 = -b.max.z, y1 = -b.min.z;
-    const r = (v: number) => Math.round(v / 0.05) * 0.05;
-    return [[r(x0), r(y0)], [r(x1), r(y0)], [r(x1), r(y1)], [r(x0), r(y1)]].map((q) => q.map((v) => Math.round(v * 1000) / 1000));
+    const r = (v: number) => Math.round(Math.round(v / 0.05) * 0.05 * 1000) / 1000; // 5 cm, rounded to mm
+    return [[r(x0), r(y0)], [r(x1), r(y0)], [r(x1), r(y1)], [r(x0), r(y1)]];
   }
 
   // The drag preview (view.dispose).

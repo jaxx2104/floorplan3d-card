@@ -105,9 +105,9 @@ export function buildMarkers(hass: Hass, layout: Pick<Layout, 'hidden'>, opts: {
   return markers;
 }
 
-export function areaName(hass: Hass, areaId: string): string {
-  const a = hass.areas && hass.areas[areaId];
-  return a ? a.name : areaId;
+export function areaName(hass: Hass, areaId: string | null | undefined): string {
+  const a = areaId ? hass.areas && hass.areas[areaId] : undefined;
+  return a ? a.name : areaId ?? '';
 }
 
 export function floorsFromHA(hass: Hass): HaFloorInfo[] {

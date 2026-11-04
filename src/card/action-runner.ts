@@ -1,27 +1,12 @@
 // HA actions run from the card (taps, holds, popup links): service calls with failures as a toast,
 // more-info, navigation, URLs, Assist, and the in-card confirmation.
 
-import { actionCall } from '../actions.ts';
+import { actionCall, type ActionCall } from '../actions.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
 import type { HassServiceTarget } from '../types/ha.ts';
 
 /** An action as actions.js takes it (HA's { action, ... } shape, or a bare action name). */
 export type CardAction = Parameters<typeof actionCall>[0];
-/**
- * What actionCall says to do (its documented result). Spelled out here until actions.ts exports it:
- * replace with that type then.
- */
-export type ActionCall = { confirm: string | null } & (
-  | { kind: 'service'; domain: string; service: string; data: Record<string, unknown>; target?: HassServiceTarget }
-  | { kind: 'more-info'; entityId: string }
-  | { kind: 'navigate'; path: string; replace: boolean }
-  | { kind: 'url'; url: string; newTab: boolean }
-  | { kind: 'assist'; action: unknown }
-  | { kind: 'popup' }
-  | { kind: 'none' }
-  | { kind: 'error'; message: string }
-);
-
 /** Where an action runs: the entity toggle / more-info act on, the model object it came from. */
 export interface ActionContext {
   entity?: string | null;
@@ -58,7 +43,7 @@ export class ActionRunner {
 
   // Runs one HA action (after the in-card confirmation when it asks for one).
   _runAction(action: CardAction, ctx: ActionContext): void {
-    const call = actionCall(action, { entity: ctx.entity || null, userId: (this.card._hass && this.card._hass.user && this.card._hass.user.id) || null }) as ActionCall;
+    const call = actionCall(action, { entity: ctx.entity || null, userId: (this.card._hass && this.card._hass.user && this.card._hass.user.id) || null });
     if (call.kind === 'none') return;
     if (call.kind === 'error') { this._toast(call.message); return; }
     if (call.confirm) this._confirm(call.confirm, () => this._execCall(call, ctx));

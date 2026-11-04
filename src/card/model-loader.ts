@@ -10,6 +10,7 @@ import { mergeFloors } from '../layout.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
 import type { CardConfig } from '../types/config.ts';
 import type { LayoutModel } from '../types/layout.ts';
+import type { ModelManifest, ModelOptions } from '../view/model.ts';
 
 declare global {
   interface Window {
@@ -29,23 +30,6 @@ export interface ModelSource {
   fetchFn: FetchFn;
 }
 
-/** What the card asks the view to load (view.setModel); null: no model. */
-export interface ModelLoadOpts {
-  url?: string;
-  id?: string | number;
-  name?: string;
-  data: () => Promise<ArrayBuffer>;
-  dataFresh: () => Promise<ArrayBuffer>;
-  position: number[];
-  rotation: number;
-  scale: number;
-  opacity: number;
-  merge?: boolean;
-  keep?: () => string[] | Promise<string[]>;
-  onMerged?: () => void;
-  reload?: boolean;
-}
-
 /** Model placement in the card plan (bindings.js transformPoint). */
 export interface ModelAlign {
   position: number[];
@@ -53,12 +37,9 @@ export interface ModelAlign {
   scale: number;
 }
 
-/** The loaded model's fp manifest (as the view has it). */
-export type Manifest = NonNullable<ReturnType<Floorplan3dCard['_view']['modelManifest']>>;
-
 /** The loaded model's levels / rooms resolved against HA (modelBindings). */
 export interface ModelBindings {
-  manifest: Manifest;
+  manifest: ModelManifest;
   levels: ReturnType<typeof resolveLevels>;
   rooms: ReturnType<typeof resolveRoomAreas>;
   diff: ReturnType<typeof bindingDiff>;
@@ -88,7 +69,7 @@ export class ModelLoader {
   // model: from YAML (model: url) if set, else the one uploaded to the integration (layout.model)
   _loadModel(reload = false): void {
     const c = this.card._config;
-    let opts: ModelLoadOpts | null = null;
+    let opts: ModelOptions | null = null;
     if (c.model) {
       const url = new URL(String(c.model), location.href).href;
       opts = {
@@ -111,7 +92,7 @@ export class ModelLoader {
     } else {
       const m = this.card._layout && this.card._layout.model;
       if (m && m.version && this.card._hass && this.card._hass.fetchWithAuth) {
-        const base = `${MODEL_API}/${encodeURIComponent(c.layout_key!)}`; // setConfig's default
+        const base = `${MODEL_API}/${encodeURIComponent(c.layout_key)}`;
         const url = `${base}?v=${m.version}`;
         opts = {
           id: m.version, name: m.name,
@@ -235,7 +216,7 @@ export class ModelLoader {
     return value;
   }
 
-  _computeBindings(manifest: Manifest): ModelBindings {
+  _computeBindings(manifest: ModelManifest): ModelBindings {
     const saved: LayoutModel = (this.card._layout && this.card._layout.model) || {};
     const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...saved.levels };
     const haFloors = mergeFloors(this.card._hass, this.card._layout || {}); // HA floors plus layout-only floors

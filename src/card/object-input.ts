@@ -4,25 +4,21 @@
 
 import { tapHintsMode, reachability, hintAlpha, TOUCH_SHOW_MS } from '../objects/hints.ts';
 import { groupedHidden, groupedTapId, dockRows } from '../mower-track.ts';
-import { actionTarget, toggleCall } from '../objects/popup.ts';
-import { layoutTags, mowerTabEntity, bindObjects, effectiveGroups, screenByDistance } from '../objects/logic.ts';
-import { resolveActions } from '../actions.ts';
+import { actionTarget, toggleCall, type PopupData } from '../objects/popup.ts';
+import { layoutTags, mowerTabEntity, bindObjects, effectiveGroups, screenByDistance, type ObjectBinding } from '../objects/logic.ts';
+import { resolveActions, type ResolvedActions } from '../actions.ts';
 import { typeOf } from '../objects/types.ts';
 import { deviceRows } from '../mower-device.ts';
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
-import type { Marker } from './marker-layer.ts';
-import type { CardAction } from './action-runner.ts';
+import type { Marker } from '../registry.ts';
 import type { ObjectLayer } from '../objects/layer.ts';
-import type { TapHints } from '../objects/hints.ts';
-import type { Layout } from '../types/layout.ts';
+import type { HintItem, TapHints } from '../objects/hints.ts';
+import type { Object3D, Vector3 } from 'three';
+import type { Layout, LayoutObject } from '../types/layout.ts';
 
-/** A model object's binding to HA (objects/logic.js bindObjects). */
-export type Binding = ReturnType<typeof bindObjects> extends Map<string, infer B> ? B : never;
 /** The tag / group settings in effect (objects/logic.js effectiveGroups). */
 export type Groups = ReturnType<typeof effectiveGroups>;
-/** Resolved tap / hold / double tap actions and the popup list (actions.js resolveActions). */
-export type ResolvedActions = ReturnType<typeof resolveActions>;
 type ObjectEntry = NonNullable<ReturnType<ObjectLayer['objectAt']>>;
 type Which = 'tap' | 'hold' | 'double_tap';
 type SceneNode = { visible: boolean; parent: SceneNode | null } | null | undefined;
@@ -65,7 +61,7 @@ const nodeShown = (n: SceneNode): boolean => { for (let x = n; x; x = x.parent) 
 
 export class ObjectInput {
   card: Floorplan3dCard;
-  _bindings: Map<string, Binding>;
+  _bindings: Map<string, ObjectBinding>;
   _boundEntities: Set<string>;
   _mowerObjectBound: boolean;
   _groups: Groups | Record<string, never>;
@@ -139,7 +135,7 @@ export class ObjectInput {
   }
 
   // ObjectPopup resolve: the popup's content for an object id, null when it cannot show.
-  popupResolve(id: string): Record<string, unknown> | null {
+  popupResolve(id: string): PopupData | null {
     const card = this.card;
     const o = card._objects!.objectAt(id); // the popup exists with the object layer
     if (!o || !card._hass || (o.binding && o.binding.hidden)) return null;
@@ -186,7 +182,7 @@ export class ObjectInput {
     if (was && key.every((x, i) => x === was[i])) return;
     this._hintKey = key;
     const levelShown = this._levelShown(), states = this.card._hass.states, groups = this._groups || {};
-    const items: { id: string; world: unknown; ok: boolean; color: unknown }[] = [];
+    const items: HintItem[] = [];
     for (const a of layer.anchors()) {
       const o = layer.objectAt(a.id), b = o && o.binding;
       if (!b || b.hidden || groupedHidden(a.id, grp)) continue; // docked: the mower's dot stands for the dock too
@@ -208,7 +204,7 @@ export class ObjectInput {
     const touch = this._hintTouch && performance.now() < this._hintTouch;
     const p = this._hintPtr;
     if (mode === 'near' && !touch && !p && !force && hints._allZero) return;
-    const changed = hints.setAlpha((it: { world: unknown }) => {
+    const changed = hints.setAlpha((it) => {
       if (mode === 'always' || touch) return 1;
       if (!p) return 0;
       const s = this.card._view.projectWorld(it.world);
@@ -239,14 +235,14 @@ export class ObjectInput {
     const layer = this.card._objects!; // created with the view, before any update
     const model = layer.model;
     const objs = model ? model.manifest.objects : [];
-    const l: Partial<Layout> = this.card._layout || {}, lo: Record<string, { entity?: string } | undefined> = l.objects || NONE, states = this.card._hass.states;
+    const l: Partial<Layout> = this.card._layout || {}, lo: Record<string, LayoutObject> = l.objects || NONE, states = this.card._hass.states;
     if (!this._tagsFor || this._tagsFor[0] !== l.tags || this._tagsFor[1] !== l.groups) this._tagsFor = [l.tags, l.groups, layoutTags(l)];
     const groups = this._tagsFor[2]; // tag settings (old layout.groups included)
-    const exists = objs.map((o: { id: string; suggest?: { entity?: string } }) => {
+    const exists = objs.map((o) => {
       const own = lo[o.id];
       const e = own && own.entity !== undefined ? own.entity : (o.suggest || {}).entity;
       return e && states[e] ? 1 : 0;
-    }).join('') + '|' + Object.values(groups as Record<string, { entity?: string } | null>).map((g) => (g && g.entity && states[g.entity] ? 1 : 0)).join('');
+    }).join('') + '|' + Object.values(groups).map((g) => (g && g.entity && states[g.entity] ? 1 : 0)).join('');
     const mowerEntity = mowerTabEntity(l.mower && l.mower.entity, this.card._hass.entities);
     // HA labels (default tags) live in the entity registry: hass.entities / hass.labels identity
     const key = [model, lo, groups, exists, mowerEntity && states[mowerEntity] ? mowerEntity : '', this.card._hass.entities, this.card._hass.labels || this.card._labels];
@@ -291,9 +287,9 @@ export class ObjectInput {
     this._syncHints();
   }
 
-  _levelShown(): (id: string) => boolean {
+  _levelShown(): (id: string | null) => boolean {
     const layer = this.card._objects!; // callers checked the layer
-    const levels: { id: string; node: SceneNode }[] = (layer.model && layer.model.manifest.levels) || [];
+    const levels = (layer.model && layer.model.manifest.levels) || [];
     return (id) => { const lv = levels.find((x) => x.id === id); return !lv || nodeShown(lv.node); };
   }
 
@@ -316,7 +312,7 @@ export class ObjectInput {
     if (!layer || !layer.model || !this.card._hass) return null;
     const groups = this._groups || {};
     const levelShown = this._levelShown();
-    const pts: { id: string; x: number; y: number; world: unknown; node: unknown }[] = [];
+    const pts: { id: string; x: number; y: number; world: Vector3; node: Object3D | null }[] = [];
     for (const a of layer.anchors()) {
       const o = layer.objectAt(a.id);
       if (!o) continue; // anchors are the layer's objects
@@ -412,7 +408,7 @@ export class ObjectInput {
     const entity = (o.binding && o.binding.entity) || null;
     const reg = entity && this.card._hass && this.card._hass.entities && this.card._hass.entities[entity];
     return resolveActions({
-      modelUi: o.obj.ui, layoutUi: ((((this.card._layout && this.card._layout.objects) || {}) as Record<string, { ui?: unknown } | undefined>)[id] || {}).ui, yaml: this.card._config.actions,
+      modelUi: o.obj.ui, layoutUi: (((this.card._layout && this.card._layout.objects) || {})[id] || {}).ui, yaml: this.card._config.actions,
       kind: 'object', id, entityId: entity, deviceId: (reg && reg.device_id) || null, typeDefaults: typeOf(o.obj.type).defaults,
       tags: (o.binding && o.binding.tags) || null,
     });
@@ -459,13 +455,13 @@ export class ObjectInput {
   _runMarkerAction(m: Marker, which: Which): void {
     const action = this._markerActions(m)[which];
     if (!action || action.action === 'none' || !this.card._hass) return;
-    this.card._runAction((action.action === 'popup' ? { ...action, action: 'more-info' } : action) as CardAction, { entity: m.entityId });
+    this.card._runAction(action.action === 'popup' ? { ...action, action: 'more-info' } : action, { entity: m.entityId });
   }
 
   // An object's label: layout.objects[id].label (Objects tab), else the model's.
   objectLabel(obj: { id: string; label?: string } | null | undefined): string {
     if (!obj) return '';
-    const objects = this.card._layout && (this.card._layout.objects as Record<string, { label?: unknown } | undefined> | undefined);
+    const objects = this.card._layout && this.card._layout.objects;
     const saved = objects && objects[obj.id];
     return (saved && typeof saved.label === 'string' && saved.label) || obj.label || obj.id;
   }

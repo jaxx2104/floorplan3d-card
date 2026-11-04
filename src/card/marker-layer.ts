@@ -3,36 +3,17 @@
 // move of auto-placed markers onto the model's surfaces. _buildMarkers replaces the _positions Map:
 // other parts read card._positions each time, never keep it.
 
-import { buildMarkers, isActive, iconFor, markerLook, displayValue, pictureKey } from '../registry.ts';
-import { markerPositions, lightGlow } from '../layout.ts';
-import { surfaceKind, surfaceKey, surfaceSearch, worldOf, nearPolygon, chooseSurface, planOf } from '../surface.ts';
+import { buildMarkers, isActive, iconFor, markerLook, displayValue, pictureKey, type Marker } from '../registry.ts';
+import { markerPositions, lightGlow, type MarkerPosition } from '../layout.ts';
+import { surfaceKind, surfaceKey, surfaceSearch, worldOf, nearPolygon, chooseSurface, planOf, type PlanXYZ } from '../surface.ts';
 import { attachedPosition } from '../objects/logic.ts';
 import { badgeOptions, badgeInfo } from '../badges.ts';
 import { applyBadges } from '../badge-dom.ts';
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from './constants.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
 import type { LayoutPin } from '../types/layout.ts';
+import type { GlowSpec } from '../view/structure.ts';
 
-/** A device / entity marker (registry.js buildMarkers). */
-export type Marker = ReturnType<typeof buildMarkers>[number];
-
-/** Plan point (metres) with its height above the floor. */
-export interface PlanXYZ {
-  x: number;
-  y: number;
-  z: number;
-}
-
-/** Where a marker stands: auto placed, pinned, attached to a model object, or the live mower. */
-export interface MarkerPosition extends PlanXYZ {
-  floorId: string;
-  auto?: boolean;
-  live?: boolean;
-  /** Attached to this model object (pin.attach). */
-  attached?: string;
-  /** Auto placed: the computed point, before the move onto a model surface. */
-  base?: PlanXYZ;
-}
 
 /** A pin attached to a model object: the object id and the offset from its anchor. */
 type AttachPin = LayoutPin & { attach?: string; offset?: unknown };
@@ -94,7 +75,7 @@ export class MarkerLayer {
         mm = null;
       } else if (!mm) {
         const st = h.states[cfg.entity];
-        mm = { id: 'mower:' + cfg.entity, entityId: cfg.entity, domain: cfg.entity.split('.')[0],
+        mm = { id: 'mower:' + cfg.entity, entityId: cfg.entity, domain: cfg.entity.split('.')[0], areaId: null, deviceId: null, deviceClass: undefined,
           name: (st && st.attributes.friendly_name) || cfg.entity, entities: [], secondaryId: null };
         this._markers.push(mm);
       }
@@ -268,7 +249,7 @@ export class MarkerLayer {
 
   _refreshStates(): void {
     const h = this.card._hass;
-    const glows: Record<string, unknown>[] = [];
+    const glows: GlowSpec[] = [];
     const bo = this.badgeOpts(), anyBadge = bo.integration || bo.status || bo.battery;
     const dark = !!(this.card._built.theme && this.card._built.theme.dark);
     for (const m of this._markers) {

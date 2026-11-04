@@ -1,33 +1,23 @@
 // Devices tab: the selected marker, stick to surfaces, badges, unplaced and hidden devices.
 
 import * as E from '../../editor.ts';
-import { buildMarkers, areaName } from '../../registry.ts';
+import { buildMarkers, areaName, type Marker } from '../../registry.ts';
 import { surfaceKind, surfaceSearch, stickSurface, nearestDistance, needsStick, worldOf, planOf } from '../../surface.ts';
 import { logoBox, esc, fmt } from '../html.ts';
 import { defineTab } from './tab.ts';
 import type { ActHandler, FieldHandler } from './tab.ts';
 import type { EditMode, StickMove } from '../../edit-mode.ts';
-import type { Layout, LayoutPin } from '../../types/layout.ts';
+import type { Layout, LayoutPin, Vec3 } from '../../types/layout.ts';
+import type { BadgeOptions } from '../../badges.ts';
 
-/** A device / entity marker (registry.js buildMarkers), as far as this tab reads it. */
-export interface MarkerInfo {
-  id: string;
-  entityId: string;
-  name: string;
-  areaId?: string | null;
-  domain: string;
-  deviceClass?: string | null;
-  [key: string]: unknown;
-}
-
-export function allMarkers(ed: EditMode): MarkerInfo[] {
+export function allMarkers(ed: EditMode): Marker[] {
   return buildMarkers(ed.hass, { ...ed.layout, hidden: [] }, { group_by: ed.card._config.group_by });
 }
 
 // Badge toggles (layout.badges); keys set in the card YAML `badges:` win and are shown disabled.
 export function badgesHtml(ed: EditMode): string {
   const o = ed.card.badgeOpts(), yaml = ((ed.card._config && ed.card._config.badges) || {}) as Record<string, unknown>; // YAML: read per key below
-  const row = (k: string, label: string) => {
+  const row = (k: keyof BadgeOptions, label: string) => {
     const fixed = typeof yaml[k] === 'boolean';
     return `<label class="check"><input type="checkbox" data-field="badge" data-key="${k}" ${o[k] ? 'checked' : ''} ${fixed ? 'disabled' : ''}> ${label}${fixed ? ' <span class="dim">(card YAML)</span>' : ''}</label>`;
   };
@@ -115,7 +105,7 @@ export function stickMoves(ed: EditMode): StickMove[] {
     const elev = vw.floorElevation(floor.id);
     const z = pin.z ?? 1.2;
     const world = worldOf({ x: pin.x, y: pin.y, z }, elev);
-    const hits = surfaceSearch('all', z, floor.height).flatMap((g: { dirs: unknown; max: number }) => vw.surfaceRays(world, g.dirs, g.max));
+    const hits = surfaceSearch('all', z, floor.height).flatMap((g) => vw.surfaceRays(world, g.dirs, g.max));
     if (!needsStick(pin, nearestDistance(hits))) continue;
     const s = stickSurface(surfaceKind(m.domain, m.deviceClass), hits);
     if (s) out.push({ id, from: pin, pin: { ...planOf(s.point, elev), floor_id: floor.id, on_model: true } });
@@ -182,7 +172,7 @@ const fields: Record<string, FieldHandler> = {
     if (pin && pin.attach && Array.isArray(pin.offset)) {
       // attached: raise / lower the offset; object missing: keep the attach, only the fallback height changes
       const o = pin.offset;
-      const off = pos.attached ? [o[0], o[1] + v - pos.z, o[2]] : o;
+      const off: Vec3 = pos.attached ? [o[0], o[1] + v - pos.z, o[2]] : o;
       ed.commit(E.attachPin(ed.layout, id, pin.attach, off, { x: pin.x, y: pin.y, z: pos.attached ? Number(pin.z) + v - pos.z : v, floor_id: pin.floor_id }));
       return;
     }

@@ -15,14 +15,14 @@ import { normSway, swayLean } from '../cloud-shadow.ts';
 import { shadowInfo, sunDirection } from '../render-rules.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
-import type { Manifest } from './model.ts';
+import type { ModelManifest } from './model.ts';
 import type { RenderSettings, DayNight, CityLights } from '../render-recipe.ts';
 import type { SwaySettings } from '../cloud-shadow.ts';
 import type { FinishSettings } from '../finish.ts';
 import type { DepthPrepass } from '../depth-pass.ts';
 import type { Screen } from '../screens.ts';
 import type { HassEntity } from '../types/ha.ts';
-import type { Vec3 } from './core.ts';
+import type { Vec3 } from '../types/layout.ts';
 
 /** Sky state: night 0..1, unit vector toward the sun (world) or null, sun strength factor. */
 export interface SkyState { night: number; sunDir?: Vec3 | null; sun?: number }
@@ -122,7 +122,7 @@ export class RenderLook {
   }
 
   // The loaded model's recipe (unless render: default) -> this.render; renderer pixel ratio and camera fov / near.
-  _useRecipe(manifest: Manifest): void {
+  _useRecipe(manifest: ModelManifest): void {
     const recipe = this.renderOption === 'default' ? null : manifest.render;
     this.renderFrom = recipe ? { keys: manifest.renderKeys || Object.keys(recipe).length } : null;
     this._setRender(mergeRender(recipe));

@@ -11,9 +11,9 @@
 
 import * as THREE from 'three';
 import { CSS2DRenderer, type CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { levelVisible } from './bindings.ts';
+import { levelVisible, type LevelAssign } from './bindings.ts';
 import { DepthPrepass } from './depth-pass.ts';
-import { testMode, isCss2d, isMesh, meshMaterials, type CssEntry, type Drawable, type GlowEntry, type MarkerEntry, type MarkerState, type Vec3, type ViewCamera, type ViewRoom, type ViewTheme } from './view/core.ts';
+import { testMode, isCss2d, isMesh, meshMaterials, type CssEntry, type Drawable, type GlowEntry, type MarkerEntry, type MarkerState, type ViewCamera, type ViewRoom, type ViewTheme } from './view/core.ts';
 import { CameraRig } from './view/camera.ts';
 import { ModelLayer, type LoadedModel, type ModelVisibility } from './view/model.ts';
 import { RenderLook } from './view/look.ts';
@@ -22,7 +22,7 @@ import { PlanStructure } from './view/structure.ts';
 import { MowerLayer } from './view/mower-layer.ts';
 import { MarkerOcclusion } from './view/occlusion.ts';
 import type { ObjectLayer } from './objects/layer.ts';
-import type { Floor } from './types/layout.ts';
+import type { Floor, Vec3 } from './types/layout.ts';
 
 export { planToWorld, testMode, frameInterval } from './view/core.ts';
 export { fallbackOutline, mergeStaticMeshes } from './view/model.ts';
@@ -96,7 +96,7 @@ export class FloorplanView {
   objectLayer: ObjectLayer | null;
   onObjectsInvalidate: (() => void) | null;
   model: LoadedModel | null;
-  modelLevels: Record<string, { show?: string; floor?: string | null } | undefined> | null;
+  modelLevels: Record<string, LevelAssign> | null;
   _modelVisibility: ModelVisibility | null;
   modelClip: THREE.Plane;
   sectionClip: THREE.Plane | null;
@@ -488,7 +488,7 @@ export class FloorplanView {
     if (this.model) {
       const assign = this.modelLevels || {};
       if (!this._modelVisibility) {
-        for (const l of this.model.manifest.levels) l.node.visible = levelVisible(assign[l.id], this.visibleFloor, (id: string) => this.floors.find((f) => f.id === id)?.elevation);
+        for (const l of this.model.manifest.levels) l.node.visible = levelVisible(assign[l.id], this.visibleFloor, (id: string | null) => this.floors.find((f) => f.id === id)?.elevation);
       }
       // everything above the cut-away height of the selected floor is clipped (roof, upper floors)
       // untagged: the top of the selected storey (wall_height is for drawn walls only)

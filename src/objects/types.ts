@@ -7,6 +7,7 @@ import type { ChainState } from './logic.ts';
 import type { HassEntity } from '../types/ha.ts';
 import type { ObjectUi } from '../types/layout.ts';
 import type { ManifestLevel, ManifestObject } from '../types/manifest.ts';
+import type { RenderSettings } from '../render-recipe.ts';
 
 type Rgb = readonly number[];
 type States = Record<string, HassEntity>;
@@ -18,7 +19,7 @@ export type ModelObject = ManifestObject<THREE.Object3D | null>;
 /** What the object types need from the view (a narrow interface: tests pass fakes). */
 export interface ObjectViewHost {
   objectsGroup: THREE.Object3D;
-  render?: { glowIntensityPerBrightness?: unknown; [key: string]: unknown } | null;
+  render?: Partial<Pick<RenderSettings, 'glowIntensityPerBrightness'>> | null;
   floorElevation(floorId: string | null | undefined): number;
   _shadowDirty?(): void;
 }
@@ -41,7 +42,7 @@ export interface MowerPose {
   x: number;
   y: number;
   floorId?: string | null;
-  heading?: number;
+  heading?: number | null;
   ground?: number | null;
 }
 

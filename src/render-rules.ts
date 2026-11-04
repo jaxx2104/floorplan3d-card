@@ -1,7 +1,7 @@
 // Pure render decisions for the model view (shadows, depth range, ghosting, picking, occlusion, sun).
 // Kept free of three.js objects so they can be unit tested.
 
-export type Vec3 = [number, number, number];
+import type { Vec3 } from './types/layout.ts';
 
 // glass / glazing / pane(s) as a word (underscores, digits and spaces separate words), or "window"
 // unless it is a window frame or sill. Panel, fiberglass and the like don't count.

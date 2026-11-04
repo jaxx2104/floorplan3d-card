@@ -41,18 +41,19 @@ export interface MergeNode {
   renderOrder?: number;
   layers?: { mask: number };
 }
-export interface MergeOptions {
-  root?: MergeNode | null;
-  kindOf?: (n: MergeNode) => 'object' | 'tag' | string | null | undefined;
-  isOwner?: (n: MergeNode) => boolean;
-  keep?: Set<MergeNode>;
+/** Generic over the node type N (meshes: M): plain objects in the tests, three.js nodes in the card. */
+export interface MergeOptions<N extends MergeNode = MergeNode, M extends N = N> {
+  root?: N | null;
+  kindOf?: (n: N) => 'object' | 'tag' | string | null | undefined;
+  isOwner?: (n: N) => boolean;
+  keep?: Set<N>;
   maxVertices?: number;
-  boxOf?: (m: MergeNode) => { cx: number; cz: number; size: number } | null;
-  spatial?: (owner: MergeNode) => boolean;
+  boxOf?: (m: M) => { cx: number; cz: number; size: number } | null;
+  spatial?: (owner: N) => boolean;
 }
-export interface MergeGroup {
-  owner: MergeNode;
-  meshes: MergeNode[];
+export interface MergeGroup<N extends MergeNode = MergeNode, M extends N = N> {
+  owner: N;
+  meshes: M[];
   vertices: number;
   layers: string[];
   key: string;
@@ -93,9 +94,9 @@ const seeThrough = (o: MergeNode): boolean => {
 };
 
 // Why a mesh can never be merged (null = it can).
-type ResolvedOptions = MergeOptions & Required<Pick<MergeOptions, 'kindOf' | 'isOwner' | 'keep' | 'maxVertices'>>;
+type ResolvedOptions<N extends MergeNode, M extends N> = MergeOptions<N, M> & Required<Pick<MergeOptions<N, M>, 'kindOf' | 'isOwner' | 'keep' | 'maxVertices'>>;
 
-function excluded(o: MergeNode, opts: ResolvedOptions): string | null {
+function excluded<N extends MergeNode, M extends N>(o: M, opts: ResolvedOptions<N, M>): string | null {
   if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || o.isBatchedMesh) return 'kind';
   if (Array.isArray(o.material) || !o.material) return 'materials';
   if ((o.morphTargetInfluences && o.morphTargetInfluences.length) || (o.geometry && o.geometry.morphAttributes && Object.keys(o.geometry.morphAttributes).length)) return 'morph';
@@ -119,16 +120,17 @@ function excluded(o: MergeNode, opts: ResolvedOptions): string | null {
 // spatial(owner) -> bool (untagged owners: one group per MERGE_CELL_M cell of the box centre) }.
 // Owner = the nearest ancestor that is tagged, an owner or kept; else root. Anything below an object is
 // left alone. Returns [{ owner, meshes, vertices, layers, key }], only groups of two or more meshes.
-export function mergeGroups(meshes: MergeNode[], opts: MergeOptions): MergeGroup[] {
-  const o: ResolvedOptions = { kindOf: () => null, isOwner: () => false, keep: new Set(), maxVertices: MAX_MERGE_VERTICES, ...opts };
-  const ownerIds = new Map<MergeNode, number>();
-  const buckets = new Map<string, { owner: MergeNode; layers: string[]; key: string; meshes: MergeNode[] }>();
+export function mergeGroups<N extends MergeNode, M extends N = N>(meshes: M[], opts: MergeOptions<N, M>): MergeGroup<N, M>[] {
+  const o: ResolvedOptions<N, M> = { kindOf: () => null, isOwner: () => false, keep: new Set(), maxVertices: MAX_MERGE_VERTICES, ...opts };
+  const ownerIds = new Map<N, number>();
+  const buckets = new Map<string, { owner: N; layers: string[]; key: string; meshes: M[] }>();
   for (const m of meshes) {
     if (excluded(m, o)) continue;
     const box = o.boxOf ? o.boxOf(m) : null;
     if (box && !(box.size <= MAX_MERGE_MESH_M)) continue;
-    let owner: MergeNode | null | undefined = null, inObject = false;
-    for (let p = m.parent; p && p !== o.root; p = p.parent) {
+    let owner: N | null | undefined = null, inObject = false;
+    // parents of an N tree are N nodes again
+    for (let p = m.parent as N | null | undefined; p && p !== o.root; p = p.parent as N | null | undefined) {
       const k = o.kindOf(p);
       if (k === 'object') { inObject = true; break; }
       if (!owner && (k || o.isOwner(p) || o.keep.has(p))) owner = p;
@@ -145,9 +147,9 @@ export function mergeGroups(meshes: MergeNode[], opts: MergeOptions): MergeGroup
     if (!b) buckets.set(key, (b = { owner, layers, key, meshes: [] }));
     b.meshes.push(m);
   }
-  const out: MergeGroup[] = [];
+  const out: MergeGroup<N, M>[] = [];
   for (const b of buckets.values()) {
-    let chunk: MergeGroup | null = null;
+    let chunk: MergeGroup<N, M> | null = null;
     const flush = () => { if (chunk && chunk.meshes.length >= 2) out.push(chunk); chunk = null; };
     for (const m of b.meshes) {
       const n = m.geometry!.attributes!.position.count!; // checked by geometrySignature

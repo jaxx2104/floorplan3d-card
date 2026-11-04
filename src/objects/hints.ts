@@ -35,13 +35,15 @@ const nameOf = (states: States, e: string): string => (states[e] && states[e].at
 
 // Can a tap act on the object? { ok, reason } with the toast text when not: a controller off ("Turn on
 // first: <label>", label = tag label, else the controller's name), else something offline.
+/** Whether a tap can reach the object's entity; reason: why not (for the toast). */
+export type Reachability = { ok: true; reason: null } | { ok: false; reason: string };
 export function reachability(
   obj: Pick<ObjectLike, 'group'> | null | undefined,
   binding: (Partial<ObjectBinding> & { hidden?: boolean }) | null | undefined,
   chain: Pick<ChainState, 'controllers'> | null | undefined,
   states: States = {},
   tags: Record<string, LayoutTag | null | undefined> = {},
-): { ok: boolean; reason: string | null } {
+): Reachability {
   if (!binding || binding.hidden) return { ok: false, reason: 'Not reachable (offline)' };
   const ctrls: Controller[] = chain && chain.controllers ? chain.controllers : controllersOf(obj, binding, tags);
   const off = ctrls.find((c) => !bad(states[c.entity]) && states[c.entity].state !== 'on');

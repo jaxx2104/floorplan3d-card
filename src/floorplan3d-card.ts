@@ -26,9 +26,10 @@ import { MarkerLayer } from './card/marker-layer.ts';
 import { ActionRunner } from './card/action-runner.ts';
 import { ObjectInput } from './card/object-input.ts';
 import { SkyController } from './card/sky-controller.ts';
-import type { CardConfig } from './types/config.ts';
+import type { CardConfig, ResolvedCardConfig } from './types/config.ts';
 import type { Hass, HassEntity, HassThemes } from './types/ha.ts';
 import type { Layout } from './types/layout.ts';
+import type { LoadedModel, ModelOptions } from './view/model.ts';
 
 const VERSION = '0.0.0-dev';
 
@@ -81,9 +82,9 @@ export interface Built {
 /** The info a ModelLoader load hands to _afterModel. */
 export interface ModelLoadInfo {
   fresh: boolean;
-  opts: unknown;
+  opts: ModelOptions | null;
   gen: number;
-  prevModel: unknown;
+  prevModel: LoadedModel | null;
 }
 
 function cssColor(el: Element, name: string, fallback: string): Color {
@@ -183,7 +184,7 @@ export class Floorplan3dCard extends HTMLElement {
   // card renders, _render the DOM parts and the view, the hass setter _hass: the members that use them
   // run after that (the ones that may run earlier check them).
   declare _layoutLoaded: () => void;
-  declare _config: CardConfig;
+  declare _config: ResolvedCardConfig;
   declare _store: LayoutStore;
   declare _hass: Hass;
   declare _view: FloorplanView;
@@ -460,7 +461,7 @@ export class Floorplan3dCard extends HTMLElement {
         return drawn.length ? drawn : null;
       },
     });
-    this._view.onMapImage = (img: ImageBitmap, w: number, h: number) => this._mowerCtl._onMapImage(img, w, h);
+    this._view.onMapImage = (img, w, h) => this._mowerCtl._onMapImage(img, w, h);
     // auto mode: settings or the mower picture changed -> the current picture again, searched in full
     this._view.onMapReprocess = () => this._mowerCtl.onMapReprocess();
     const objects = (this._objects = new ObjectLayer(this._view));

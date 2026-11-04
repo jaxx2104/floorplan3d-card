@@ -6,22 +6,18 @@
 import { combineRooms, measuredElevations, levelFloorOverrides, modelRooms, transformPoint, levelsFromFloorMap } from '../bindings.ts';
 import { mergeFloors, roomFloorId, roomLabel, roomLabelMode } from '../layout.ts';
 import { pickOutline, saveOutline } from '../load-outline.ts';
-import { levelOrders, floorLevels, defaultViewId, nodeIndex, orderViews, resolveViews, resolveVisibility, primaryLevel, defaultFloors, isOverview, zoomToFor, viewCut, shownHere, exteriorShown, roomAt, deviceState, cameraToCard, topCameraToCard, sectionPlane, sectionCamera } from '../views.ts';
+import { levelOrders, floorLevels, defaultViewId, nodeIndex, orderViews, resolveViews, resolveVisibility, primaryLevel, defaultFloors, isOverview, zoomToFor, viewCut, shownHere, exteriorShown, roomAt, deviceState, cameraToCard, topCameraToCard, sectionPlane, sectionCamera, type ResolvedView, type Visibility } from '../views.ts';
 import { areaName } from '../registry.ts';
 import { threeAdapter } from '../manifest.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
-import type { ModelBindings, Manifest } from './model-loader.ts';
-import type { Floor, LayoutRoom, PlanPoint } from '../types/layout.ts';
+import type { ModelBindings } from './model-loader.ts';
+import type { ModelIndex } from '../view/model.ts';
+import type { Floor, LayoutRoom, PlanPoint, SectionPlaneConfig } from '../types/layout.ts';
 
-/** A resolved view (views.js resolveViews). */
-export type CardView = ReturnType<typeof resolveViews>[number];
-/** The model's node index (views.js nodeIndex). */
-export type NodeIndex = ReturnType<typeof nodeIndex>;
-type Effective = ReturnType<typeof resolveVisibility>;
 
 /** A view's state: effective node visibility, primary storey, linked HA floors. */
 export interface ViewState {
-  effective: Effective | null;
+  effective: Visibility | null;
   primary: string | null;
   floors: string[];
   allFloors: boolean;
@@ -36,7 +32,7 @@ export interface RoomEntry {
   room: PlanRoom;
   floorId: string;
   name: string;
-  levelId: string | undefined;
+  levelId: string | null | undefined;
 }
 
 /** Model levels: order, level -> HA floor, HA floor -> level. */
@@ -49,25 +45,22 @@ export interface Levels {
 /** A model room / zone outline in card plan (map clip, roomless markers). */
 export interface Zone {
   id: string;
-  level: string;
+  level: string | null;
   polygon: PlanPoint[];
 }
 
-type SectionPlane = ReturnType<typeof sectionPlane>;
-type ManifestLevel = Manifest['levels'][number];
-type ManifestRoom = Manifest['rooms'][number];
 
 export class ViewController {
   card: Floorplan3dCard;
   _floor: string | null;
-  _views: CardView[];
+  _views: ResolvedView[];
   _viewId: string | null;
   _viewState: ViewState | null;
   _viewStates: Map<string, ViewState>;
-  _index: NodeIndex | null;
+  _index: ModelIndex | null;
   _mode: '3d' | 'top';
   _section: boolean;
-  _sectionPreview: SectionPlane | null;
+  _sectionPreview: SectionPlaneConfig | null;
   _floorOnly: string | null | undefined;
   _floors: Floor[] | undefined;
   _levels: Levels | null | undefined;
@@ -106,7 +99,7 @@ export class ViewController {
   }
 
   // The node index of the model (views.js nodeIndex), null without one.
-  setIndex(index: NodeIndex | null): void {
+  setIndex(index: ModelIndex | null): void {
     this._index = index;
   }
 
@@ -147,7 +140,7 @@ export class ViewController {
     let overrides: ReturnType<typeof levelFloorOverrides> = [];
     if (mb) {
       const meas = measuredElevations(mb.manifest.levels);
-      const levels = mb.manifest.levels.map((lv: ManifestLevel) => (meas[lv.id] ? { ...lv, elevation: meas[lv.id].elevation, height: lv.height ?? meas[lv.id].height } : lv));
+      const levels = mb.manifest.levels.map((lv) => (meas[lv.id] ? { ...lv, elevation: meas[lv.id].elevation, height: lv.height ?? meas[lv.id].height } : lv));
       overrides = levelFloorOverrides(levels, mb.levels, align);
     }
     const floors: Floor[] = (this._floors = mergeFloors(h, { ...l, floors: [...overrides, ...(l.floors || [])] }));
@@ -160,18 +153,18 @@ export class ViewController {
         this._outlineModel = this.card._view.model;
       }
     }
-    this._zones = mb ? mb.manifest.rooms.filter((r: ManifestRoom) => Array.isArray(r.outline) && r.outline.length > 2)
-      .map((r: ManifestRoom) => ({ id: r.id, level: r.level, polygon: r.outline.map((p: PlanPoint) => transformPoint(p, align)) })) : [];
+    this._zones = mb ? mb.manifest.rooms.flatMap((r): Zone[] => (Array.isArray(r.outline) && r.outline.length > 2
+      ? [{ id: r.id, level: r.level, polygon: r.outline.map((p) => transformPoint(p, align)) }] : [])) : [];
     if (mb) {
       this.card._view.setModelLevels(mb.levels);
       const levelOrder = levelOrders(mb.manifest.levels);
       const levelFloor: Record<string, string> = {};
-      for (const [id, a] of Object.entries(mb.levels || {}) as [string, { floor?: string } | null][]) if (a && a.floor) levelFloor[id] = a.floor;
+      for (const [id, a] of Object.entries(mb.levels || {})) if (a && a.floor) levelFloor[id] = a.floor;
       this._levels = { levelOrder, levelFloor, floorLevel: floorLevels(levelFloor, levelOrder) };
     } else {
       this._levels = null;
     }
-    const roomLevel = new Map<string, string>(mb ? mb.manifest.rooms.map((r: ManifestRoom): [string, string] => [r.id, r.level]) : []);
+    const roomLevel = new Map<string, string | null>(mb ? mb.manifest.rooms.map((r): [string, string | null] => [r.id, r.level]) : []);
     const levels = this._levels;
     const roomList: RoomEntry[] = (this._roomList = this._allRooms().map((room) => {
       const floorId = roomFloorId(room, h, floors);
@@ -209,7 +202,7 @@ export class ViewController {
       const withRooms = floors.find((f) => rooms.some((r) => r.floorId === f.id)) || floors[0];
       this._viewId = defaultViewId(this._views, {
         viewId: this.card._config.view_id, floor: this.card._config.floor, fallback: this.card._view.model ? null : withRooms.id,
-      }, (v: CardView) => this._stateFor(v).floors);
+      }, (v: ResolvedView) => this._stateFor(v).floors);
       this._floorOnly = null;
     }
   }
@@ -239,7 +232,7 @@ export class ViewController {
     const rooms = (this._roomList || []).map((r) => ({
       room: r.room, floorId: r.floorId, label: labelled(r) ? roomLabel(r.name, r.room.polygon, mode) : '',
     }));
-    this.card._view.setStructure(this._floors, rooms, {
+    this.card._view.setStructure(this._floors!, rooms, { // set by _buildStructure before any push
       wallHeight: Number(this.card._config.wall_height) || 1.0,
       walls: !hasModel, fills: !hasModel, outlines: !hasModel || !!this.card._editing, labels: true,
     });
@@ -286,7 +279,7 @@ export class ViewController {
   }
 
   // Per view: effective node visibility, primary storey, linked HA floors (cached until the next rebuild).
-  _stateFor(v: CardView): ViewState {
+  _stateFor(v: ResolvedView): ViewState {
     let st = this._viewStates.get(v.id);
     if (st) return st;
     const allIds = (this._floors || []).map((f) => f.id);
@@ -305,7 +298,7 @@ export class ViewController {
     return st;
   }
 
-  currentView(): CardView | null {
+  currentView(): ResolvedView | null {
     return this._views.find((v) => v.id === this._viewId) || null;
   }
 
@@ -314,7 +307,7 @@ export class ViewController {
     if (this.card._view) this.card._view.setZoomTo(zoomToFor(this.currentView(), this.card._config));
   }
 
-  viewIndex(): NodeIndex | null {
+  viewIndex(): ModelIndex | null {
     return this._index || null;
   }
 
@@ -357,7 +350,7 @@ export class ViewController {
     const index = this._index, effective = st.effective;
     const roomByArea = new Map<string, string | undefined>();
     for (const r of this._modelRooms || []) if (r.area_id && !roomByArea.has(r.area_id)) roomByArea.set(r.area_id, r.modelId);
-    const roomLevel = new Map<string, string>(mb.manifest.rooms.map((r: ManifestRoom): [string, string] => [r.id, r.level]));
+    const roomLevel = new Map<string, string | null>(mb.manifest.rooms.map((r): [string, string | null] => [r.id, r.level]));
     const visibleRooms = new Set<string>();
     index.nodes.forEach((n, i) => {
       if (shownHere(effective, i) && n.tag && (n.tag.kind === 'room' || n.tag.kind === 'zone')) visibleRooms.add(n.tag.id);
@@ -375,7 +368,7 @@ export class ViewController {
       if (p.live && outdoor !== null) { states.set(id, { shown: outdoor, faded: false }); continue; }
       // pins (and the mower without exterior levels) are roomless: the room / zone under them, else their HA floor
       const roomId = !m ? null : p.auto === false || p.live
-        ? roomAt([p.x, p.y], p.floorId, this._zones, L.levelFloor, visibleRooms) : roomByArea.get(m.areaId) || null;
+        ? roomAt([p.x, p.y], p.floorId, this._zones, L.levelFloor, visibleRooms) : (m.areaId && roomByArea.get(m.areaId)) || null;
       states.set(id, deviceState({
         roomId, roomLevelId: roomId ? roomLevel.get(roomId) : undefined, markerFloorId: p.floorId, floorLevelId: L.floorLevel[p.floorId],
       }, ctx));
@@ -384,11 +377,11 @@ export class ViewController {
   }
 
   // A view's cameras in card world (model cameras follow the model alignment).
-  viewCamera(v: CardView | null): ReturnType<typeof cameraToCard> {
-    return cameraToCard(v, this.card._view.model ? (p: number[]) => this.card._view.modelPointToWorld(p) : null);
+  viewCamera(v: ResolvedView | null): ReturnType<typeof cameraToCard> {
+    return cameraToCard(v, this.card._view.model ? (p: readonly number[]) => this.card._view.modelPointToWorld(p) : null);
   }
 
-  viewTopCamera(v: CardView): ReturnType<typeof topCameraToCard> {
+  viewTopCamera(v: ResolvedView): ReturnType<typeof topCameraToCard> {
     return topCameraToCard(v, this.card._view.model ? this.card._modelAlign() : null);
   }
 
@@ -449,7 +442,7 @@ export class ViewController {
     if (this.card._sunTime !== null) this.card.setSunTime(null);
     const startId = defaultViewId(this._views, {
       viewId: this.card._config.view_id, floor: this.card._config.floor, fallback: this._viewId,
-    }, (v: CardView) => this._stateFor(v).floors);
+    }, (v: ResolvedView) => this._stateFor(v).floors);
     if (startId && startId !== this._viewId) this._setView(startId);
     const startMode = this.card._config.view === 'top' ? 'top' : '3d';
     if (startMode !== this._mode) this._setMode(startMode);
@@ -494,7 +487,7 @@ export class ViewController {
   }
 
   // A view's cut plane in card world (the active view: the Views tab preview while sliding wins).
-  sectionPlaneNow(v: CardView | null = this.currentView()): SectionPlane | null {
+  sectionPlaneNow(v: ResolvedView | null = this.currentView()): SectionPlaneConfig | null {
     const box = this.card._view.sectionBox();
     if (!box || !v) return null;
     if (this._sectionPreview && v.id === this._viewId) return this._sectionPreview;
@@ -540,7 +533,7 @@ export class ViewController {
 
   // Views tab: show this plane while the slider moves (turns the section on); null drops the preview.
   // aim: also move the camera to look at the new cut.
-  previewSection(id: string, plane: SectionPlane | null, { aim = false }: { aim?: boolean } = {}): void {
+  previewSection(id: string, plane: SectionPlaneConfig | null, { aim = false }: { aim?: boolean } = {}): void {
     if (id !== this._viewId || this._mode !== '3d') return;
     this._sectionPreview = plane || null;
     if (!plane) { if (this._section) this._applySectionPlane(); return; }
@@ -555,7 +548,7 @@ export class ViewController {
     if ('section' in patch && id === this._viewId) this._sectionPreview = null; // the saved plane takes over
     const l = this.card._layout!; // the Views tab edits a loaded layout
     const views = l.views || {};
-    this.card._commit({ ...l, views: { ...views, [id]: { ...(views[id] as object | undefined), ...patch } } });
+    this.card._commit({ ...l, views: { ...views, [id]: { ...views[id], ...patch } } });
   }
 
   // One HA floor (edit mode): the view linked to just that floor, else that floor on its own
@@ -563,7 +556,7 @@ export class ViewController {
   _setFloor(id: string): void {
     const vis = this._views.filter((v) => !v.hidden);
     // a storey view linked to just that floor wins over an overview (Exterior) linked to it
-    const only = (v: CardView): boolean => { const f = this._stateFor(v).floors; return f.length === 1 && f[0] === id; };
+    const only = (v: ResolvedView): boolean => { const f = this._stateFor(v).floors; return f.length === 1 && f[0] === id; };
     const match = id === 'all' ? vis.find((v) => v.id === 'all')
       : vis.find((v) => only(v) && !this._stateFor(v).overview) || vis.find(only);
     if (match) {

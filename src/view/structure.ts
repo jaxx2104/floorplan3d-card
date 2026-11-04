@@ -15,10 +15,13 @@ const WALL_THICKNESS = 0.12;
 const GLOW_RADIUS = 2.2;
 
 /** Editor overlay (setOverlay): outlines, fills and DOM handles in plan metres. */
+export interface OverlayLine { points: PlanPoint[]; closed?: boolean; floorId: string; color?: THREE.ColorRepresentation }
+export interface OverlayFill { points: PlanPoint[]; floorId: string; color?: THREE.ColorRepresentation; opacity?: number }
+export interface OverlayHandle { element: HTMLElement; x: number; y: number; floorId: string }
 export interface OverlaySpec {
-  lines?: { points: PlanPoint[]; closed?: boolean; floorId: string; color?: THREE.ColorRepresentation }[];
-  fills?: { points: PlanPoint[]; floorId: string; color?: THREE.ColorRepresentation; opacity?: number }[];
-  handles?: { element: HTMLElement; x: number; y: number; floorId: string }[];
+  lines?: OverlayLine[];
+  fills?: OverlayFill[];
+  handles?: OverlayHandle[];
 }
 /** A marker to show (setMarkers). */
 export interface MarkerSpec { id: string; element: HTMLElement; x: number; y: number; z: number; floorId: string }

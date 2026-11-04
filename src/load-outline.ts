@@ -1,6 +1,7 @@
 // Plan drawing shown while the model loads: room outlines (plan metres, x east / y north) remembered per
 // layout key, fitted into an SVG viewBox. Pure helpers plus a guarded localStorage read / write.
-type Pt = number[];
+import type { PlanPoint } from './types/layout.ts';
+
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
 export const OUTLINE_CAP = 20 * 1024;
@@ -11,12 +12,12 @@ const fix = (v: number): number => Number(v.toFixed(2)); // 0.05 steps without f
 
 // Round to `step`, drop repeated points and points that lie (nearly) on the line between their neighbours.
 // -> polygon (no closing duplicate) or null when fewer than 3 points remain
-export function simplifyPolygon(poly: unknown, step = 0.05, tol = 0.02): Pt[] | null {
+export function simplifyPolygon(poly: unknown, step = 0.05, tol = 0.02): PlanPoint[] | null {
   if (!Array.isArray(poly)) return null;
-  const pts: Pt[] = [];
+  const pts: PlanPoint[] = [];
   for (const p of poly) {
     if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
-    const q = [fix(round(p[0], step)), fix(round(p[1], step))];
+    const q: PlanPoint = [fix(round(p[0], step)), fix(round(p[1], step))];
     const last = pts[pts.length - 1];
     if (!last || last[0] !== q[0] || last[1] !== q[1]) pts.push(q);
   }
@@ -35,8 +36,8 @@ export function simplifyPolygon(poly: unknown, step = 0.05, tol = 0.02): Pt[] | 
 
 // The polygons of the level with the most rooms (one floor reads as a plan; stacked floors would overlap).
 // rooms: [{ polygon, floor_id }] -> [polygon]
-export function pickOutline(rooms: ({ polygon?: unknown; floor_id?: string | null } | null | undefined)[] | null | undefined): Pt[][] {
-  const byFloor = new Map<string, Pt[][]>();
+export function pickOutline(rooms: ({ polygon?: unknown; floor_id?: string | null } | null | undefined)[] | null | undefined): PlanPoint[][] {
+  const byFloor = new Map<string, PlanPoint[][]>();
   for (const r of rooms || []) {
     const poly = simplifyPolygon(r && r.polygon);
     if (!poly) continue;
@@ -44,13 +45,13 @@ export function pickOutline(rooms: ({ polygon?: unknown; floor_id?: string | nul
     if (!byFloor.has(k)) byFloor.set(k, []);
     byFloor.get(k)!.push(poly); // set just above
   }
-  let best: Pt[][] = [];
+  let best: PlanPoint[][] = [];
   for (const list of byFloor.values()) if (list.length > best.length) best = list;
   return best;
 }
 
 // Stored string, dropping the last rooms until it fits the cap. -> string | null
-export function serializeOutline(polys: Pt[][] | null | undefined, cap = OUTLINE_CAP): string | null {
+export function serializeOutline(polys: PlanPoint[][] | null | undefined, cap = OUTLINE_CAP): string | null {
   const list = (polys || []).slice();
   while (list.length) {
     const s = JSON.stringify(list);
@@ -60,18 +61,18 @@ export function serializeOutline(polys: Pt[][] | null | undefined, cap = OUTLINE
   return null;
 }
 
-export function parseOutline(text: string | null): Pt[][] | null {
+export function parseOutline(text: string | null): PlanPoint[][] | null {
   try {
     const v: unknown = JSON.parse(text as string); // null parses to null (no outline)
     if (!Array.isArray(v)) return null;
-    const out = v.filter((p): p is Pt[] => Array.isArray(p) && p.length >= 3 && p.every((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])));
+    const out = v.filter((p): p is PlanPoint[] => Array.isArray(p) && p.length >= 3 && p.every((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])));
     return out.length ? out : null;
   } catch (e) {
     return null;
   }
 }
 
-export function saveOutline(layoutKey: string, polys: Pt[][] | null | undefined, storage?: StorageLike | null): boolean {
+export function saveOutline(layoutKey: string, polys: PlanPoint[][] | null | undefined, storage?: StorageLike | null): boolean {
   try {
     const s = serializeOutline(polys);
     if (!s) return false;
@@ -82,7 +83,7 @@ export function saveOutline(layoutKey: string, polys: Pt[][] | null | undefined,
   }
 }
 
-export function loadOutline(layoutKey: string, storage?: StorageLike | null): Pt[][] | null {
+export function loadOutline(layoutKey: string, storage?: StorageLike | null): PlanPoint[][] | null {
   try {
     return parseOutline((storage || localStorage).getItem(outlineKey(layoutKey)));
   } catch (e) {
@@ -91,12 +92,12 @@ export function loadOutline(layoutKey: string, storage?: StorageLike | null): Pt
 }
 
 // Used when nothing is known yet: roof, walls and a door. Plan metres.
-export const HOUSE_OUTLINE: Pt[][] = [
+export const HOUSE_OUTLINE: PlanPoint[][] = [
   [[0, 0], [10, 0], [10, 6], [5, 10], [0, 6]],
   [[4, 0], [4, 3], [6, 3], [6, 0]],
 ];
 
-export const polygonLength = (poly: Pt[]): number => {
+export const polygonLength = (poly: PlanPoint[]): number => {
   let n = 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -107,7 +108,7 @@ export const polygonLength = (poly: Pt[]): number => {
 
 // Fit closed polygons into a box of `size` units (longest side), y flipped (north up). `pad` units around.
 // -> { viewBox, d, length, w, h, parts: [{ d, end }] }
-export function fitOutline(polys: Pt[][], size = 100, pad = 2): { viewBox: string; d: string; length: number; w: number; h: number; parts: { d: string; end: number }[] } {
+export function fitOutline(polys: PlanPoint[][], size = 100, pad = 2): { viewBox: string; d: string; length: number; w: number; h: number; parts: { d: string; end: number }[] } {
   const pts = polys.flat();
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -115,7 +116,7 @@ export function fitOutline(polys: Pt[][], size = 100, pad = 2): { viewBox: strin
   const k = size / span;
   const w = (maxX - minX) * k + pad * 2, h = (maxY - minY) * k + pad * 2;
   const r = (v: number): number => Math.round(v * 100) / 100;
-  const sp = (p: Pt): Pt => [r(pad + (p[0] - minX) * k), r(pad + (maxY - p[1]) * k)];
+  const sp = (p: PlanPoint): PlanPoint => [r(pad + (p[0] - minX) * k), r(pad + (maxY - p[1]) * k)];
   const scaled = polys.map((poly) => poly.map(sp));
   const d = scaled.map((poly) => `M${poly.map((p) => p.join(' ')).join('L')}Z`).join('');
   const length = scaled.reduce((n, poly) => n + polygonLength(poly), 0);

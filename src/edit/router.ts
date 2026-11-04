@@ -45,11 +45,11 @@ export function canvasUp(ed: EditMode, e: PointerEvent) {
 export function mapPoint(ed: EditMode, e: PointerPos): PlanPoint | null {
   const pl = ed.view.mapPlane;
   const h = pl ? pl.position.y : ed.view.floorElevation(ed.card._mowerFloor());
-  return ed.view.planPoint(e.clientX, e.clientY, h) as PlanPoint | null; // the camera part returns [x, y] or null
+  return ed.view.planPoint(e.clientX, e.clientY, h);
 }
 
 export function planPoint(ed: EditMode, e: PointerPos, floorId: string, z = 0): PlanPoint | null {
-  return ed.view.planPoint(e.clientX, e.clientY, ed.view.floorElevation(floorId) + z) as PlanPoint | null; // [x, y] or null
+  return ed.view.planPoint(e.clientX, e.clientY, ed.view.floorElevation(floorId) + z);
 }
 
 // Which tool a click on the plan goes to; the order is the precedence (the first armed tool wins).

@@ -29,7 +29,7 @@ export type PopupRow =
   | { kind: 'reason'; entity?: undefined; label: string }
   | { kind: 'info'; entity?: undefined; label: string; value: unknown }
   | (PopupLink & { entity?: undefined });
-type ObjLike = Pick<ModelObject, 'type'> & Partial<Pick<ModelObject, 'ui' | 'group'>>;
+type ObjLike = Pick<ModelObject, 'type'> & Partial<Pick<ModelObject, 'ui' | 'group' | 'label'>>;
 
 /** What the card hands the popup for the open object. */
 export interface PopupData {
@@ -48,7 +48,7 @@ export interface PopupOptions {
   onLink?: (action: ActionConfig) => void;
   project?: (world: THREE.Vector3) => readonly number[] | null;
   resolve?: (id: string) => PopupData | null;
-  anchor?: ((id: string | null) => THREE.Vector3 | null | undefined) | null;
+  anchor?: ((id: string) => THREE.Vector3 | null | undefined) | null;
 }
 
 const KINDS = new Set(['toggle', 'brightness', 'color', 'color_temp', 'effect', 'state', 'battery', 'power', 'energy', 'temperature', 'mode', 'start_dock']);
@@ -513,7 +513,7 @@ export class ObjectPopup {
   // the anchor is off-screen or behind the camera.
   position(): void {
     if (!this.el) return;
-    const world = (this.anchorOf && this.anchorOf(this._id)) || this._anchor;
+    const world = (this.anchorOf && this._id !== null && this.anchorOf(this._id)) || this._anchor;
     const p = world ? this.project(world) : null;
     const r = this.root.getBoundingClientRect();
     const ax = p ? p[0] - r.left : 0, ay = p ? p[1] - r.top : 0;

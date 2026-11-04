@@ -4,31 +4,29 @@
 // -> _refreshMower). The card (host) is read live on every call: _hass / _layout / _config are
 // replaced on each update, so nothing of it is captured here.
 
-import { readTrack, readSource, overlayUrl, mowerTransform } from '../mower.ts';
-import { lastPosition, rememberPosition, mowerDockGroup, isDocked, dockWord, mowerStatusText, fullSearch, trackWindow, layerDue, LONG_TASK_MS, throttleStep, effectiveRefresh } from '../mower-track.ts';
+import { readTrack, readSource, overlayUrl, mowerTransform, type MowerReading, type MowerTransform } from '../mower.ts';
+import { lastPosition, rememberPosition, mowerDockGroup, isDocked, dockWord, mowerStatusText, fullSearch, trackWindow, layerDue, LONG_TASK_MS, throttleStep, effectiveRefresh, type MowerStatus, type ThrottleState } from '../mower-track.ts';
 import { STUCK_DEFAULT_MIN, stuckStep, errorKind, stuckDueIn, errorText } from '../mower-warning.ts';
 import { connectivity, rain, findErrorEntity, findStatusEntity, findProgress, progressValue, findStaticMap, findMowerPicture } from '../mower-device.ts';
-import { colorList, pixelToPlan, readImagePixels, FETCH_TIMEOUT_MS, mapWorkSize, MapProcessor, planToPixel, findBlob, stepTrack, headingMinStep, mowedShare, stripeBearing } from '../mower-image.ts';
-import { grayOf, matchTemplate, iconMoments, momentsOf, momentHeading, makeTemplate, smoothHeading, norm360 } from '../mower-heading.ts';
+import { colorList, pixelToPlan, readImagePixels, FETCH_TIMEOUT_MS, mapWorkSize, MapProcessor, planToPixel, findBlob, stepTrack, headingMinStep, mowedShare, stripeBearing, type ImagePixels } from '../mower-image.ts';
+import type { FrameContext } from '../mower-auto.ts';
+import { grayOf, matchTemplate, iconMoments, momentsOf, momentHeading, makeTemplate, smoothHeading, norm360, type HeadingTemplate, type TurnedPatch } from '../mower-heading.ts';
 import { pointInPolygon, signedArea } from '../placement.ts';
 import type { Floorplan3dCard } from '../floorplan3d-card.ts';
+import type { MapImageResult } from '../view.ts';
 import type { Zone } from './view-controller.ts';
-import type { LayoutMower, MowerImage, MowerOverlay } from '../types/layout.ts';
+import type { LayoutMower, MowerImage, MowerOverlay, PlanPoint } from '../types/layout.ts';
 
 const MOWER_Z = 0.15;
 const MATCH_MIN = 0.5; // mower picture match score (NCC) trusted for position and heading
 
-type PlanFn = (r: unknown) => number[] | null;
 type Rgb = number[];
 type Timer = ReturnType<typeof setTimeout>;
 
 /** The live mower: plan position (when known) and the raw reading of the position entity. */
-export interface MowerLive {
-  x?: number;
-  y?: number;
-  floorId?: string;
-  reading: unknown;
-}
+export type MowerLive =
+  | { x: number; y: number; floorId: string; reading: MowerReading | null }
+  | { x?: undefined; y?: undefined; floorId?: undefined; reading: MowerReading };
 
 /** The tracked mower icon on the live map (image pixels). */
 export interface ImageBlob {
@@ -77,23 +75,13 @@ export interface MapPerf {
   last: { main: number; max: number; decode: number; worker: number; apply: number; pass: unknown; at: number } | null;
 }
 
-/** Sampled pixels of a picture (mower-image readImagePixels / MapProcessor.read). */
-interface SampledImage {
-  data: Uint8ClampedArray;
-  width: number;
-  height: number;
-  imgW: number;
-  imgH: number;
-}
-
-type FrameContext = ReturnType<MowerController['_frameContext']>;
-type Throttle = ReturnType<typeof throttleStep>;
+/** framePass context plus the progress value the layer timing compares against. */
+type CardFrameContext = FrameContext & { progress: number | null; leaving: boolean };
 type AutoEntities = { live: string; static: string | null; picture: string | null };
-type MowerTemplate = ReturnType<typeof makeTemplate>;
 
 export class MowerController {
   card: Floorplan3dCard;
-  _mowerFn: PlanFn | null | undefined;
+  _mowerFn: MowerTransform | null | undefined;
   _mowerLive: MowerLive | null | undefined;
   _mowerAt: 'live' | 'dock' | 'last' | 'dock-start' | null | undefined;
   _mowerHeading: number | null | undefined;
@@ -102,7 +90,7 @@ export class MowerController {
   _iconHead: { angle: number; source: string | null } | null | undefined;
   _iconHeadRaw: number | undefined;
   _headSt: ReturnType<typeof smoothHeading> | null | undefined;
-  _trackKey: { raw: unknown; fn: PlanFn | null | undefined; floorId: string | null; cfg: LayoutMower | null } | undefined;
+  _trackKey: { raw: unknown; fn: MowerTransform | null | undefined; floorId: string | null; cfg: LayoutMower | null } | undefined;
   _mowerChip: { kind: string; icon: string; text: string } | null | undefined;
   _mowerOffline: boolean | undefined;
   _stuck: ReturnType<typeof stuckStep> | null | undefined;
@@ -115,8 +103,8 @@ export class MowerController {
   _imageAgain: boolean | undefined;
   _imageTimer: ReturnType<typeof setInterval> | null | undefined;
   _imageTimerSec: number | null | undefined;
-  _tpl: { key: string; t: MowerTemplate | null } | undefined;
-  _tplCache: Map<unknown, unknown> | undefined;
+  _tpl: { key: string; t: HeadingTemplate | null } | undefined;
+  _tplCache: Map<string, TurnedPatch> | undefined;
   _tplLoading: string | null | undefined;
   _dockPx: { px: number; py: number } | null | undefined;
   _mowerRefreshQueued: boolean | undefined;
@@ -136,12 +124,12 @@ export class MowerController {
   _trk: TrackState | undefined;
   _autoCanvas: HTMLCanvasElement | undefined;
   _rawCanvas: HTMLCanvasElement | undefined;
-  _autoGrey: unknown;
+  _autoGrey: number[][] | null | undefined;
   _autoMismatch: boolean | undefined;
   _mismatchBlob: Blob | undefined;
   _lastFrame: { full: boolean; window: unknown; same: boolean; leaving: boolean } | undefined;
   _perf: MapPerf | undefined;
-  _throttle: Throttle | undefined;
+  _throttle: ThrottleState | undefined;
 
   /** @param card the Floorplan3dCard (host): read live, never captured */
   constructor(card: Floorplan3dCard) {
@@ -241,8 +229,8 @@ export class MowerController {
     if (key && key.raw === raw && key.fn === this._mowerFn && key.floorId === floorId && key.cfg === cfg) return;
     this._trackKey = { raw, fn: this._mowerFn, floorId, cfg };
     const segs = raw && st && cfg ? readTrack(st, cfg) : null; // raw: shown, so st and cfg
-    const segments = segs && fn ? segs.map((s: unknown[]) => s.map((r) => fn(r)).filter(Boolean)) : null;
-    this.card._view.setMowerTrack(segments && cfg ? { segments, floorId, color: cfg.track_color, width: cfg.track_width, opacity: cfg.track_opacity } : null);
+    const segments = segs && fn ? segs.map((s) => s.map((r) => fn(r)).filter((q): q is PlanPoint => !!q)) : null;
+    this.card._view.setMowerTrack(segments && cfg && floorId !== null ? { segments, floorId, color: cfg.track_color, width: cfg.track_width, opacity: cfg.track_opacity } : null);
   }
 
   _mowerFloor(): string {
@@ -264,7 +252,7 @@ export class MowerController {
     }
     const floorId = this._mowerFloor();
     this.card._view.mowerOnFloor = cfg.ground === 'floor';
-    let reading: unknown = null, p: number[] | null;
+    let reading: MowerReading | null = null, p: PlanPoint | null;
     if (cfg.source === 'image') p = this._imageMowerPos(cfg);
     else {
       this._setImageTimer(0);
@@ -277,7 +265,7 @@ export class MowerController {
     // never some default spot
     const dk = this._dockedNow();
     const dock = this.card._objects ? this.card._objects.dockPose() : null;
-    const key = this.card._config.layout_key!; // setConfig's default
+    const key = this.card._config.layout_key;
     let fixed: { heading?: number | null } | null = null;
     this._mowerAt = p ? 'live' : null;
     if (dk.docked && dock) {
@@ -338,7 +326,7 @@ export class MowerController {
     if (!cfg || !cfg.entity || !h) { this._stuck = null; this._warning = null; view.setMowerWarning(null); view.setMowerChip(null); return; }
     const mse = this._mowerStateEntity();
     const ms = mse ? h.states[mse] : undefined, ee = this._errorEntity(), es = ee ? h.states[ee] : null;
-    const live = this._mowerLive, pos = live && live.x !== undefined && live.y !== undefined ? [live.x, live.y] : null;
+    const live = this._mowerLive, pos: PlanPoint | null = live && live.x !== undefined ? [live.x, live.y] : null;
     const minutes = cfg.stuck_minutes === undefined ? STUCK_DEFAULT_MIN : Number(cfg.stuck_minutes) || 0;
     const now = Date.now();
     // offline, or waiting for the rain to stop: a chip next to the mower, the stuck clock paused
@@ -348,14 +336,14 @@ export class MowerController {
       : rn && rn.wet ? { kind: 'rain', icon: 'mdi:weather-rainy', text: 'rain' }
         : rn && rn.drying !== null ? { kind: 'drying', icon: 'mdi:weather-partly-rainy', text: `${rn.drying} min` } : null;
     this._mowerChip = chip;
-    view.setMowerChip(chip && pos && live ? { ...chip, x: pos[0], y: pos[1], floorId: live.floorId } : null);
+    view.setMowerChip(chip && live && live.x !== undefined ? { ...chip, x: live.x, y: live.y, floorId: live.floorId } : null);
     this._mowerOffline = offline;
     if (this.card._objects) this.card._objects.setMowerDim(offline);
     const paused = offline || (rn && (rn.wet || rn.drying !== null));
     this._stuck = stuckStep(this._stuck, { now, pos, state: paused ? 'paused' : ms && ms.state, minutes });
     const kind = (offline ? null : errorKind(ms, es, cfg.ok_values)) || (this._stuck.stuck ? 'stuck' : null);
     this._warning = kind ? { kind, minutes } : null;
-    if (kind && pos && live) view.setMowerWarning({ kind, x: pos[0], y: pos[1], floorId: live.floorId });
+    if (kind && live && live.x !== undefined) view.setMowerWarning({ kind, x: live.x, y: live.y, floorId: live.floorId });
     else view.setMowerWarning(null);
     const due = stuckDueIn(this._stuck, now, minutes);
     if (due !== null && this.card.isConnected) this._stuckTimer = setTimeout(() => this._updateMowerWarning(), due + 100);
@@ -384,7 +372,7 @@ export class MowerController {
   // ---------- mower position from the live map image ----------
   // The last detected icon pixel mapped through the current overlay alignment; schedules detection
   // when the image changes (image entities) and every refresh interval (cameras, and as a fallback).
-  _imageMowerPos(cfg: LayoutMower): number[] | null {
+  _imageMowerPos(cfg: LayoutMower): PlanPoint | null {
     const ic: MowerImage = cfg.image || {};
     const entity = ic.entity || (cfg.overlay && cfg.overlay.entity);
     const st = entity && this.card._hass.states[entity];
@@ -414,7 +402,7 @@ export class MowerController {
 
   // Centre and heading of the icon at blob b (pixels of img): template match with the mower picture
   // (score >= MATCH_MIN), else the icon's moments. -> { x, y, angle (image degrees) | null, source, score }
-  _iconPose(img: SampledImage, b: { px: number; py: number; count: number; idx?: Iterable<number> }, cols: Rgb[], tol: number): { x: number; y: number; angle: number | null; source: string | null; score: number | null } {
+  _iconPose(img: ImagePixels, b: { px: number; py: number; count: number; idx?: Iterable<number> }, cols: Rgb[], tol: number): { x: number; y: number; angle: number | null; source: string | null; score: number | null } {
     const t = this._mowerTemplate();
     if (t) {
       const g = grayOf(img.data, img.width, img.height);
@@ -429,7 +417,7 @@ export class MowerController {
 
   // The mower picture (auto-detected or set in the Mower tab) as a match template; loaded once per
   // entity picture. -> template or null (not set / still loading)
-  _mowerTemplate(): MowerTemplate | null {
+  _mowerTemplate(): HeadingTemplate | null {
     const cfg = this.card._layout && this.card._layout.mower;
     const auto = cfg && this.mowerAuto(cfg, true);
     const eid = auto && auto.picture;
@@ -439,7 +427,7 @@ export class MowerController {
     if (this._tpl && this._tpl.key === key) return this._tpl.t;
     if (this._tplLoading === key) return null;
     this._tplLoading = key;
-    readImagePixels(url).then((px: SampledImage) => {
+    readImagePixels(url).then((px: ImagePixels) => {
       this._tpl = { key, t: makeTemplate(px.data, px.width, px.height) };
       this._tplCache = new Map();
       this._tplLoading = null;
@@ -456,7 +444,7 @@ export class MowerController {
     const off = Number((cfg.image || {}).front_offset) || 0;
     this._iconHeadRaw = angle;
     const st = (this._headSt = smoothHeading(this._headSt, norm360(angle + off + ((cfg.overlay && cfg.overlay.rotation) || 0))));
-    this._iconHead = { angle: st.angle, source };
+    this._iconHead = st && st.angle !== null ? { angle: st.angle, source } : null;
   }
 
   // Docked with a mower and a dock object: { mower, dock } ids (one object for taps, dots and the popup), else null.
@@ -472,13 +460,13 @@ export class MowerController {
   _dockedNow(): { docked: boolean; word: ReturnType<typeof dockWord> } {
     const h = this.card._hass, mse = this._mowerStateEntity();
     const ms = mse && h && h.states[mse];
-    const se = mse && findStatusEntity(h, mse), ss = se && h.states[se as string];
+    const se = mse && findStatusEntity(h, mse), ss = se && h.states[se];
     const a = ms && ms.state, b = ss && ss.state;
     return { docked: isDocked(a, b), word: dockWord(a, b) };
   }
 
   // Mower tab status: { kind: dock | tracked | last | mismatch | searching | none, word, score, lostMs } or null.
-  mowerStatus(): { kind: string; word?: unknown; score?: number | null; lostMs?: number | null } | null {
+  mowerStatus(): MowerStatus | null {
     const cfg = this.card._layout && this.card._layout.mower;
     if (!cfg || !cfg.entity || !this.card._hass) return null;
     const at = this._mowerAt;
@@ -632,13 +620,13 @@ export class MowerController {
   }
 
   // framePass context from the tracking state: search window, full search, layer due, dock.
-  _frameContext(cfg: LayoutMower, W: number, H: number, w: number, h: number, now: number) {
+  _frameContext(cfg: LayoutMower, W: number, H: number, w: number, h: number, now: number): CardFrameContext {
     const trk = this._trackState();
     const k = W / w;
     const dk = this._dockedNow();
     const dockChanged = trk.docked !== null && trk.docked !== dk.docked;
     if (trk.docked !== null && trk.docked && !dk.docked) { trk.leaving = true; trk.leavingSince = now; }
-    if (trk.docked === null && !dk.docked && !this._imageBlob && !lastPosition(this.card._config.layout_key!)) { trk.leaving = true; trk.leavingSince = now; } // unknown: from the dock
+    if (trk.docked === null && !dk.docked && !this._imageBlob && !lastPosition(this.card._config.layout_key)) { trk.leaving = true; trk.leavingSince = now; } // unknown: from the dock
     if (dk.docked) trk.leaving = false;
     if (trk.leaving && now - (trk.leavingSince ?? now) > 5 * 60000) trk.leaving = false; // leaving: since set with it
     trk.docked = dk.docked;
@@ -651,7 +639,7 @@ export class MowerController {
     trk.tplKey = tplKey;
     const b = this._imageBlob;
     let prev: number[] | null = b && b.imgW === W ? [b.px / k, b.py / k] : null;
-    const last = lastPosition(this.card._config.layout_key!);
+    const last = lastPosition(this.card._config.layout_key);
     const expected: number | null = b && b.count && b.matched ? b.count / (k * k) : last && last.count && last.imgW === W ? last.count / (k * k) : null;
     let dockAt: number[] | null = this._dockPx ? [this._dockPx.px / k, this._dockPx.py / k] : null;
     if (!dockAt && cfg.overlay) {
@@ -675,7 +663,7 @@ export class MowerController {
   }
 
   // A refresh's result into the picture and the tracking state (main thread: small, no pixel reads).
-  _applyFrame(r: Awaited<ReturnType<MapProcessor['frame']>>, cfg: LayoutMower, { W, H, w, h, now, ctx, blob }: { W: number; H: number; w: number; h: number; now: number; ctx: FrameContext; blob: Blob }): void {
+  _applyFrame(r: Awaited<ReturnType<MapProcessor['frame']>>, cfg: LayoutMower, { W, H, w, h, now, ctx, blob }: { W: number; H: number; w: number; h: number; now: number; ctx: CardFrameContext; blob: Blob }): void {
     const trk = this._trk!; // set by _frameContext before the frame
     trk.lastAt = now;
     if (r.full) trk.lastFull = now;
@@ -832,7 +820,7 @@ export class MowerController {
 
   // Find the icon colour in sampled pixels (imagePixels / readImagePixels), track it, store the pixel.
   // -> { result, found } (found: the blob seen in this picture, image pixels)
-  _detectOn(img: SampledImage, ic: MowerImage): { result: ImageResult; found: ImageBlob | null } {
+  _detectOn(img: ImagePixels, ic: MowerImage): { result: ImageResult; found: ImageBlob | null } {
     const k = img.imgW / img.width; // sampled canvas -> image pixels
     const old = this._imageBlob;
     const cols = colorList(ic);
@@ -842,7 +830,7 @@ export class MowerController {
     const track = sameColor && old ? { px: (old.px * rs) / k, py: (old.py * rs) / k, count: old.count == null ? null : (old.count * rs * rs) / (k * k), misses: old.misses || 0 } : null;
     const b = findBlob(img.data, img.width, img.height, cols, ic.tolerance ?? 40, { minPixels: ic.min_pixels ?? 4, prev: track });
     const step = stepTrack(track, b);
-    if (step.found) {
+    if (step.found && b) { // found: b is the new track
       // refined centre and the icon's heading: its picture (when set) or its shape
       const pose = this._iconPose(img, b, cols, ic.tolerance ?? 40);
       this._trackState().seenAt = Date.now();
@@ -851,7 +839,7 @@ export class MowerController {
       return { result: { count: b.count, match: pose.score }, found };
     }
     this._setIconHeading(null);
-    if (!sameColor || !old) this._imageBlob = null; // a stale position of another colour would mislead
+    if (!sameColor || !old || !step.track) this._imageBlob = null; // a stale position of another colour would mislead (same colour: tracked)
     else if (rs !== 1) { // last known position and count, in this picture's pixels
       this._imageBlob = { ...old, px: old.px * rs, py: old.py * rs, count: old.count == null ? null : old.count * rs * rs, imgW: img.imgW, imgH: img.imgH, sampleW: img.width, misses: step.track.misses };
     } else this._imageBlob = { ...old, misses: step.track.misses }; // last known position, count kept
@@ -934,7 +922,7 @@ export class MowerController {
   // same picture reuse that result), then the processed picture (transparent background, mowed stripes,
   // shaded no-mow, hidden icon, zone clip; in a worker where possible) and its statistics.
   // -> Promise of { canvas, width, height } | null (draw as loaded) | undefined (keep what is shown)
-  async _onMapImage(image: ImageBitmap, W: number, H: number): Promise<{ canvas: HTMLCanvasElement | OffscreenCanvas; width: number; height: number } | null | undefined> {
+  async _onMapImage(image: CanvasImageSource, W: number, H: number): Promise<MapImageResult> {
     const cfg = this.card._layout && this.card._layout.mower;
     const o = cfg && cfg.overlay;
     if (!cfg || !o || !W || !H) return null;

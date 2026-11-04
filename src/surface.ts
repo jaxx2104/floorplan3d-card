@@ -3,9 +3,7 @@
 // World = card world: (x, elevation + z, -y) of plan metres.
 
 import { ruleFor, pointInPolygon } from './placement.ts';
-import type { PlanPoint } from './types/layout.ts';
-
-export type Vec3 = [number, number, number];
+import type { PlanPoint, Vec3 } from './types/layout.ts';
 type VecLike = number[] | { x: number; y: number; z: number };
 export type SurfaceKind = 'wall' | 'ceiling' | 'floor';
 /** A search kind: a surface, or 'all' / 'any' (every direction / any orientation). */
@@ -35,7 +33,7 @@ const DOWN: Vec3[] = [[0, -1, 0]];
 
 // The surface a device type sticks to (placement.js rules): wall / corner / door anchors -> 'wall',
 // the ceiling grid -> 'ceiling', floor-standing centre devices (vacuum, mower) -> 'floor'.
-export function surfaceKind(domain: string, deviceClass?: string | null): SurfaceKind | null {
+export function surfaceKind(domain: string, deviceClass?: string): SurfaceKind | null {
   const r = ruleFor(domain, deviceClass);
   if (r.anchor !== 'center') return 'wall';
   if (r.z === 'ceiling') return 'ceiling';

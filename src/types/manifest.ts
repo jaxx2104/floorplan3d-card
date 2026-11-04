@@ -3,6 +3,7 @@
 // glTF JSON nodes in tools/check-model.mjs.
 
 import type { PlanPoint, SectionPlaneConfig, TopCamera, ViewCamera } from './layout.ts';
+import type { RenderRecipe } from '../render-recipe.ts';
 
 export type LevelRole = 'storey' | 'basement' | 'exterior' | 'roof';
 export type ManifestKind = 'level' | 'room' | 'zone' | 'object';
@@ -14,6 +15,8 @@ export interface ModelAdapter<N> {
   name(node: N): string;
   extras(node: N): Record<string, unknown> | null | undefined;
   parent(node: N): N | null | undefined;
+  /** Node origin in the root's frame (optional: enables the spot aim check). */
+  position?(node: N): number[];
 }
 
 interface ManifestBase<N> {
@@ -47,6 +50,8 @@ export interface ManifestRoom<N = unknown> extends ManifestBase<N> {
   outline: PlanPoint[] | null;
   doors: PlanPoint[];
   suggest: ManifestSuggest;
+  /** Set by the view when the outline came from the room's bounding box. */
+  outlineFallback?: boolean;
 }
 
 export interface ManifestObject<N = unknown> extends ManifestBase<N> {
@@ -84,6 +89,8 @@ export interface Manifest<N = unknown> {
   warnings: string[];
   byNode: Map<N, ManifestEntry<N>>;
   ownerOf(node: N): ManifestEntry<N> | null;
-  render?: unknown;
-  renderKeys?: unknown;
+  /** Validated extras.fp.render recipe (render-recipe.ts normRender). */
+  render: RenderRecipe | null;
+  /** Number of render recipe keys found. */
+  renderKeys: number;
 }

@@ -5,17 +5,13 @@ import { setupChecklist } from '../../mower-setup.ts';
 import { colorList, removeColorPatch, MAX_COLORS } from '../../mower-image.ts';
 import { closePicker, openColorPicker, alignPicker, cancelAlign, markFront } from '../tools/map-tools.ts';
 import { entOption, esc, fmt, sliderHtml } from '../html.ts';
-import { colorsOf } from '../tools/map-tools.ts';
 import { defineTab } from './tab.ts';
 import type { ActHandler, FieldHandler } from './tab.ts';
-import type { EditMode, MapColorKind } from '../../edit-mode.ts';
-import type { MowerImageResult, MowerLive } from '../host.ts';
-import type { LayoutMower, MowerCalibrationPoint, MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.ts';
+import type { EditMode } from '../../edit-mode.ts';
+import type { ImageResult, MowerLive } from '../../card/mower-controller.ts';
+import type { LayoutMower, MapColorKind, MowerCalibrationPoint, MowerImageConfig, MowerOverlay } from '../../types/layout.ts';
 
 type Slider = (f: string, label: string, min: number, max: number, step: number, v: unknown, unit?: string) => string;
-interface SetupRow { ok?: boolean; optional?: boolean; target: string; label: string }
-// mower-setup.js is still JS: its `auto = null` default is inferred as the parameter's only type
-const checklist = setupChecklist as (m: LayoutMower, states: Record<string, unknown>, found: boolean, auto: unknown) => { rows: SetupRow[]; complete: boolean };
 type Datalist = (id: string, list: string[]) => string;
 
 // ---------- mower ----------
@@ -62,7 +58,7 @@ export function mowerFound(ed: EditMode): boolean {
 export function setupHtml(ed: EditMode, keepOpen: boolean): string {
   const m = mower(ed), on = ed.card.mowerAuto(m);
   const auto = on ? { ...on, mismatch: !!ed.card._autoMismatch } : null;
-  const { rows, complete } = checklist(m, ed.hass.states, mowerFound(ed), auto);
+  const { rows, complete } = setupChecklist(m, ed.hass.states, mowerFound(ed), auto);
   const open = !complete || (keepOpen && ed._setupOpen);
   const li = rows.map((r) => `<li><button class="link setup-row ${r.ok ? 'ok' : r.optional ? 'opt' : 'todo'}" data-act="setup-go" data-target="${esc(r.target)}">
       <span class="mark">${r.ok ? '✓' : r.optional ? '–' : '✗'}</span> ${esc(r.label)}${r.optional && !r.ok ? ' <span class="dim">optional</span>' : ''}</button></li>`).join('');
@@ -72,7 +68,7 @@ export function setupHtml(ed: EditMode, keepOpen: boolean): string {
 
 // "Stripes: 45° (NE–SW) · Mowed: 37 %" from the processed map, or ''.
 export function mapInfoHtml(ed: EditMode): string {
-  const mi = ed.card.mapInfo ? ed.card.mapInfo() : {};
+  const mi = ed.card.mapInfo();
   const parts: string[] = [];
   if (mi.stripes) parts.push(`Stripes: ${esc(mi.stripes)}`);
   if (mi.mowed) parts.push(`Mowed: ${esc(mi.mowed)}${mi.mowedSource ? ` (${esc(mi.mowedSource)})` : ''}`);
@@ -120,7 +116,7 @@ export function mowerImageFound(ed: EditMode): string {
   return mowerColourFound(ed, r, live);
 }
 
-export function mowerColourFound(ed: EditMode, r: MowerImageResult | null | undefined, live: MowerLive | null | undefined): string {
+export function mowerColourFound(ed: EditMode, r: ImageResult | null | undefined, live: MowerLive | null | undefined): string {
   if (r && r.missing) return 'Mower icon not found' + (live && live.floorId ? ` (last seen at ${fmt(live.x)}, ${fmt(live.y)})` : '') + '.';
   if (r && live && live.floorId) return `Found at ${fmt(live.x)}, ${fmt(live.y)} (${r.count} px${r.match ? `, picture match ${r.match.toFixed(2)}` : ''})`;
   return 'Looking for the mower icon…';
@@ -285,7 +281,7 @@ export function mapProcessingHtml(ed: EditMode, m: LayoutMower, o: MowerOverlay,
   }
   const kinds: [MapColorKind, string, string][] = [['bg', 'Pick background colour', 'Background: transparent'], ['mowed', 'Pick mowed colour', 'Mowed stripes: light'], ['nomow', 'Pick no-mow colour', 'No-mow areas: shaded']];
   for (const [k, label, what] of kinds) {
-    const cols = colorsOf(o, k);
+    const cols = colorList(o, k);
     out += `<div class="row"><button data-act="map-pick" data-kind="${k}" ${ed.colorPick || cols.length >= MAX_COLORS ? 'disabled' : ''}>${label}</button>${cols.length ? ` <span class="dim">${what}</span>` : ''}</div>`;
     out += chipsHtml(ed, cols, k);
     if (cols.length) out += slider(`${k}_tolerance`, 'Tolerance', 0, 128, 1, o[`${k}_tolerance`] ?? 30);
@@ -322,7 +318,7 @@ const acts: Record<string, ActHandler> = {
     const m = mower(ed);
     const r = m.entity ? readSource(ed.hass.states[m.entity], m) : null; // no entity: no reading, as before
     if (!r) { ed.message = { text: 'No position reading from the mower entity right now.', error: true }; return 'render'; }
-    ed.calibrating = { src: r.raw as PlanPoint }; // readSource: [u, v] or [lat, lon]
+    ed.calibrating = { src: r.raw }; // readSource: [u, v] or [lat, lon]
     ed.overlayMove = false;
     toMowerFloor(ed);
     return 'render';

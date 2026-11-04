@@ -4,11 +4,8 @@
 import * as E from '../../editor.ts';
 import { vertexDown, midDown } from './drag.ts';
 import type { EditMode } from '../../edit-mode.ts';
-import type { LayoutRoom, PlanPoint } from '../../types/layout.ts';
-
-interface OverlayLine { points: PlanPoint[]; closed: boolean; floorId: string; color: number }
-interface OverlayFill { points: PlanPoint[]; floorId: string; color: number; opacity: number }
-interface OverlayHandle { element: HTMLDivElement; x: number; y: number; floorId: string }
+import type { LayoutRoom } from '../../types/layout.ts';
+import type { OverlayFill, OverlayHandle, OverlayLine } from '../../view/structure.ts';
 
 // ---------- overlay ----------
 export function handleEl(ed: EditMode, key: string, cls: string): HTMLDivElement {

@@ -7,8 +7,10 @@ import { esc, sliderHtml } from '../html.ts';
 import { defineTab } from './tab.ts';
 import type { ActHandler, FieldEl, FieldHandler } from './tab.ts';
 import type { EditMode } from '../../edit-mode.ts';
-import type { CardView, ViewIndex } from '../host.ts';
-import type { LayoutView } from '../../types/layout.ts';
+import type { Box3Like, ResolvedView, RuleState } from '../../views.ts';
+import type { Object3D } from 'three';
+import type { ModelIndex } from '../../view/model.ts';
+import type { LayoutView, SectionPlaneConfig, ViewRule } from '../../types/layout.ts';
 
 /** A row of the Views tab's model tree (views.js viewTree). */
 export interface TreeRow {
@@ -27,11 +29,10 @@ export interface TreeRows {
   /** node position -> selector of the row listing it */
   rowOf: Map<number, string>;
 }
-type ModelBox = unknown;
 
 // ---------- views ----------
 // The view the Views tab edits: a hidden view picked in its select, else the active chip.
-export function vwView(ed: EditMode): CardView | null | undefined {
+export function vwView(ed: EditMode): ResolvedView | null | undefined {
   const vs = ed.card._views || [];
   // (kept while the view is visible: a hide is committed before the view list catches up)
   const v = ed.vwSel && vs.find((x) => x.id === ed.vwSel);
@@ -46,12 +47,12 @@ export function onViewChanged(ed: EditMode) {
   if (ed.tab === 'views') ed.render();
 }
 
-export function layoutRules(ed: EditMode, id: string): unknown[] {
+export function layoutRules(ed: EditMode, id: string): ViewRule[] {
   const v = (ed.layout.views || {})[id];
   return v && Array.isArray(v.rules) ? v.rules : [];
 }
 
-export function setRule(ed: EditMode, id: string, sel: string, state: string, opts?: { keepObjects?: boolean }) {
+export function setRule(ed: EditMode, id: string, sel: string, state: RuleState, opts?: { keepObjects?: boolean }) {
   ed.card.saveViewPatch(id, { rules: setRuleState(layoutRules(ed, id), sel, state, opts) });
 }
 
@@ -159,7 +160,7 @@ export function viewsTab(ed: EditMode): string {
 }
 
 // "Side section" block: direction + position of the cut (layout.views[id].section, card world).
-export function sectionHtml(ed: EditMode, v: CardView, lv: LayoutView): string {
+export function sectionHtml(ed: EditMode, v: ResolvedView, lv: LayoutView): string {
   const box = ed.view.model && ed.view.sectionBox();
   if (!box) return '';
   const plane = ed.card.sectionPlaneNow(v);
@@ -167,7 +168,7 @@ export function sectionHtml(ed: EditMode, v: CardView, lv: LayoutView): string {
   const dir = sectionDir(plane.normal);
   const [lo, hi] = sliderRange(ed, dir.normal, box);
   const pos = Math.min(hi, Math.max(lo, sectionPos(plane)));
-  const opts = SECTION_DIRS.map((d: { id: string; label: string }) => `<option value="${d.id}" ${d.id === dir.id ? 'selected' : ''}>${d.label}</option>`).join('');
+  const opts = SECTION_DIRS.map((d) => `<option value="${d.id}" ${d.id === dir.id ? 'selected' : ''}>${d.label}</option>`).join('');
   const src = lv.section ? 'Saved for this view.' : v.modelSection ? 'From the model.' : 'Default: through the middle of the house.';
   return `<div class="sub">Side section</div>
       <p class="hint">The Section button (box cutter) cuts the house here and looks at the cut face. ${src}</p>
@@ -177,18 +178,18 @@ export function sectionHtml(ed: EditMode, v: CardView, lv: LayoutView): string {
 }
 
 // slider range: the model box along the axis, on the 0.05 m grid
-export function sliderRange(ed: EditMode, normal: number[], box: ModelBox): number[] {
+export function sliderRange(ed: EditMode, normal: readonly number[], box: Box3Like): number[] {
   const [a, b] = sectionRange(normal, box);
   return [Math.floor(a / 0.05) * 0.05, Math.ceil(b / 0.05) * 0.05].map((x) => Math.round(x * 100) / 100);
 }
 
-export function sectionFromPanel(ed: EditMode, v: CardView, pos: number): unknown {
+export function sectionFromPanel(ed: EditMode, v: ResolvedView, pos: number): SectionPlaneConfig {
   const sel = ed.panel.querySelector<HTMLSelectElement>('[data-field="vw-sec-dir"]');
-  const dir = SECTION_DIRS.find((d: { id: string }) => d.id === (sel && sel.value)) || SECTION_DIRS[0];
+  const dir = SECTION_DIRS.find((d) => d.id === (sel && sel.value)) || SECTION_DIRS[0];
   return sectionAt(dir.normal, Math.round(pos * 100) / 100);
 }
 
-export function nodePos(ed: EditMode, idx: ViewIndex, node: unknown): number {
+export function nodePos(ed: EditMode, idx: ModelIndex, node: Object3D): number {
   if (!ed._posCache || ed._posCache.idx !== idx) ed._posCache = { idx, map: new Map(idx.nodes.map((n, i) => [n.node, i])) };
   const p = ed._posCache.map.get(node);
   return p === undefined ? -1 : p;
@@ -197,7 +198,7 @@ export function nodePos(ed: EditMode, idx: ViewIndex, node: unknown): number {
 // Panel buttons of the Views tab: each acts on the edited view (none: nothing happens). They commit or
 // render themselves (the rebuild after a commit renders the panel once), so none asks for a render.
 // (the same wrapper serves buttons and form fields: el is what the handler was given)
-function onView(fn: (ed: EditMode, v: CardView, el: FieldEl) => void): FieldHandler & ActHandler {
+function onView(fn: (ed: EditMode, v: ResolvedView, el: FieldEl) => void): FieldHandler & ActHandler {
   return (ed: EditMode, el: HTMLElement) => {
     const v = vwView(ed);
     if (v) fn(ed, v, el as FieldEl);
@@ -205,7 +206,7 @@ function onView(fn: (ed: EditMode, v: CardView, el: FieldEl) => void): FieldHand
 }
 const after = (fn: () => void) => queueMicrotask(fn); // runs after the commit's rebuild (queued first)
 
-function move(ed: EditMode, v: CardView, step: number) {
+function move(ed: EditMode, v: ResolvedView, step: number) {
   const ids = (ed.card._views || []).map((x) => x.id);
   const i = ids.indexOf(v.id), j = i + step;
   if (i < 0 || j < 0 || j >= ids.length) return;
@@ -213,7 +214,7 @@ function move(ed: EditMode, v: CardView, step: number) {
   ed.commit({ ...ed.layout, view_order: ids });
 }
 
-function resetView(ed: EditMode, v: CardView, patch: Record<string, unknown>) {
+function resetView(ed: EditMode, v: ResolvedView, patch: Record<string, unknown>) {
   const card = ed.card;
   card.saveViewPatch(v.id, patch);
   if (v.id === card._viewId) after(() => card._resetCamera());
@@ -300,7 +301,7 @@ const fields: Record<string, FieldHandler> = {
     const card = ed.card;
     // a new axis: start in the middle of the model along it
     const box = ed.view.sectionBox();
-    const dir = SECTION_DIRS.find((d: { id: string }) => d.id === el.value);
+    const dir = SECTION_DIRS.find((d) => d.id === el.value);
     if (!box || !dir) return;
     const [lo, hi] = sliderRange(ed, dir.normal, box);
     const old = card.sectionPlaneNow(v);

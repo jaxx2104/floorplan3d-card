@@ -8,11 +8,11 @@ import { moonLight, moonLitRight, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from '../
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from '../weather.ts';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from '../precip.ts';
 import { swayLean, makeCloudUniforms, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from '../cloud-shadow.ts';
-import { testMode, frameInterval, isPerspective, type Drawable, type Vec3 } from './core.ts';
+import { testMode, frameInterval, isPerspective, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
 import type { CloudUniforms } from '../cloud-shadow.ts';
 import type { PrecipKind, PrecipUniforms } from '../precip.ts';
-import type { PlanPoint } from '../types/layout.ts';
+import type { PlanPoint, Vec3 } from '../types/layout.ts';
 
 /** A body on the sky dome: unit vector toward it (world); the moon also its phase and lit share. */
 export interface SkyBody { dir: Vec3; phase?: number; illumination?: number; latitude?: number }

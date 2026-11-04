@@ -11,7 +11,7 @@ const darkFailed = new Set<string>();
 
 
 // Shows the platform's logo as the box's first child (removed when none / failed). readable: title = integration name.
-export function setLogo(box: HTMLElement, platform: string | null | undefined, dark: boolean, readable = false): void {
+export function setLogo(box: Element, platform: string | null | undefined, dark: boolean, readable = false): void {
   let img = box.querySelector<HTMLImageElement>('img.fp-logo');
   if (!platform || failed.has(platform)) { if (img) img.remove(); return; }
   const useDark = dark && !darkFailed.has(platform);
