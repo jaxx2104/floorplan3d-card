@@ -534,8 +534,8 @@ export class ObjectLayer {
         p.wash = { meshes, sig: wsig, placements };
       }
       const r = p.result!, w = p.wash!; // placed just above (or before)
-      const opacity = washOpacity(r.level, this._slots.has(id));
-      w.meshes.forEach((m, i) => this.washes.paint(m, r.color || [255, 255, 255], w.placements[i] ? opacity : 0));
+      const real = this._slots.has(id);
+      w.meshes.forEach((m, i) => { const pl = w.placements[i]; this.washes.paint(m, r.color || [255, 255, 255], pl ? washOpacity(r.level, real, pl.variant) : 0); });
       changed = true;
     }
     this._washSig = pending ? null : sig;

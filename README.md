@@ -448,7 +448,8 @@ has no marker: the object is the control.
   it with a soft additive light decal in its colour and brightness: the nearest wall within 0.6 m
   (a cone below a down light, above an uplight, an oval around a `point` lamp), else a pool on the
   floor (or the ceiling for an uplight); spots light a pool where they aim. Size follows
-  `hints.max` / `hints.distance`; lamps that also got a real light wash at half strength. A wash is
+  `hints.max` / `hints.distance`; lamps that also got a real light wash their wall at half strength and
+  draw no pool (the real light lights the floor under them, the pool on top of it blew that spot out). A wash is
   placed the first time its lamp is lit (and again after the model is moved); turning lamps on and
   off only shows and hides them, no shader is rebuilt. `hints.beam: "updown"` (or `"both"`), or
   *Light on wall: Up and down* in the Objects tab, draws two washes, a cone below and one above the

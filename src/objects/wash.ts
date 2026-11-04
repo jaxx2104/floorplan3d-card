@@ -101,7 +101,14 @@ export function washSize(h: WashHints): WashSize {
   return { width, height, pool };
 }
 
-export const washOpacity = (level: number, real: boolean): number => (level > 0 ? level * 0.6 * (real ? 0.5 : 1) : 0);
+/**
+ * A wash's opacity at lamp level 0..1: 0.6 x level, half next to a real light. A floor / ceiling pool of a lamp
+ * that got a real light: none. The real light already lights that surface with inverse-square fall-off, and the
+ * additive decal (not tone mapped) on top of it blew the area right under the lamp out to white (a kitchen table
+ * under a ceiling lamp: display luminance 0.35 lit, 0.83 with the pool, 0.27 in the path-traced frame).
+ */
+export const washOpacity = (level: number, real: boolean, variant: WashVariant | null = null): number =>
+  (level > 0 && !(real && variant === 'pool') ? level * 0.6 * (real ? 0.5 : 1) : 0);
 
 const isArr = (v: V3): v is readonly number[] => Array.isArray(v);
 const toArr = (v: V3): readonly number[] => (isArr(v) ? v : [v.x, v.y, v.z]);

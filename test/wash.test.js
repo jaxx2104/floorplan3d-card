@@ -27,6 +27,12 @@ describe('washKind / washSize', () => {
     expect(washOpacity(0.5, true)).toBeCloseTo(0.15);
     expect(washOpacity(0, false)).toBe(0);
   });
+  it('a real light draws no floor / ceiling pool (it lights that surface itself); wall washes stay at half', () => {
+    expect(washOpacity(1, true, 'pool')).toBe(0);
+    expect(washOpacity(1, false, 'pool')).toBeCloseTo(0.6);
+    expect(washOpacity(1, true, 'down')).toBeCloseTo(0.3);
+    expect(washOpacity(1, true, 'oval')).toBeCloseTo(0.3);
+  });
 });
 
 describe('chooseWall', () => {
