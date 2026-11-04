@@ -3,6 +3,19 @@
 import { progressText } from './model-cache.js';
 import { idbAll, idbDelete } from './idb.js';
 import { fitOutline, HOUSE_OUTLINE } from './load-outline.js';
+import type { PlanPoint } from './types/layout.js';
+
+/** What the load UI needs from the card. */
+export interface LoadUIHost {
+  stage: HTMLElement;
+  /** remembered or drawn room outlines (plan metres), null: none */
+  outline?: () => PlanPoint[][] | null;
+  /** the camera controls, disabled while the drawing covers the stage */
+  controls?: () => { enabled: boolean } | null | undefined;
+}
+
+/** fitOutline's result as used here. */
+interface FittedOutline { viewBox: string; d: string; length: number; parts: { d: string; end: number }[] }
 
 export const LOAD_STYLE = `
   .stage { isolation: isolate; }
@@ -35,8 +48,21 @@ export const LOAD_STYLE = `
 let purged = false; // snapshots of earlier versions: removed once per page load
 
 export class ModelLoadUI {
+  host: LoadUIHost;
+  bar: HTMLDivElement;
+  /** the drawing overlay while a model loads */
+  plan: HTMLDivElement | null;
+  /** the texts shown (headless checks) */
+  log: string[];
+  readyAt: number | null;
+  fit: FittedOutline | null = null;
+  path: SVGPathElement | null = null;
+  _prevEnabled: boolean | undefined = undefined;
+  _errTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+  _fadeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+
   // host: { stage, outline(): [polygon] | null (remembered or drawn rooms, plan metres) }
-  constructor(host) {
+  constructor(host: LoadUIHost) {
     this.host = host;
     this.bar = document.createElement('div');
     this.bar.className = 'fp-progress';
@@ -48,21 +74,23 @@ export class ModelLoadUI {
     this.readyAt = null;
     if (!purged) {
       purged = true;
-      idbAll('snapshots').then((all) => (all.length ? idbDelete('snapshots', all.map((r) => r.key)) : null));
+      idbAll('snapshots').then((all) => (all.length ? idbDelete('snapshots', all.map((r) => r.key as IDBValidKey)) : null));
     }
   }
 
   // progress: text, frac (0..1, null: busy without a known share), error
-  progress(text, frac = null, error = false) {
+  progress(text: string | null, frac: number | null = null, error = false) {
     clearTimeout(this._errTimer);
     if (!text) { this.bar.hidden = true; return; }
     this.bar.hidden = false;
     this.bar.classList.toggle('busy', frac === null && !error);
     this.bar.classList.toggle('error', !!error);
     this.bar.classList.toggle('plan', !!this.plan && !error);
-    this.bar.firstChild.style.width = frac === null ? '' : `${Math.round(frac * 100)}%`;
-    if (this.bar.lastChild.textContent !== text) {
-      this.bar.lastChild.textContent = text;
+    // the bar's markup: <div class="bar"> then <span>
+    (this.bar.firstChild as HTMLElement).style.width = frac === null ? '' : `${Math.round(frac * 100)}%`;
+    const label = this.bar.lastChild as HTMLElement;
+    if (label.textContent !== text) {
+      label.textContent = text;
       this.log.push(text);
       if (this.log.length > 20) this.log.shift();
     }
@@ -70,7 +98,7 @@ export class ModelLoadUI {
     if (error) this._errTimer = setTimeout(() => { this.bar.hidden = true; }, 8000);
   }
 
-  download(loaded, total) {
+  download(loaded: number, total: number | null | undefined) {
     this.progress(progressText(loaded, total), total ? Math.min(1, loaded / total) : null);
   }
 
@@ -79,16 +107,17 @@ export class ModelLoadUI {
     this.readyAt = null;
     this._removePlan();
     const polys = (this.host.outline && this.host.outline()) || HOUSE_OUTLINE;
-    const fit = fitOutline(polys.length ? polys : HOUSE_OUTLINE);
+    const fit: FittedOutline = fitOutline(polys.length ? polys : HOUSE_OUTLINE);
     const el = document.createElement('div');
     el.className = 'fp-loadplan busy';
     el.innerHTML = `<svg viewBox="${fit.viewBox}" aria-hidden="true">${fit.parts.map((q) => `<path class="fill" d="${q.d}"/>`).join('')}<path class="base" d="${fit.d}"/><path class="draw" d="${fit.d}"/></svg><div class="txt"></div>`;
     this.plan = el;
     this.fit = fit;
-    this.path = el.querySelector('.draw');
-    this.path.style.setProperty('--start', `${fit.length * 0.4}`);
-    this.path.style.setProperty('--end', `${-fit.length}`);
-    this.path.style.strokeDasharray = `${fit.length * 0.4} ${fit.length}`;
+    const path = el.querySelector<SVGPathElement>('.draw')!; // in the markup above
+    this.path = path;
+    path.style.setProperty('--start', `${fit.length * 0.4}`);
+    path.style.setProperty('--end', `${-fit.length}`);
+    path.style.strokeDasharray = `${fit.length * 0.4} ${fit.length}`;
     // opaque and inert: nothing below the drawing (markers, objects, orbit) reacts while the model loads
     for (const t of ['pointerdown', 'pointerup', 'pointermove', 'click', 'dblclick', 'contextmenu', 'wheel', 'touchstart', 'touchmove']) {
       el.addEventListener(t, (e) => { e.stopPropagation(); if (t === 'wheel' || t.startsWith('touch')) e.preventDefault(); }, { passive: false });
@@ -99,7 +128,7 @@ export class ModelLoadUI {
   }
 
   // host.lock(true): the camera controls off while the drawing covers the stage; false: back as before
-  _lock(on) {
+  _lock(on: boolean) {
     if (!this.host.controls) return;
     const c = this.host.controls();
     if (!c) return;
@@ -112,16 +141,16 @@ export class ModelLoadUI {
     }
   }
 
-  _drawProgress(text, frac) {
+  _drawProgress(text: string, frac: number | null) {
     const el = this.plan;
-    if (!el) return;
-    el.querySelector('.txt').textContent = text;
-    const busy = frac === null;
-    el.classList.toggle('busy', busy);
-    const L = this.fit.length;
-    this.path.style.strokeDasharray = busy ? `${L * 0.4} ${L}` : `${L}`;
-    this.path.style.strokeDashoffset = busy ? '' : `${L * (1 - frac)}`;
-    el.querySelectorAll('.fill').forEach((q, i) => q.classList.toggle('on', !busy && this.fit.parts[i].end <= L * frac + 0.01));
+    const fit = this.fit, path = this.path;
+    if (!el || !fit || !path) return; // all three are set together in loading()
+    el.querySelector('.txt')!.textContent = text; // in the plan's markup
+    el.classList.toggle('busy', frac === null);
+    const L = fit.length;
+    path.style.strokeDasharray = frac === null ? `${L * 0.4} ${L}` : `${L}`;
+    path.style.strokeDashoffset = frac === null ? '' : `${L * (1 - frac)}`;
+    el.querySelectorAll('.fill').forEach((q, i) => q.classList.toggle('on', frac !== null && fit.parts[i].end <= L * frac + 0.01));
   }
 
   _removePlan() {
@@ -133,7 +162,8 @@ export class ModelLoadUI {
   }
 
   // The model is ready (ok) or failed: fade the drawing out (then remove it), hide the bar (or show the error).
-  done(ok, error = '') {
+  done(ok: boolean, error = '') {
+
     if (ok) {
       this.readyAt = performance.now();
       this.progress(null);

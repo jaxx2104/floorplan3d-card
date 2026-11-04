@@ -5,12 +5,12 @@
 
 import { migrateModel } from './bindings.js';
 import type { Hass } from './types/ha.js';
-import type { Layout, LayoutModel } from './types/layout.js';
+import type { Layout, LayoutModel, NormalisedLayout } from './types/layout.js';
 
 /** Where layouts are saved: the companion integration, HA user data, or this browser. */
 export type StorageBackend = 'shared' | 'user' | 'browser';
 
-export const EMPTY_LAYOUT = (): Layout => ({
+export const EMPTY_LAYOUT = (): NormalisedLayout => ({
   version: 1,
   floors: [],
   rooms: [],
@@ -92,11 +92,11 @@ export class LayoutStore {
 }
 
 // Stored JSON (any shape: older versions, hand edits, imports) -> a Layout with the arrays and maps present.
-export function normalise(input: unknown): Layout {
+export function normalise(input: unknown): NormalisedLayout {
   const base = EMPTY_LAYOUT();
   if (!input || typeof input !== 'object') return base;
   const l = input as Partial<Layout>; // fields checked one by one below
-  const out: Layout = {
+  const out: NormalisedLayout = {
     ...base,
     ...l,
     floors: Array.isArray(l.floors) ? l.floors : [],

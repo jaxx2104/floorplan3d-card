@@ -4,26 +4,41 @@ import * as E from '../../editor.js';
 import { buildMarkers, areaName } from '../../registry.js';
 import { surfaceKind, surfaceSearch, stickSurface, nearestDistance, needsStick, worldOf, planOf } from '../../surface.js';
 import { logoBox, esc, fmt } from '../html.js';
+import { defineTab } from './tab.js';
+import type { ActHandler, FieldHandler } from './tab.js';
+import type { EditMode, StickMove } from '../../edit-mode.js';
+import type { Layout, LayoutPin } from '../../types/layout.js';
 
-export function allMarkers(ed) {
+/** A device / entity marker (registry.js buildMarkers), as far as this tab reads it. */
+export interface MarkerInfo {
+  id: string;
+  entityId: string;
+  name: string;
+  areaId?: string | null;
+  domain: string;
+  deviceClass?: string | null;
+  [key: string]: unknown;
+}
+
+export function allMarkers(ed: EditMode): MarkerInfo[] {
   return buildMarkers(ed.hass, { ...ed.layout, hidden: [] }, { group_by: ed.card._config.group_by });
 }
 
 // Badge toggles (layout.badges); keys set in the card YAML `badges:` win and are shown disabled.
-export function badgesHtml(ed) {
-  const o = ed.card.badgeOpts(), yaml = (ed.card._config && ed.card._config.badges) || {};
-  const row = (k, label) => {
+export function badgesHtml(ed: EditMode): string {
+  const o = ed.card.badgeOpts(), yaml = ((ed.card._config && ed.card._config.badges) || {}) as Record<string, unknown>; // YAML: read per key below
+  const row = (k: string, label: string) => {
     const fixed = typeof yaml[k] === 'boolean';
     return `<label class="check"><input type="checkbox" data-field="badge" data-key="${k}" ${o[k] ? 'checked' : ''} ${fixed ? 'disabled' : ''}> ${label}${fixed ? ' <span class="dim">(card YAML)</span>' : ''}</label>`;
   };
   const th = ed.layout.tap_hints || 'near';
-  const opt = (v, l) => `<option value="${v}"${th === v ? ' selected' : ''}>${l}</option>`;
+  const opt = (v: string, l: string) => `<option value="${v}"${th === v ? ' selected' : ''}>${l}</option>`;
   return `<div class="sub">Badges</div>${row('integration', 'Show integration logos')}${row('status', 'Show status')}${row('battery', 'Show low battery')}
       <label class="tap-hints">Tap hints <select data-field="tap-hints">${opt('always', 'Always')}${opt('near', 'Near pointer')}${opt('off', 'Off')}</select></label>
       <p class="hint">Dots on tappable model objects: filled when a tap works, hollow grey when it is offline or a controller is off.</p>`;
 }
 
-export function devicesTab(ed) {
+export function devicesTab(ed: EditMode): string {
   const all = allMarkers(ed);
   const byId = new Map(all.map((m) => [m.id, m]));
   const hidden = ed.layout.hidden || [];
@@ -34,7 +49,7 @@ export function devicesTab(ed) {
     const pin = (ed.layout.pins || {})[m.id];
     const pinned = !!pin;
     const attached = pin && pin.attach;
-    const target = attached && ed.card._objects && ed.card._objects.objectAt(attached);
+    const target = attached ? ed.card._objects && ed.card._objects.objectAt(attached) : null;
     if (m.id === ed.card._mowerMarkerId) {
       return out + `<section class="box"><h3>${esc(m.name)}</h3><p class="dim">${esc(m.entityId)}</p>
           <p>Follows the live mower position. Set it up in the Mower tab.</p>
@@ -89,8 +104,8 @@ export function devicesTab(ed) {
 
 // "Stick all to surfaces": free pins more than 15 cm from every model surface (8 horizontal rays,
 // up and down) move onto the surface their device type sticks to, else the nearest one (stickSurface).
-export function stickMoves(ed) {
-  const vw = ed.view, out = [];
+export function stickMoves(ed: EditMode): StickMove[] {
+  const vw = ed.view, out: StickMove[] = [];
   if (!vw.model) return out;
   const byId = new Map(allMarkers(ed).map((m) => [m.id, m])); // hidden ones included
   for (const [id, pin] of Object.entries(ed.layout.pins || {})) {
@@ -100,7 +115,7 @@ export function stickMoves(ed) {
     const elev = vw.floorElevation(floor.id);
     const z = pin.z ?? 1.2;
     const world = worldOf({ x: pin.x, y: pin.y, z }, elev);
-    const hits = surfaceSearch('all', z, floor.height).flatMap((g) => vw.surfaceRays(world, g.dirs, g.max));
+    const hits = surfaceSearch('all', z, floor.height).flatMap((g: { dirs: unknown; max: number }) => vw.surfaceRays(world, g.dirs, g.max));
     if (!needsStick(pin, nearestDistance(hits))) continue;
     const s = stickSurface(surfaceKind(m.domain, m.deviceClass), hits);
     if (s) out.push({ id, from: pin, pin: { ...planOf(s.point, elev), floor_id: floor.id, on_model: true } });
@@ -109,13 +124,16 @@ export function stickMoves(ed) {
 }
 
 // A pin placed while a model is loaded sits on the model and follows its alignment.
-export function onModel(ed, id) {
+export function onModel(ed: EditMode, id: string): boolean {
   const pin = (ed.layout.pins || {})[id];
   return !!ed.view.model || !!(pin && pin.on_model);
 }
 
-const acts = {
-  unpin: (ed) => { ed.commit(E.clearPin(ed.layout, ed.selectedMarker)); },
+// the marker buttons show only with a marker selected
+const selectedId = (ed: EditMode): string => ed.selectedMarker!;
+
+const acts: Record<string, ActHandler> = {
+  unpin: (ed) => { ed.commit(E.clearPin(ed.layout, selectedId(ed))); },
   'stick-all': (ed) => { ed.stick = { moves: stickMoves(ed) }; return 'render'; },
   'stick-cancel': (ed) => { ed.stick = null; return 'render'; },
   'stick-apply': (ed) => { // the previewed moves; a pin changed since then is left alone
@@ -127,51 +145,54 @@ const acts = {
     ed.commit(layout);
   },
   detach: (ed) => { // keep where it is now, as a normal pin on the model
-    const pos = ed.card._positions && ed.card._positions.get(ed.selectedMarker);
-    const pin = (ed.layout.pins || {})[ed.selectedMarker];
+    const id = selectedId(ed);
+    const pos = ed.card._positions && ed.card._positions.get(id);
+    const pin: LayoutPin | undefined = (ed.layout.pins || {})[id];
     const at = pos ? { x: pos.x, y: pos.y, z: pos.z, floor_id: pos.floorId } : pin;
-    if (at) ed.commit(E.setPin(ed.layout, ed.selectedMarker, { ...at, on_model: true }, { grid: false }));
+    if (at) ed.commit(E.setPin(ed.layout, id, { ...at, on_model: true }, { grid: false }));
   },
   hide: (ed) => {
-    const mid = ed.selectedMarker;
+    const mid = selectedId(ed);
     ed.selectMarker(null);
     ed.commit(E.hide(ed.layout, mid));
   },
   'deselect-marker': (ed) => { ed.selectMarker(null); },
-  unhide: (ed, btn) => { ed.commit(E.unhide(ed.layout, btn.dataset.id)); },
+  unhide: (ed, btn) => { ed.commit(E.unhide(ed.layout, btn.dataset.id || '')); },
   place: (ed, btn) => {
-    const id = btn.dataset.id;
+    const id = btn.dataset.id || '';
     const fid = ed.activeFloor();
-    const t = ed.view.controls.target;
+    const t = ed.view.controls!.target; // the controls exist while the card is shown
     ed.selectedMarker = id;
     ed.commit(E.setPin(ed.layout, id, { x: t.x, y: -t.z, z: 1.2, floor_id: fid, on_model: onModel(ed, id) }));
   },
 };
 
-const fields = {
+const fields: Record<string, FieldHandler> = {
   'tap-hints': (ed, el) => {
-    const l = { ...ed.layout };
+    const l: Layout = { ...ed.layout };
     if (el.value === 'near') delete l.tap_hints; else l.tap_hints = el.value;
     ed.commit(l);
   },
   'marker-z': (ed, el) => {
     const v = Number(el.value);
-    const pos = ed.card._positions.get(ed.selectedMarker);
+    const id = selectedId(ed);
+    const pos = ed.card._positions!.get(id); // the height input shows only for a drawn marker
     if (!Number.isFinite(v) || !pos) return;
-    const pin = (ed.layout.pins || {})[ed.selectedMarker];
+    const pin: LayoutPin | undefined = (ed.layout.pins || {})[id];
     if (pin && pin.attach && Array.isArray(pin.offset)) {
       // attached: raise / lower the offset; object missing: keep the attach, only the fallback height changes
       const o = pin.offset;
       const off = pos.attached ? [o[0], o[1] + v - pos.z, o[2]] : o;
-      ed.commit(E.attachPin(ed.layout, ed.selectedMarker, pin.attach, off, { x: pin.x, y: pin.y, z: pos.attached ? pin.z + v - pos.z : v, floor_id: pin.floor_id }));
+      ed.commit(E.attachPin(ed.layout, id, pin.attach, off, { x: pin.x, y: pin.y, z: pos.attached ? Number(pin.z) + v - pos.z : v, floor_id: pin.floor_id }));
       return;
     }
-    ed.commit(E.setPin(ed.layout, ed.selectedMarker, { x: pos.x, y: pos.y, z: v, floor_id: pos.floorId, on_model: onModel(ed, ed.selectedMarker) }, { grid: !pin }));
+    ed.commit(E.setPin(ed.layout, id, { x: pos.x, y: pos.y, z: v, floor_id: pos.floorId, on_model: onModel(ed, id) }, { grid: !pin }));
   },
   badge: (ed, el) => {
-    ed.commit({ ...ed.layout, badges: { ...ed.layout.badges, [el.dataset.key]: el.checked } });
+    ed.commit({ ...ed.layout, badges: { ...ed.layout.badges, [String(el.dataset.key)]: el.checked } });
     ed.render();
   },
 };
 
-export const devicesTabDef = { id: 'devices', html: devicesTab, acts, fields };
+export const devicesTabDef = defineTab({ id: 'devices', html: devicesTab, acts, fields });
+

@@ -4,10 +4,34 @@ import { ruleState, ruleKeepsObjects, setRuleState, nextEyeState, viewTree, next
 import { cancelPivot } from '../tools/pivot.js';
 import { closeMenu } from '../tools/view-menu.js';
 import { esc, sliderHtml } from '../html.js';
+import { defineTab } from './tab.js';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
+import type { EditMode } from '../../edit-mode.js';
+import type { CardView, ViewIndex } from '../host.js';
+import type { LayoutView } from '../../types/layout.js';
+
+/** A row of the Views tab's model tree (views.js viewTree). */
+export interface TreeRow {
+  sel: string;
+  label: string;
+  nodes: number[];
+  depth: number;
+  parent?: string | null;
+  children?: number;
+  path?: string;
+}
+export interface TreeRows {
+  tree: TreeRow[];
+  layers: TreeRow[];
+  groups: TreeRow[];
+  /** node position -> selector of the row listing it */
+  rowOf: Map<number, string>;
+}
+type ModelBox = unknown;
 
 // ---------- views ----------
 // The view the Views tab edits: a hidden view picked in its select, else the active chip.
-export function vwView(ed) {
+export function vwView(ed: EditMode): CardView | null | undefined {
   const vs = ed.card._views || [];
   // (kept while the view is visible: a hide is committed before the view list catches up)
   const v = ed.vwSel && vs.find((x) => x.id === ed.vwSel);
@@ -16,47 +40,48 @@ export function vwView(ed) {
 }
 
 // the card switched views (chip or select)
-export function onViewChanged(ed) {
+export function onViewChanged(ed: EditMode) {
   ed.vwSel = null;
   closeMenu(ed);
   if (ed.tab === 'views') ed.render();
 }
 
-export function layoutRules(ed, id) {
+export function layoutRules(ed: EditMode, id: string): unknown[] {
   const v = (ed.layout.views || {})[id];
   return v && Array.isArray(v.rules) ? v.rules : [];
 }
 
-export function setRule(ed, id, sel, state, opts) {
+export function setRule(ed: EditMode, id: string, sel: string, state: string, opts?: { keepObjects?: boolean }) {
   ed.card.saveViewPatch(id, { rules: setRuleState(layoutRules(ed, id), sel, state, opts) });
 }
 
 // Tree rows for the loaded model, with the manifest's labels (cached per node index).
-export function treeRows(ed) {
+export function treeRows(ed: EditMode): TreeRows | null {
   const idx = ed.card.viewIndex();
   const mb = ed.card._mb;
   if (!idx || !mb) return null;
   const objs = ed.layout && ed.layout.objects; // custom object labels (Objects tab)
   if (ed._treeCache && ed._treeCache.idx === idx && ed._treeCache.objs === objs) return ed._treeCache.tree;
-  const labels = {};
+  const labels: Record<string, string> = {};
   for (const l of mb.manifest.levels) labels['level:' + l.id] = l.label;
   for (const r of mb.manifest.rooms) labels[r.kind + ':' + r.id] = r.label;
   for (const o of mb.manifest.objects || []) labels['object:' + o.id] = ed.card.objectLabel(o);
-  const tree = viewTree(idx, labels);
-  const rowOf = new Map(); // node position -> selector of the row listing it
-  for (const r of [...tree.tree, ...tree.groups]) for (const i of r.nodes) if (!rowOf.has(i)) rowOf.set(i, r.sel);
-  tree.rowOf = rowOf;
+  const rows: Omit<TreeRows, 'rowOf'> = viewTree(idx, labels);
+  const rowOf = new Map<number, string>(); // node position -> selector of the row listing it
+  for (const r of [...rows.tree, ...rows.groups]) for (const i of r.nodes) if (!rowOf.has(i)) rowOf.set(i, r.sel);
+  const tree: TreeRows = Object.assign(rows, { rowOf });
+
   ed._treeCache = { idx, objs, tree };
   return tree;
 }
 
-export function viewsTab(ed) {
+export function viewsTab(ed: EditMode): string {
   const card = ed.card;
   const views = card._views || [];
   const v = vwView(ed);
   if (!v) return '<p class="hint">No views yet.</p>';
   const st = card._stateFor(v);
-  const lv = (ed.layout.views || {})[v.id] || {};
+  const lv: LayoutView = (ed.layout.views || {})[v.id] || {};
   const i = views.indexOf(v);
   const visible = views.filter((x) => !x.hidden).length;
   const opts = views.map((x) => `<option value="${esc(x.id)}" ${x.id === v.id ? 'selected' : ''}>${esc(x.label)}${x.hidden ? ' (hidden)' : ''}</option>`).join('');
@@ -92,13 +117,14 @@ export function viewsTab(ed) {
   if (idx && tree && ed.view.model) {
     const eff = st.effective;
     // fully shown = the node and everything below it visible (nodes are in pre-order)
-    const full = new Array(idx.nodes.length);
+    const full: boolean[] = new Array(idx.nodes.length);
     for (let k = idx.nodes.length - 1; k >= 0; k--) full[k] = !eff || (!!eff[k] && idx.nodes[k].children.every((c) => full[c]));
-    const yamlRules = ((card._config.views || {})[v.id] || {}).rules;
-    const yamlSels = new Set((Array.isArray(yamlRules) ? yamlRules : []).map((r) => r && (r.show ?? r.hide)));
-    const eyeTitle = { default: 'Default (from the model); click: show', shown: 'Shown here; click: hide', hidden: 'Hidden here; click: back to default' };
-    const eyeIcon = { default: 'mdi:eye-outline', shown: 'mdi:eye', hidden: 'mdi:eye-off' };
-    const row = (r, cls = '') => {
+    const yamlViews = (card._config.views || {}) as Record<string, { rules?: unknown } | undefined>; // YAML: checked below
+    const yamlRules = (yamlViews[v.id] || {}).rules;
+    const yamlSels = new Set((Array.isArray(yamlRules) ? yamlRules as ({ show?: unknown; hide?: unknown } | null)[] : []).map((r) => r && (r.show ?? r.hide)));
+    const eyeTitle: Record<string, string> = { default: 'Default (from the model); click: show', shown: 'Shown here; click: hide', hidden: 'Hidden here; click: back to default' };
+    const eyeIcon: Record<string, string> = { default: 'mdi:eye-outline', shown: 'mdi:eye', hidden: 'mdi:eye-off' };
+    const row = (r: TreeRow, cls = '') => {
       const on = eff ? r.nodes.some((n) => eff[n]) : true;
       const part = on && !r.nodes.every((n) => full[n]);
       const state = ruleState(rules, r.sel);
@@ -133,7 +159,7 @@ export function viewsTab(ed) {
 }
 
 // "Side section" block: direction + position of the cut (layout.views[id].section, card world).
-export function sectionHtml(ed, v, lv) {
+export function sectionHtml(ed: EditMode, v: CardView, lv: LayoutView): string {
   const box = ed.view.model && ed.view.sectionBox();
   if (!box) return '';
   const plane = ed.card.sectionPlaneNow(v);
@@ -141,7 +167,7 @@ export function sectionHtml(ed, v, lv) {
   const dir = sectionDir(plane.normal);
   const [lo, hi] = sliderRange(ed, dir.normal, box);
   const pos = Math.min(hi, Math.max(lo, sectionPos(plane)));
-  const opts = SECTION_DIRS.map((d) => `<option value="${d.id}" ${d.id === dir.id ? 'selected' : ''}>${d.label}</option>`).join('');
+  const opts = SECTION_DIRS.map((d: { id: string; label: string }) => `<option value="${d.id}" ${d.id === dir.id ? 'selected' : ''}>${d.label}</option>`).join('');
   const src = lv.section ? 'Saved for this view.' : v.modelSection ? 'From the model.' : 'Default: through the middle of the house.';
   return `<div class="sub">Side section</div>
       <p class="hint">The Section button (box cutter) cuts the house here and looks at the cut face. ${src}</p>
@@ -151,18 +177,18 @@ export function sectionHtml(ed, v, lv) {
 }
 
 // slider range: the model box along the axis, on the 0.05 m grid
-export function sliderRange(ed, normal, box) {
+export function sliderRange(ed: EditMode, normal: number[], box: ModelBox): number[] {
   const [a, b] = sectionRange(normal, box);
   return [Math.floor(a / 0.05) * 0.05, Math.ceil(b / 0.05) * 0.05].map((x) => Math.round(x * 100) / 100);
 }
 
-export function sectionFromPanel(ed, v, pos) {
-  const sel = ed.panel.querySelector('[data-field="vw-sec-dir"]');
-  const dir = SECTION_DIRS.find((d) => d.id === (sel && sel.value)) || SECTION_DIRS[0];
+export function sectionFromPanel(ed: EditMode, v: CardView, pos: number): unknown {
+  const sel = ed.panel.querySelector<HTMLSelectElement>('[data-field="vw-sec-dir"]');
+  const dir = SECTION_DIRS.find((d: { id: string }) => d.id === (sel && sel.value)) || SECTION_DIRS[0];
   return sectionAt(dir.normal, Math.round(pos * 100) / 100);
 }
 
-export function nodePos(ed, idx, node) {
+export function nodePos(ed: EditMode, idx: ViewIndex, node: unknown): number {
   if (!ed._posCache || ed._posCache.idx !== idx) ed._posCache = { idx, map: new Map(idx.nodes.map((n, i) => [n.node, i])) };
   const p = ed._posCache.map.get(node);
   return p === undefined ? -1 : p;
@@ -170,30 +196,33 @@ export function nodePos(ed, idx, node) {
 
 // Panel buttons of the Views tab: each acts on the edited view (none: nothing happens). They commit or
 // render themselves (the rebuild after a commit renders the panel once), so none asks for a render.
-const onView = (fn) => (ed, btn) => {
-  const v = vwView(ed);
-  if (v) fn(ed, v, btn);
-};
-const after = (fn) => queueMicrotask(fn); // runs after the commit's rebuild (queued first)
+// (the same wrapper serves buttons and form fields: el is what the handler was given)
+function onView(fn: (ed: EditMode, v: CardView, el: FieldEl) => void): FieldHandler & ActHandler {
+  return (ed: EditMode, el: HTMLElement) => {
+    const v = vwView(ed);
+    if (v) fn(ed, v, el as FieldEl);
+  };
+}
+const after = (fn: () => void) => queueMicrotask(fn); // runs after the commit's rebuild (queued first)
 
-function move(ed, v, step) {
-  const ids = ed.card._views.map((x) => x.id);
+function move(ed: EditMode, v: CardView, step: number) {
+  const ids = (ed.card._views || []).map((x) => x.id);
   const i = ids.indexOf(v.id), j = i + step;
   if (i < 0 || j < 0 || j >= ids.length) return;
   [ids[i], ids[j]] = [ids[j], ids[i]];
   ed.commit({ ...ed.layout, view_order: ids });
 }
 
-function resetView(ed, v, patch) {
+function resetView(ed: EditMode, v: CardView, patch: Record<string, unknown>) {
   const card = ed.card;
   card.saveViewPatch(v.id, patch);
   if (v.id === card._viewId) after(() => card._resetCamera());
 }
 
-const acts = {
+const acts: Record<string, ActHandler> = {
   'vw-add': onView((ed, v) => {
     const card = ed.card;
-    const { id, n } = nextViewId([...card._views.map((x) => x.id), ...Object.keys(ed.layout.views || {})]);
+    const { id, n } = nextViewId([...(card._views || []).map((x) => x.id), ...Object.keys(ed.layout.views || {})]);
     // a copy of the current view: all its rules (model / generated base + saved), so it looks the same
     const views = { ...ed.layout.views, [id]: { added: true, label: `View ${n}`, rules: (v.rules || []).map((r) => ({ ...r })) } };
     ed.vwSel = null;
@@ -239,7 +268,7 @@ const acts = {
   }),
   'vw-pivot-cancel': onView((ed) => cancelPivot(ed)),
   'vw-expand': onView((ed, v, btn) => {
-    const sel = btn.dataset.sel;
+    const sel = btn.dataset.sel || '';
     if (ed.vwExpanded.has(sel)) ed.vwExpanded.delete(sel);
     else ed.vwExpanded.add(sel);
     ed.render();
@@ -248,16 +277,16 @@ const acts = {
   'vw-reset-cam': onView((ed, v) => resetView(ed, v, ed.card._mode === 'top' ? { camera_top: null } : { camera: null })),
   'vw-reset': onView((ed, v) => resetView(ed, v, { rules: [], camera: null, camera_top: null })),
   'vw-eye': onView((ed, v, btn) => {
-    const sel = btn.dataset.sel;
+    const sel = btn.dataset.sel || '';
     setRule(ed, v.id, sel, nextEyeState(ruleState(layoutRules(ed, v.id), sel)));
   }),
-  'vw-rm': onView((ed, v, btn) => setRule(ed, v.id, btn.dataset.sel, 'default')),
+  'vw-rm': onView((ed, v, btn) => setRule(ed, v.id, btn.dataset.sel || '', 'default')),
 };
 
-const fields = {
+const fields: Record<string, FieldHandler> = {
   'vw-view': (ed, el) => {
     const card = ed.card;
-    const v = card._views.find((x) => x.id === el.value);
+    const v = (card._views || []).find((x) => x.id === el.value);
     if (!v) return;
     ed.vwPick = null;
     ed.view.highlightModelNode(null);
@@ -271,7 +300,7 @@ const fields = {
     const card = ed.card;
     // a new axis: start in the middle of the model along it
     const box = ed.view.sectionBox();
-    const dir = SECTION_DIRS.find((d) => d.id === el.value);
+    const dir = SECTION_DIRS.find((d: { id: string }) => d.id === el.value);
     if (!box || !dir) return;
     const [lo, hi] = sliderRange(ed, dir.normal, box);
     const old = card.sectionPlaneNow(v);
@@ -291,8 +320,9 @@ const fields = {
 };
 
 // the section position slider previews the cut while dragged (saved on change)
-const inputs = {
+const inputs: Record<string, FieldHandler> = {
   'vw-sec-pos': onView((ed, v, el) => ed.card.previewSection(v.id, sectionFromPanel(ed, v, Number(el.value)))),
 };
 
-export const viewsTabDef = { id: 'views', html: viewsTab, acts, fields, inputs };
+export const viewsTabDef = defineTab({ id: 'views', html: viewsTab, acts, fields, inputs });
+

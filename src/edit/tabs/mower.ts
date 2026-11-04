@@ -5,31 +5,43 @@ import { setupChecklist } from '../../mower-setup.js';
 import { colorList, removeColorPatch, MAX_COLORS } from '../../mower-image.js';
 import { closePicker, openColorPicker, alignPicker, cancelAlign, markFront } from '../tools/map-tools.js';
 import { entOption, esc, fmt, sliderHtml } from '../html.js';
+import { colorsOf } from '../tools/map-tools.js';
+import { defineTab } from './tab.js';
+import type { ActHandler, FieldHandler } from './tab.js';
+import type { EditMode, MapColorKind } from '../../edit-mode.js';
+import type { MowerImageResult, MowerLive } from '../host.js';
+import type { LayoutMower, MowerCalibrationPoint, MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.js';
+
+type Slider = (f: string, label: string, min: number, max: number, step: number, v: unknown, unit?: string) => string;
+interface SetupRow { ok?: boolean; optional?: boolean; target: string; label: string }
+// mower-setup.js is still JS: its `auto = null` default is inferred as the parameter's only type
+const checklist = setupChecklist as (m: LayoutMower, states: Record<string, unknown>, found: boolean, auto: unknown) => { rows: SetupRow[]; complete: boolean };
+type Datalist = (id: string, list: string[]) => string;
 
 // ---------- mower ----------
-export function mower(ed) {
+export function mower(ed: EditMode): LayoutMower {
   return ed.layout.mower || {};
 }
 
-export function setMower(ed, patch) {
-  const cur = ed.layout.mower || { entity: '', source: 'gps', x_attr: 'x', y_attr: 'y', floor_id: ed.floors[0].id, calibration: [], overlay: null };
+export function setMower(ed: EditMode, patch: Partial<LayoutMower>) {
+  const cur: LayoutMower = ed.layout.mower || { entity: '', source: 'gps', x_attr: 'x', y_attr: 'y', floor_id: ed.floors[0].id, calibration: [], overlay: null };
   ed.commit({ ...ed.layout, mower: { ...cur, ...patch } });
   ed.render();
 }
 
-export function setOverlay(ed, patch, rerender = true) {
+export function setOverlay(ed: EditMode, patch: Partial<MowerOverlay>, rerender = true) {
   const m = mower(ed);
-  const cur = m.overlay || { entity: '', x: 0, y: 0, rotation: 0, width: 20, opacity: 0.6, refresh: 10 };
+  const cur: MowerOverlay = m.overlay || { entity: '', x: 0, y: 0, rotation: 0, width: 20, opacity: 0.6, refresh: 10 };
   const overlay = { ...cur, ...patch };
   ed.card._commit({ ...ed.layout, mower: { ...m, overlay } });
   if (rerender) ed.render();
 }
 
 // live values in the Mower tab (shown), without re-rendering the panel
-export function mowerLive(ed) {
+export function mowerLive(ed: EditMode) {
   const el = ed.panel.querySelector('.mower-live');
   if (el) el.innerHTML = mowerLiveHtml(ed) + mapInfoHtml(ed);
-  const cl = ed.panel.querySelector('.mower-setup');
+  const cl = ed.panel.querySelector<HTMLDetailsElement>('.mower-setup');
   if (cl) {
     ed._setupOpen = cl.open;
     const html = setupHtml(ed, true);
@@ -38,7 +50,7 @@ export function mowerLive(ed) {
 }
 
 // Did the last position reading / icon detection put the mower on the plan?
-export function mowerFound(ed) {
+export function mowerFound(ed: EditMode): boolean {
   const m = mower(ed), live = ed.card._mowerLive;
   if (!live || !live.floorId) return false;
   if (m.source !== 'image') return true;
@@ -47,10 +59,10 @@ export function mowerFound(ed) {
 }
 
 // Setup checklist at the top of the Mower tab; each row scrolls to its control.
-export function setupHtml(ed, keepOpen) {
+export function setupHtml(ed: EditMode, keepOpen: boolean): string {
   const m = mower(ed), on = ed.card.mowerAuto(m);
   const auto = on ? { ...on, mismatch: !!ed.card._autoMismatch } : null;
-  const { rows, complete } = setupChecklist(m, ed.hass.states, mowerFound(ed), auto);
+  const { rows, complete } = checklist(m, ed.hass.states, mowerFound(ed), auto);
   const open = !complete || (keepOpen && ed._setupOpen);
   const li = rows.map((r) => `<li><button class="link setup-row ${r.ok ? 'ok' : r.optional ? 'opt' : 'todo'}" data-act="setup-go" data-target="${esc(r.target)}">
       <span class="mark">${r.ok ? '✓' : r.optional ? '–' : '✗'}</span> ${esc(r.label)}${r.optional && !r.ok ? ' <span class="dim">optional</span>' : ''}</button></li>`).join('');
@@ -59,15 +71,15 @@ export function setupHtml(ed, keepOpen) {
 }
 
 // "Stripes: 45° (NE–SW) · Mowed: 37 %" from the processed map, or ''.
-export function mapInfoHtml(ed) {
+export function mapInfoHtml(ed: EditMode): string {
   const mi = ed.card.mapInfo ? ed.card.mapInfo() : {};
-  const parts = [];
+  const parts: string[] = [];
   if (mi.stripes) parts.push(`Stripes: ${esc(mi.stripes)}`);
   if (mi.mowed) parts.push(`Mowed: ${esc(mi.mowed)}${mi.mowedSource ? ` (${esc(mi.mowedSource)})` : ''}`);
   return parts.length ? `<br><span class="map-info">${parts.join(' · ')}</span>` : '';
 }
 
-export function mowerLiveHtml(ed) {
+export function mowerLiveHtml(ed: EditMode): string {
   const m = mower(ed);
   const st = m.entity && ed.hass.states[m.entity];
   if (!m.entity) return m.source === 'image' ? 'Pick the mower entity: its marker follows the icon found on the map image.' : 'Pick the entity that reports the mower position.';
@@ -78,23 +90,24 @@ export function mowerLiveHtml(ed) {
     ? `No numeric <b>${esc(m.x_attr || 'x')}</b> / <b>${esc(m.y_attr || 'y')}</b> attributes on ${esc(m.entity)}.`
     : `No latitude/longitude on ${esc(m.entity)} (state: ${esc(st.state)}).`;
   const live = ed.card._mowerLive;
-  const raw = r.raw.map((v) => (m.source === 'xy' ? fmt(v) : v.toFixed(6))).join(', ');
+  const raw = (r.raw ?? []).map((v: number) => (m.source === 'xy' ? fmt(v) : v.toFixed(6))).join(', ');
   const plan = live && live.floorId ? `on plan (${fmt(live.x)}, ${fmt(live.y)})` : 'not on the plan yet: add a calibration point';
   const ms = ed.card.mowerStatus();
   return `${ms && ms.kind === 'dock' ? `<span class="mower-status">${esc(ed.card.mowerStatusText())}</span><br>` : ''}Reading ${raw}<br>${plan}`;
 }
 
-export function mowerImageHtml(ed) {
+export function mowerImageHtml(ed: EditMode): string {
   const m = mower(ed);
-  const ic = m.image || {};
+  const ic: MowerImageConfig = m.image || {};
   if (!m.overlay || !m.overlay.entity) return 'Add the map overlay below and align it with the plan: that alignment is the calibration.';
   const hd = ed.card.mowerHeading();
-  const head = hd ? `<br>Heading ${hd.deg}° (${{ picture: 'mower picture', icon: 'icon', movement: 'movement', dock: 'dock' }[hd.source] || hd.source})` : '';
+  const SOURCES: Record<string, string> = { picture: 'mower picture', icon: 'icon', movement: 'movement', dock: 'dock' };
+  const head = hd ? `<br>Heading ${hd.deg}° (${SOURCES[hd.source] || hd.source})` : '';
   if (!colorList(ic).length && !ed.card.mowerAuto(m)) return 'Pick the mower icon colour on the map (below).';
   return mowerImageFound(ed) + head;
 }
 
-export function mowerImageFound(ed) {
+export function mowerImageFound(ed: EditMode): string {
   const r = ed.card._imageResult;
   const live = ed.card._mowerLive;
   if (r && r.error) return `<span style="color: var(--error-color, #db4437)">${esc(r.error)}</span>`;
@@ -103,26 +116,26 @@ export function mowerImageFound(ed) {
   const at = live && live.floorId ? ` at ${fmt(live.x)}, ${fmt(live.y)}` : '';
   if (st && st.kind === 'dock') return line + at;
   if (ed.card.mowerAuto(mower(ed))) return line + (st && (st.kind === 'tracked' || st.kind === 'last') ? at : '');
-  if (line && st.kind !== 'searching') return `${line}<br>${mowerColourFound(ed, r, live)}`;
+  if (line && st && st.kind !== 'searching') return `${line}<br>${mowerColourFound(ed, r, live)}`;
   return mowerColourFound(ed, r, live);
 }
 
-export function mowerColourFound(ed, r, live) {
+export function mowerColourFound(ed: EditMode, r: MowerImageResult | null | undefined, live: MowerLive | null | undefined): string {
   if (r && r.missing) return 'Mower icon not found' + (live && live.floorId ? ` (last seen at ${fmt(live.x)}, ${fmt(live.y)})` : '') + '.';
   if (r && live && live.floorId) return `Found at ${fmt(live.x)}, ${fmt(live.y)} (${r.count} px${r.match ? `, picture match ${r.match.toFixed(2)}` : ''})`;
   return 'Looking for the mower icon…';
 }
 
-export function mowerTab(ed) {
+export function mowerTab(ed: EditMode): string {
   const m = mower(ed);
   const states = ed.hass.states;
   const ids = Object.keys(states).sort();
   const posIds = ids.filter((id) => /^(device_tracker|sensor|lawn_mower|vacuum)\./.test(id));
   const picIds = ids.filter((id) => /^(image|camera)\./.test(id));
   const errIds = ids.filter((id) => /^(binary_sensor|sensor)\./.test(id));
-  const datalist = (id, list) => `<datalist id="${id}">${list.map((x) => entOption(ed, x)).join('')}</datalist>`;
+  const datalist: Datalist = (id, list) => `<datalist id="${id}">${list.map((x) => entOption(ed, x)).join('')}</datalist>`;
   const floorOpts = ed.floors.map((f) => `<option value="${esc(f.id)}" ${f.id === ed.card._mowerFloor() ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
-  const cal = m.calibration || [];
+  const cal: MowerCalibrationPoint[] = m.calibration || [];
   const err = calibrationError(cal, m.source === 'xy' ? 'xy' : 'gps');
   const fitName = ['', 'shift only', 'shift, rotate, scale', 'affine (least squares)'][Math.min(cal.length, 3)];
   ed._setupLast = setupHtml(ed, false);
@@ -154,7 +167,7 @@ export function mowerTab(ed) {
 }
 
 // Colour chips (swatch, rgb, × removes) of one category: 'icon' or bg / mowed / nomow.
-export function chipsHtml(ed, cols, kind) {
+export function chipsHtml(ed: EditMode, cols: number[][], kind: string): string {
   if (!cols.length) return '';
   return `<div class="chips colors">${cols.map((c, i) => `<span class="cchip" title="rgb(${c.join(', ')})"><span class="swatch" style="background:rgb(${c.join(',')})"></span>${c.join(', ')}
       <button class="link" data-act="color-del" data-kind="${kind}" data-i="${i}" title="Remove this colour" aria-label="Remove">×</button></span>`).join('')}
@@ -162,7 +175,7 @@ export function chipsHtml(ed, cols, kind) {
 }
 
 // Auto mode: the live map compared with the static map, the mower found by its picture.
-export function autoSection(ed, m) {
+export function autoSection(ed: EditMode, m: LayoutMower): string {
   const det = ed.card.mowerAuto(m, true);
   if (!det) return '';
   const imgs = Object.keys(ed.hass.states).filter((e) => e.startsWith('image.')).sort();
@@ -178,8 +191,8 @@ export function autoSection(ed, m) {
   return out;
 }
 
-export function mowerImageSection(ed, m) {
-  const ic = m.image || {};
+export function mowerImageSection(ed: EditMode, m: LayoutMower): string {
+  const ic: MowerImageConfig = m.image || {};
   const o = m.overlay;
   let out = autoSection(ed, m);
   if (ed.card.mowerAuto(m)) return out + markFrontHtml(ed, m);
@@ -203,15 +216,15 @@ export function mowerImageSection(ed, m) {
 }
 
 // "Mark front": click the icon's front tip once; the offset corrects the icon heading.
-export function markFrontHtml(ed, m) {
-  const ic = m.image || {};
+export function markFrontHtml(ed: EditMode, m: LayoutMower): string {
+  const ic: MowerImageConfig = m.image || {};
   const can = !!ed.card._imageBlob && ed.card._iconHeadRaw !== undefined && ed.card._iconHeadRaw !== null;
   const off = Number(ic.front_offset) || 0;
   return `<div class="row"><button data-act="mark-front" ${can ? '' : 'disabled'} title="Click the front tip of the mower icon in the map picture">Mark front</button>
       ${off ? `<span class="dim">offset ${Math.round(off)}°</span> <button class="link" data-act="front-clear">Clear</button>` : ''}</div>`;
 }
 
-export function calibrationHtml(ed, m, cal, err, fitName) {
+export function calibrationHtml(ed: EditMode, m: LayoutMower, cal: MowerCalibrationPoint[], err: number, fitName: string): string {
   let out = `<div class="sub">Calibration (${cal.length} point${cal.length === 1 ? '' : 's'}${cal.length ? ': ' + fitName : ''})</div>`;
   if (ed.calibrating) {
     out += `<section class="box"><p>Click on the plan where the mower is right now.</p>
@@ -226,14 +239,14 @@ export function calibrationHtml(ed, m, cal, err, fitName) {
   return out;
 }
 
-export function overlayHtml(ed, m, picIds, datalist) {
+export function overlayHtml(ed: EditMode, m: LayoutMower, picIds: string[], datalist: Datalist): string {
   let out = '';
   const o = m.overlay;
   out += `<div class="sub">Map overlay</div>
       <label>Image or camera entity <input list="fp-pic-ents" data-field="ov-entity" value="${esc((o && o.entity) || '')}" placeholder="image.mower_map"></label>
       ${datalist('fp-pic-ents', picIds)}`;
   if (o && o.entity) {
-    const slider = (f, label, min, max, step, v, unit = '') => sliderHtml(`ov-${f}`, label, min, max, step, v, unit);
+    const slider: Slider = (f, label, min, max, step, v, unit = '') => sliderHtml(`ov-${f}`, label, min, max, step, v, unit);
     out += slider('x', 'x', -100, 100, 0.05, o.x ?? 0, 'm')
       + slider('y', 'y', -100, 100, 0.05, o.y ?? 0, 'm')
       + slider('rotation', 'Rotation', -180, 180, 0.5, o.rotation ?? 0, '°')
@@ -260,18 +273,19 @@ export function overlayHtml(ed, m, picIds, datalist) {
 
 // Map picture processing: picked colours (background transparent, mowed stripes, shaded no-mow),
 // the mower icon hidden, clipped to a zone.
-export function mapProcessingHtml(ed, m, o, slider) {
+export function mapProcessingHtml(ed: EditMode, m: LayoutMower, o: MowerOverlay, slider: Slider): string {
   let out = '<div class="sub">Map picture</div>';
   if (ed.card.mowerAuto(m)) {
     return out + '<p class="hint">Automatic: compared with the static map, unchanged parts are transparent, mowed stripes light, no-mow areas shaded.</p>';
   }
   if (ed.colorPick && ed.colorPick !== true) {
-    out += `<section class="box"><p>Click the ${{ bg: 'background', mowed: 'mowed stripe', nomow: 'no-mow area' }[ed.colorPick]} colour on the map overlay. Esc cancels.</p>
+    const NAMES: Record<MapColorKind, string> = { bg: 'background', mowed: 'mowed stripe', nomow: 'no-mow area' };
+    out += `<section class="box"><p>Click the ${NAMES[ed.colorPick]} colour on the map overlay. Esc cancels.</p>
         <div class="row"><button data-act="map-pick-cancel">Cancel</button></div></section>`;
   }
-  const kinds = [['bg', 'Pick background colour', 'Background: transparent'], ['mowed', 'Pick mowed colour', 'Mowed stripes: light'], ['nomow', 'Pick no-mow colour', 'No-mow areas: shaded']];
+  const kinds: [MapColorKind, string, string][] = [['bg', 'Pick background colour', 'Background: transparent'], ['mowed', 'Pick mowed colour', 'Mowed stripes: light'], ['nomow', 'Pick no-mow colour', 'No-mow areas: shaded']];
   for (const [k, label, what] of kinds) {
-    const cols = colorList(o, k);
+    const cols = colorsOf(o, k);
     out += `<div class="row"><button data-act="map-pick" data-kind="${k}" ${ed.colorPick || cols.length >= MAX_COLORS ? 'disabled' : ''}>${label}</button>${cols.length ? ` <span class="dim">${what}</span>` : ''}</div>`;
     out += chipsHtml(ed, cols, k);
     if (cols.length) out += slider(`${k}_tolerance`, 'Tolerance', 0, 128, 1, o[`${k}_tolerance`] ?? 30);
@@ -291,24 +305,24 @@ export function mapProcessingHtml(ed, m, o, slider) {
   return out;
 }
 
-function toMowerFloor(ed) {
+function toMowerFloor(ed: EditMode) {
   if (ed.card._floor !== ed.card._mowerFloor()) ed.card._setFloor(ed.card._mowerFloor());
 }
 
 // The colour pick buttons end the calibration click, the move tool and aligning first.
-function pickColor(ed, kind) {
+function pickColor(ed: EditMode, kind: 'icon' | MapColorKind) {
   ed.calibrating = null;
   ed.overlayMove = false;
   ed.aligning = null;
   openColorPicker(ed, kind);
 }
 
-const acts = {
+const acts: Record<string, ActHandler> = {
   'cal-add': (ed) => {
     const m = mower(ed);
-    const r = readSource(ed.hass.states[m.entity], m);
+    const r = m.entity ? readSource(ed.hass.states[m.entity], m) : null; // no entity: no reading, as before
     if (!r) { ed.message = { text: 'No position reading from the mower entity right now.', error: true }; return 'render'; }
-    ed.calibrating = { src: r.raw };
+    ed.calibrating = { src: r.raw as PlanPoint }; // readSource: [u, v] or [lat, lon]
     ed.overlayMove = false;
     toMowerFloor(ed);
     return 'render';
@@ -317,20 +331,20 @@ const acts = {
   'img-pick': (ed) => { pickColor(ed, 'icon'); },
   'img-pick-cancel': (ed) => { ed.colorPick = false; return 'render'; },
   'map-pick-cancel': (ed) => { ed.colorPick = false; return 'render'; },
-  'map-pick': (ed, btn) => { pickColor(ed, btn.dataset.kind); },
+  'map-pick': (ed, btn) => { pickColor(ed, btn.dataset.kind as MapColorKind); }, // data-kind from mapProcessingHtml
   'align-image': (ed) => { alignPicker(ed); },
   'mark-front': (ed) => { markFront(ed); },
-  'front-clear': (ed) => { const ic = mower(ed).image || {}; ed.card._headSt = null; setMower(ed, { image: { ...ic, front_offset: 0 } }); },
+  'front-clear': (ed) => { const ic: MowerImageConfig = mower(ed).image || {}; ed.card._headSt = null; setMower(ed, { image: { ...ic, front_offset: 0 } }); },
   'color-del': (ed, btn) => {
     const k = btn.dataset.kind, i = Number(btn.dataset.i);
-    if (k === 'icon') { const ic = mower(ed).image || {}; setMower(ed, { image: { ...ic, ...removeColorPatch(ic, null, i) } }); } else setOverlay(ed, removeColorPatch(mower(ed).overlay || {}, k, i));
+    if (k === 'icon') { const ic: MowerImageConfig = mower(ed).image || {}; setMower(ed, { image: { ...ic, ...removeColorPatch(ic, null, i) } }); } else setOverlay(ed, removeColorPatch(mower(ed).overlay || {}, (k ?? null) as MapColorKind | null, i));
     if (ed.picker) ed.picker.refresh();
   },
   'cal-del': (ed, btn) => { setMower(ed, { calibration: (mower(ed).calibration || []).filter((_, i) => i !== Number(btn.dataset.i)) }); },
   'ov-move': (ed) => { closePicker(ed); ed.overlayMove = !ed.overlayMove; ed.calibrating = null; ed.colorPick = false; ed.aligning = null; return 'render'; },
   'ov-remove': (ed) => { closePicker(ed); ed.overlayMove = false; ed.aligning = null; setMower(ed, { overlay: null }); },
   'ov-align': (ed) => {
-    const o = mower(ed).overlay || {};
+    const o: MowerOverlay = mower(ed).overlay || {};
     // the starting alignment: Cancel / Esc put it back, Done keeps the fit
     ed.aligning = { pairs: [], pending: null, start: { x: o.x ?? 0, y: o.y ?? 0, rotation: o.rotation ?? 0, width: o.width ?? 20 } };
     ed.overlayMove = false;
@@ -350,7 +364,7 @@ const acts = {
   },
   'ov-align-cancel': (ed) => { cancelAlign(ed); return 'render'; },
   'setup-go': (ed, btn) => {
-    const t = btn.dataset.target && ed.panel.querySelector(btn.dataset.target);
+    const t = btn.dataset.target ? ed.panel.querySelector<HTMLElement>(btn.dataset.target) : null;
     if (!t) return;
     const box = t.closest('label') || t;
     box.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -363,12 +377,12 @@ const acts = {
   'mower-remove': (ed) => { ed.calibrating = null; ed.colorPick = false; ed.overlayMove = false; ed.aligning = null; ed.commit({ ...ed.layout, mower: null }); ed.render(); },
 };
 
-const fields = {
+const fields: Record<string, FieldHandler> = {
   'mower-entity': (ed, el) => { setMower(ed, { entity: el.value.trim() }); },
   // readings of the other kind cannot be mixed into the same calibration
   'mower-source': (ed, el) => { setMower(ed, { source: el.value, calibration: [] }); },
   'mower-img-entity': (ed, el) => {
-    const ic = { ...mower(ed).image };
+    const ic: MowerImageConfig = { ...mower(ed).image };
     const v = el.value.trim();
     if (v) ic.entity = v;
     else delete ic.entity;
@@ -401,24 +415,25 @@ const fields = {
     if (!v) setMower(ed, { overlay: null });
     else {
       // first time: centre the map on the current view
-      const t = ed.view.controls.target;
+      const t = ed.view.controls!.target; // the controls exist while the card is shown
       const first = !mower(ed).overlay;
       setOverlay(ed, first ? { entity: v, x: Math.round(t.x * 10) / 10, y: Math.round(-t.z * 10) / 10 } : { entity: v });
     }
   },
 };
 
-const inputs = {
+const inputs: Record<string, FieldHandler> = {
   'mower-img-tolerance': () => {}, // saved on change
 };
 
 // overlay sliders (ov-<key> ranges) move the map live, without re-rendering the panel under the pointer
-const ranges = {
+const ranges: Record<string, FieldHandler> = {
   'ov-': (ed, el) => {
-    const key = el.dataset.field.slice(3);
+    const key = String(el.dataset.field).slice(3); // dispatched by its data-field prefix
     const v = Number(el.value);
     setOverlay(ed, { [key]: v }, false);
   },
 };
 
-export const mowerTabDef = { id: 'mower', html: mowerTab, live: mowerLive, acts, fields, inputs, ranges };
+export const mowerTabDef = defineTab({ id: 'mower', html: mowerTab, live: mowerLive, acts, fields, inputs, ranges });
+

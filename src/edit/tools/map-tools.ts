@@ -6,9 +6,27 @@ import { MapPicker } from '../../map-picker.js';
 import { readImagePixels, imagePixels, medianColor, colorList, addColorPatch, removeColorPatch, MAX_COLORS, fitOverlay } from '../../mower-image.js';
 import { mapPoint } from '../router.js';
 import { mower, setMower, setOverlay } from '../tabs/mower.js';
+import type { EditMode, MapColorKind } from '../../edit-mode.js';
+import type { PickerImage, PickerPoint, RGB } from '../../map-picker.js';
+import type { MowerImageConfig, MowerOverlay, PlanPoint } from '../../types/layout.js';
+
+
+/** Colour categories: the mower icon or one of the map colours. */
+export type ColorKind = 'icon' | MapColorKind;
+/** What the map overlay plane keeps of its last load (mapPlane.userData.loaded). */
+interface LoadedMap { image?: PickerImage & { naturalWidth?: number; naturalHeight?: number } }
+
+// mower-image.js is still JS: its `kind = null` default is inferred as the parameter's only type
+export const colorsOf = colorList as (obj: unknown, kind?: string | null) => RGB[];
+
+// the overlay picture as loaded, if any
+function loadedMap(ed: EditMode): LoadedMap | null {
+  const pl = ed.view.mapPlane;
+  return pl ? (pl.userData.loaded as LoadedMap | null | undefined) || null : null; // three.js userData
+}
 
 // ---------- 2D picker on the original map image ----------
-export function closePicker(ed) {
+export function closePicker(ed: EditMode) {
   const p = ed.picker;
   ed.picker = null;
   if (p) p.close('closed');
@@ -16,8 +34,8 @@ export function closePicker(ed) {
 
 // The map picture as loaded (raw, not processed) for a category: the overlay's picture, or for the
 // icon a separate image entity (fetched). -> CanvasImageSource or null.
-export async function pickerImage(ed, kind) {
-  const m = mower(ed), o = m.overlay || {}, ic = m.image || {};
+export async function pickerImage(ed: EditMode, kind: ColorKind): Promise<PickerImage | null> {
+  const m = mower(ed), o: MowerOverlay = m.overlay || {}, ic: MowerImageConfig = m.image || {};
   if (kind === 'icon' && ic.entity && ic.entity !== o.entity) {
     const url = overlayUrl(ed.hass, ic.entity, Date.now());
     if (!url || typeof createImageBitmap !== 'function') return null;
@@ -25,11 +43,11 @@ export async function pickerImage(ed, kind) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return createImageBitmap(await res.blob());
   }
-  const ld = ed.view.mapPlane && ed.view.mapPlane.userData.loaded;
+  const ld = loadedMap(ed);
   return ld && ld.image ? ld.image : null;
 }
 
-export function pickerFallback(ed, kind) {
+export function pickerFallback(ed: EditMode, kind: ColorKind) {
   // no picture to show: pick on the map in 3D (the clicked overlay pixel)
   ed.colorPick = kind === 'icon' ? true : kind;
   if (ed.card._floor !== ed.card._mowerFloor()) ed.card._setFloor(ed.card._mowerFloor());
@@ -38,26 +56,26 @@ export function pickerFallback(ed, kind) {
 }
 
 // Colour picks for a category ('icon', 'bg', 'mowed', 'nomow'); stays open for more shades.
-export async function openColorPicker(ed, kind) {
+export async function openColorPicker(ed: EditMode, kind: ColorKind) {
   closePicker(ed);
   ed.colorPick = false;
-  let image = null;
+  let image: PickerImage | null = null;
   try { image = await pickerImage(ed, kind); } catch (e) { console.warn('floorplan3d: could not read the mower map image', e); }
   if (!image) { pickerFallback(ed, kind); return; }
   const names = { icon: 'mower icon', bg: 'background', mowed: 'mowed stripe', nomow: 'no-mow area' };
   const icon = kind === 'icon';
-  const cur = () => (icon ? mower(ed).image || {} : mower(ed).overlay || {});
+  const cur = (): MowerImageConfig | MowerOverlay => (icon ? mower(ed).image || {} : mower(ed).overlay || {});
   try {
     ed.picker = new MapPicker(ed.card._stage, {
       image, mode: 'color', kind,
       title: `Click the ${names[kind]} colour (up to ${MAX_COLORS})`,
-      colors: () => colorList(cur(), icon ? null : kind),
+      colors: () => colorsOf(cur(), icon ? null : kind),
       tolerance: () => Number(icon ? cur().tolerance ?? 40 : cur()[`${kind}_tolerance`] ?? 30),
       onColor: (rgb, q) => {
-        if (colorList(cur(), icon ? null : kind).length >= MAX_COLORS) { ed.message = { text: `At most ${MAX_COLORS} colours: remove one first.`, error: true }; ed.render(); return; }
+        if (colorsOf(cur(), icon ? null : kind).length >= MAX_COLORS) { ed.message = { text: `At most ${MAX_COLORS} colours: remove one first.`, error: true }; ed.render(); return; }
         ed.message = null;
         if (icon) addMowerColor(ed, rgb, q, { imgW: q.imgW, imgH: q.imgH, width: q.imgW });
-        else addMapColor(ed, kind, rgb);
+        else addMapColor(ed, kind as MapColorKind, rgb); // not the icon
       },
       onRemove: (i) => {
         if (icon) { const ic = cur(); setMower(ed, { image: { ...ic, ...removeColorPatch(ic, null, i) } }); } else setOverlay(ed, removeColorPatch(cur(), kind, i));
@@ -73,17 +91,17 @@ export async function openColorPicker(ed, kind) {
 }
 
 // Align by points: the image point in the 2D picker, then the model point in 3D.
-export function alignPicker(ed) {
+export function alignPicker(ed: EditMode) {
   const a = ed.aligning;
   if (!a || a.pending) return;
   closePicker(ed);
-  const ld = ed.view.mapPlane && ed.view.mapPlane.userData.loaded;
+  const ld = loadedMap(ed);
   if (!ld || !ld.image) return; // 3D fallback: click the map on the plan
   try {
     ed.picker = new MapPicker(ed.card._stage, {
       image: ld.image, mode: 'point',
       title: `Point ${a.pairs.length + 1}: click a spot on the map image you can find on the model`,
-      onPoint: ({ px, py }) => {
+      onPoint: ({ px, py }: PickerPoint) => {
         if (ed.aligning !== a) return;
         a.pending = { px, py };
         ed.message = null;
@@ -98,7 +116,7 @@ export function alignPicker(ed) {
 }
 
 // Stop aligning and put the overlay back where it was when "Align by points" started.
-export function cancelAlign(ed) {
+export function cancelAlign(ed: EditMode) {
   closePicker(ed);
   const a = ed.aligning;
   ed.aligning = null;
@@ -108,10 +126,11 @@ export function cancelAlign(ed) {
 // "Align by points": odd clicks pick a spot on the map image (pixel through the current overlay),
 // even clicks the same spot on the model (surface under the pointer, else the map's height).
 // From 2 pairs on, the overlay is fitted to all pairs (similarity, least squares for 3+).
-export function alignClick(ed, e) {
-  const a = ed.aligning;
+export function alignClick(ed: EditMode, e: PointerEvent) {
+  const a = ed.aligning!; // the 'align' route: set
   const o = mower(ed).overlay;
-  const img = ed.view.mapPlane && ed.view.mapPlane.userData.loaded && ed.view.mapPlane.userData.loaded.image;
+  const ld = loadedMap(ed);
+  const img = ld && ld.image;
   if (!o || !img) { ed.aligning = null; ed.message = { text: 'Wait for the map image to load.', error: true }; ed._syncStageClasses(); ed.render(); return; }
   const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
   if (!a.pending) {
@@ -124,13 +143,13 @@ export function alignClick(ed, e) {
     return;
   }
   const hit = ed.view.model ? ed.view.surfaceAt(e.clientX, e.clientY) : null;
-  const plan = hit ? [hit.point.x, -hit.point.z] : mapPoint(ed, e);
+  const plan: PlanPoint | null = hit ? [hit.point.x, -hit.point.z] : mapPoint(ed, e);
   if (!plan) return;
   a.pairs = [...a.pairs, { ...a.pending, plan }];
   a.pending = null;
   const fit = a.pairs.length >= 2 ? fitOverlay(a.pairs, W, H) : null;
   if (fit) {
-    const r = (v, k) => Math.round(v * k) / k;
+    const r = (v: number, k: number) => Math.round(v * k) / k;
     setOverlay(ed, { x: r(fit.x, 1000), y: r(fit.y, 1000), rotation: r(fit.rotation, 100), width: r(fit.width, 1000) });
   } else ed.render();
   alignPicker(ed); // the next image point
@@ -138,30 +157,31 @@ export function alignClick(ed, e) {
 
 // Add a mower icon colour (up to MAX_COLORS); q: the clicked image pixel, where tracking starts
 // (at the clicked icon, not the largest blob of its colours). img: { imgW, imgH, width }.
-export function addMowerColor(ed, color, q, img) {
-  const ic = mower(ed).image || {};
+export function addMowerColor(ed: EditMode, color: RGB, q: PickerPoint | null, img: { imgW: number; imgH: number; width: number } | null) {
+  const ic: MowerImageConfig = mower(ed).image || {};
   const image = { tolerance: 40, min_pixels: 4, ...ic, ...addColorPatch(ic, null, color) };
   if (q && img) ed.card._imageBlob = { px: q.px, py: q.py, count: null, misses: 0, imgW: img.imgW, imgH: img.imgH, sampleW: img.width, colors: colorList(image) };
   setMower(ed, { image });
 }
 
-export function addMapColor(ed, kind, color, rerender = true) {
+export function addMapColor(ed: EditMode, kind: MapColorKind, color: RGB, rerender = true) {
   setOverlay(ed, addColorPatch(mower(ed).overlay || {}, kind, color), rerender);
 }
 
 // Colour at an image position (fractions 0..1 from the top left) of the RAW map image: median of 5x5 pixels.
-export async function pickMowerColor(ed, fx, fy) {
+export async function pickMowerColor(ed: EditMode, fx: number, fy: number) {
   const m = mower(ed);
   const o = m.overlay;
-  const ic = m.image || {};
+  const ic: MowerImageConfig = m.image || {};
   const entity = ic.entity || (o && o.entity);
   const url = entity && overlayUrl(ed.hass, entity, Date.now());
   if (!url || !o) { ed.message = { text: 'Set the map overlay first.', error: true }; ed.render(); return; }
   try {
     // the picture on the plane when it is the same entity (what was clicked), else a fresh read
-    const ld = ed.view.mapPlane && ed.view.mapPlane.userData.loaded;
-    const same = ld && ld.image && (!ic.entity || ic.entity === o.entity);
-    const img = same ? imagePixels(ld.image, ld.image.naturalWidth || ld.image.width, ld.image.naturalHeight || ld.image.height) : await readImagePixels(url);
+    const ld = loadedMap(ed);
+    const li = ld && ld.image;
+    const same = li && (!ic.entity || ic.entity === o.entity);
+    const img = same ? imagePixels(li, li.naturalWidth || li.width, li.naturalHeight || li.height) : await readImagePixels(url);
     const q = { px: fx * img.imgW, py: fy * img.imgH };
     const px = Math.floor(fx * img.width), py = Math.floor(fy * img.height);
     if (px < 0 || py < 0 || px >= img.width || py >= img.height) {
@@ -180,9 +200,10 @@ export async function pickMowerColor(ed, fx, fy) {
 
 // Map colour (background / mowed / no-mow) at an image position (fractions from the top left):
 // median of the 5x5 pixels of the loaded overlay picture as loaded (not the processed one).
-export function pickMapColor(ed, kind, fx, fy) {
+export function pickMapColor(ed: EditMode, kind: MapColorKind, fx: number, fy: number) {
   const o = mower(ed).overlay;
-  const img = ed.view.mapPlane && ed.view.mapPlane.userData.loaded && ed.view.mapPlane.userData.loaded.image;
+  const ld = loadedMap(ed);
+  const img = ld && ld.image;
   if (!o || !img) { ed.message = { text: 'Wait for the map image to load.', error: true }; ed.render(); return; }
   try {
     const px = imagePixels(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
@@ -197,17 +218,18 @@ export function pickMapColor(ed, kind, fx, fy) {
   }
 }
 
-export function markFront(ed) {
-  const ld = ed.view.mapPlane && ed.view.mapPlane.userData.loaded, b = ed.card._imageBlob;
-  if (!ld || !ld.image || !b) return;
+export function markFront(ed: EditMode) {
+  const ld = loadedMap(ed), b = ed.card._imageBlob;
+  const image = ld && ld.image;
+  if (!image || !b) return;
   closePicker(ed);
   try {
     ed.picker = new MapPicker(ed.card._stage, {
-      image: ld.image, mode: 'point', title: 'Click the front tip of the mower icon',
-      onPoint: ({ px, py }) => {
+      image, mode: 'point', title: 'Click the front tip of the mower icon',
+      onPoint: ({ px, py }: PickerPoint) => {
         const bb = ed.card._imageBlob, raw = ed.card._iconHeadRaw;
         if (!bb || raw === undefined || raw === null) return;
-        const sx = (ld.image.naturalWidth || ld.image.width) / bb.imgW;
+        const sx = (image.naturalWidth || image.width) / bb.imgW;
         const marked = (Math.atan2(-(py - bb.py * sx), px - bb.px * sx) * 180) / Math.PI;
         let off = (((marked - raw) % 360) + 540) % 360 - 180;
         off = Math.round(off);

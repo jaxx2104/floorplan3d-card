@@ -26,7 +26,7 @@ describe('edit registry', () => {
 
   it('every data-act / data-field written in the panel markup has a handler', () => {
     const dir = path.resolve(__dirname, '../src/edit');
-    const files = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.js') && !f.includes('view-menu'));
+    const files = fs.readdirSync(dir, { recursive: true }).filter((f) => /\.[jt]s$/.test(f) && !f.includes('view-menu'));
     const acts = new Set(), fields = new Set();
     for (const f of files) {
       const text = fs.readFileSync(path.join(dir, f), 'utf8');

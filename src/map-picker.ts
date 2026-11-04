@@ -5,31 +5,60 @@
 // "Show matches" tints pixels within tolerance of the category's colours (what will be keyed).
 import { medianColor } from './mower-image.js';
 
+export type RGB = number[];
+/** View transform: image pixel (x, y) -> box (ox + x * s, oy + y * s). */
+export interface PickerView { s: number; ox: number; oy: number }
+export interface PickerPoint { px: number; py: number }
+/** What the picker can read: everything drawable with a width / height (no SVG images, no video frames). */
+export type PickerImage = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas;
+export type PickerCloseReason = 'done' | 'esc' | 'point' | 'closed';
+
+export interface MapPickerOptions {
+  image: PickerImage;
+  title?: string;
+  mode: 'color' | 'point';
+  /** the colour category (informational) */
+  kind?: string;
+  colors?: () => RGB[];
+  tolerance?: () => number;
+  onColor?: (rgb: RGB, q: PickerPoint & { imgW: number; imgH: number }) => void;
+  onPoint?: (p: PickerPoint) => void;
+  onRemove?: (index: number) => void;
+  onClose?: (reason: PickerCloseReason) => void;
+}
+
+// natural size of a picture, else its element / bitmap size
+function sourceSize(img: PickerImage): [number, number] {
+  const n = img as Partial<HTMLImageElement> & Partial<HTMLVideoElement>; // only the members this union may have
+  return [n.naturalWidth || n.videoWidth || img.width, n.naturalHeight || n.videoHeight || img.height];
+}
+
 const CLICK_PX = 5;
 const LOUPE = 112, LOUPE_ZOOM = 8;
 const MAX_SIDE = 4096; // read the picture at full size up to this
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+const esc = (s: unknown): string => String(s).replace(/[&<>"]/g, (c) => ESC[c]);
 
 // Pure: view transform helpers (tested).
-export function fitView(imgW, imgH, boxW, boxH, pad = 8) {
+export function fitView(imgW: number, imgH: number, boxW: number, boxH: number, pad = 8): PickerView {
   const s = Math.max(1e-6, Math.min((boxW - 2 * pad) / imgW, (boxH - 2 * pad) / imgH));
   return { s, ox: (boxW - imgW * s) / 2, oy: (boxH - imgH * s) / 2 };
 }
 
 // Zoom by factor k about the box point (bx, by), keeping the image point under it fixed.
-export function zoomAt(v, k, bx, by, min = 0.05, max = 64) {
+export function zoomAt(v: PickerView, k: number, bx: number, by: number, min = 0.05, max = 64): PickerView {
   const s = Math.max(min, Math.min(max, v.s * k));
   const r = s / v.s;
   return { s, ox: bx - (bx - v.ox) * r, oy: by - (by - v.oy) * r };
 }
 
-export function toImage(v, bx, by) {
+export function toImage(v: PickerView, bx: number, by: number): { x: number; y: number } {
   return { x: (bx - v.ox) / v.s, y: (by - v.oy) / v.s };
 }
 
 // Pixels of rgba (w x h) within tol (max channel difference) of any of the colours -> Uint8Array.
-export function matchMask(rgba, w, h, colors, tol) {
+export function matchMask(rgba: ArrayLike<number>, w: number, h: number, colors: RGB[] | null | undefined, tol: number): Uint8Array {
   const m = new Uint8Array(w * h);
   if (!colors || !colors.length) return m;
   for (let i = 0, k = 0; i < w * h; i++, k += 4) {
@@ -42,16 +71,44 @@ export function matchMask(rgba, w, h, colors, tol) {
 }
 
 export class MapPicker {
+  root: HTMLElement;
+  opts: MapPickerOptions;
+  imgW: number;
+  imgH: number;
+  /** picture pixels -> sampled pixels */
+  k: number;
+  src: HTMLCanvasElement;
+  data: Uint8ClampedArray;
+  w: number;
+  h: number;
+  showMatches: boolean;
+  matchCount = 0;
+  _maskKey: string | null;
+  _maskCanvas: HTMLCanvasElement | null = null;
+  el: HTMLDivElement | null = null;
+  // set in _build (run by the constructor)
+  view!: HTMLDivElement;
+  canvas!: HTMLCanvasElement;
+  loupe!: HTMLCanvasElement;
+  info!: HTMLDivElement;
+  _ptrs!: Map<number, { x: number; y: number }>;
+  _onKey!: (e: KeyboardEvent) => void;
+  _ro!: ResizeObserver | null;
+  /** set by the first _resize (in _build) */
+  v!: PickerView;
+  _drag: { x: number; y: number; v: PickerView; moved: boolean } | null = null;
+  _pinch: { d: number; v: PickerView } | null = null;
+
   /**
    * root: the stage element. opts: { image (CanvasImageSource), title, mode: 'color' | 'point',
    *   colors() -> [[r,g,b]] (chips), tolerance() -> number, onColor(rgb, { px, py }), onPoint({ px, py }),
    *   onRemove(index), onClose(reason) }
    */
-  constructor(root, opts) {
+  constructor(root: HTMLElement, opts: MapPickerOptions) {
     this.root = root;
     this.opts = opts;
     const img = opts.image;
-    const W0 = img.naturalWidth || img.videoWidth || img.width, H0 = img.naturalHeight || img.videoHeight || img.height;
+    const [W0, H0] = sourceSize(img);
     if (!W0 || !H0) throw new Error('empty image');
     const k = Math.min(1, MAX_SIDE / Math.max(W0, H0));
     this.imgW = W0;
@@ -61,7 +118,7 @@ export class MapPicker {
     this.src = document.createElement('canvas');
     this.src.width = w;
     this.src.height = h;
-    const g = this.src.getContext('2d', { willReadFrequently: true });
+    const g = this.src.getContext('2d', { willReadFrequently: true })!; // a fresh canvas always has a 2d context
     g.drawImage(img, 0, 0, w, h);
     this.data = g.getImageData(0, 0, w, h).data;
     this.w = w;
@@ -86,13 +143,16 @@ export class MapPicker {
       el.addEventListener(t, (e) => e.stopPropagation());
     }
     this.el = el;
-    this.view = el.querySelector('.fp-pk-view');
-    this.canvas = el.querySelector('.fp-pk-canvas');
-    this.loupe = el.querySelector('.fp-pk-loupe');
-    this.info = el.querySelector('.fp-pk-info');
-    el.querySelector('.fp-pk-bar').addEventListener('click', (e) => this._bar(e));
-    el.querySelector('.fp-pk-bar').addEventListener('change', (e) => {
-      if (e.target.dataset.pk === 'matches') { this.showMatches = e.target.checked; this.draw(); }
+    // the markup above has every one of these
+    this.view = el.querySelector<HTMLDivElement>('.fp-pk-view')!;
+    this.canvas = el.querySelector<HTMLCanvasElement>('.fp-pk-canvas')!;
+    this.loupe = el.querySelector<HTMLCanvasElement>('.fp-pk-loupe')!;
+    this.info = el.querySelector<HTMLDivElement>('.fp-pk-info')!;
+    const bar = el.querySelector<HTMLDivElement>('.fp-pk-bar')!;
+    bar.addEventListener('click', (e) => this._bar(e));
+    bar.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.dataset.pk === 'matches') { this.showMatches = t.checked; this.draw(); }
     });
     const c = this.canvas;
     this._ptrs = new Map();
@@ -127,19 +187,19 @@ export class MapPicker {
     this.draw();
   }
 
-  _box(e) {
+  _box(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const r = this.canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
   // Client position of a picture pixel (headless checks).
-  clientOf(px, py) {
+  clientOf(px: number, py: number): [number, number] {
     const r = this.canvas.getBoundingClientRect();
     return [r.left + this.v.ox + px * this.v.s, r.top + this.v.oy + py * this.v.s];
   }
 
-  _bar(e) {
-    const b = e.target.closest('button');
+  _bar(e: Event) {
+    const b = (e.target as Element).closest('button');
     if (!b) return;
     const W = this.canvas.width, H = this.canvas.height;
     switch (b.dataset.pk) {
@@ -153,7 +213,7 @@ export class MapPicker {
     this.draw();
   }
 
-  _down(e) {
+  _down(e: PointerEvent) {
     this._ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
     if (this._ptrs.size === 2) {
@@ -165,7 +225,7 @@ export class MapPicker {
     this._drag = { x: e.clientX, y: e.clientY, v: this.v, moved: false };
   }
 
-  _move(e) {
+  _move(e: PointerEvent) {
     if (this._ptrs.has(e.pointerId)) this._ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this._pinch && this._ptrs.size === 2) {
       const [a, b] = [...this._ptrs.values()];
@@ -184,7 +244,7 @@ export class MapPicker {
     this._hover(e);
   }
 
-  _up(e) {
+  _up(e: PointerEvent) {
     this._ptrs.delete(e.pointerId);
     if (this._pinch) { if (this._ptrs.size < 2) this._pinch = null; this._drag = null; return; }
     const d = this._drag;
@@ -204,16 +264,16 @@ export class MapPicker {
   }
 
   // sampled pixel under the pointer, or null outside the picture
-  _pixelAt(e) {
+  _pixelAt(e: { clientX: number; clientY: number }): { i: number; j: number; b: { x: number; y: number } } | null {
     const b = this._box(e), q = toImage(this.v, b.x, b.y);
     const i = Math.floor(q.x * this.k), j = Math.floor(q.y * this.k);
     return i >= 0 && j >= 0 && i < this.w && j < this.h ? { i, j, b } : null;
   }
 
-  _hover(e) {
+  _hover(e: { clientX: number; clientY: number }) {
     const p = this._pixelAt(e);
     if (!p) { this.loupe.style.display = 'none'; this.info.textContent = ''; return; }
-    const L = this.loupe, g = L.getContext('2d');
+    const L = this.loupe, g = L.getContext('2d')!; // own canvas, 2d only
     const n = LOUPE / LOUPE_ZOOM; // pixels shown across
     g.imageSmoothingEnabled = false;
     g.fillStyle = '#000';
@@ -247,17 +307,17 @@ export class MapPicker {
     this.draw();
   }
 
-  _mask() {
+  _mask(): HTMLCanvasElement {
     const cols = this.opts.colors ? this.opts.colors() : [];
     const tol = this.opts.tolerance ? this.opts.tolerance() : 30;
     const key = JSON.stringify([cols, tol]);
-    if (key === this._maskKey) return this._maskCanvas;
+    if (key === this._maskKey && this._maskCanvas) return this._maskCanvas;
     this._maskKey = key;
     const m = matchMask(this.data, this.w, this.h, cols, tol);
     const cv = (this._maskCanvas = this._maskCanvas || document.createElement('canvas'));
     cv.width = this.w;
     cv.height = this.h;
-    const g = cv.getContext('2d');
+    const g = cv.getContext('2d')!; // own canvas, 2d only
     const id = g.createImageData(this.w, this.h);
     let count = 0;
     for (let i = 0; i < m.length; i++) {
@@ -272,7 +332,7 @@ export class MapPicker {
 
   draw() {
     if (!this.el || !this.v) return;
-    const g = this.canvas.getContext('2d');
+    const g = this.canvas.getContext('2d')!; // own canvas, 2d only
     const { s, ox, oy } = this.v;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -281,7 +341,8 @@ export class MapPicker {
     if (this.showMatches && this.opts.mode !== 'point') g.drawImage(this._mask(), ox, oy, this.imgW * s, this.imgH * s);
   }
 
-  close(reason = 'done') {
+  close(reason: PickerCloseReason = 'done') {
+
     if (!this.el) return;
     window.removeEventListener('keydown', this._onKey, true);
     if (this._ro) this._ro.disconnect();

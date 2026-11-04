@@ -20,19 +20,134 @@ import { selectObject } from './edit/tabs/objects.js';
 import { onViewChanged } from './edit/tabs/views.js';
 import { onModelLoaded, setModelProps } from './edit/tabs/model.js';
 
+import type { Mesh } from 'three';
+import type { FloorplanView } from './view.js';
+import type { Hass } from './types/ha.js';
+import type { EditCard, MarkerPosition, ViewIndex } from './edit/host.js';
+import type { TabId } from './edit/tabs/index.js';
+import type { TreeRows } from './edit/tabs/views.js';
+import type { MapPicker, PickerPoint } from './map-picker.js';
+import type { PinInput, SnapResult } from './editor.js';
+import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, PlanPoint } from './types/layout.js';
+import type { OutlineGrid } from './outline.js';
+
+
 export { sliderHtml } from './edit/html.js';
+
+// ---------- edit state ----------
+export interface Drawing { areaId: string; floorId: string; points: PlanPoint[]; cursor: SnapResult | null }
+export interface Picking { areaId: string; busy: boolean; poly: PlanPoint[] | null; floorId?: string }
+export type MapColorKind = 'bg' | 'mowed' | 'nomow';
+/** false: off; true: the mower icon colour; else the map colour category (3D click on the overlay). */
+export type ColorPick = boolean | MapColorKind;
+export interface AlignPair extends PickerPoint { plan: PlanPoint }
+export interface Aligning {
+  pairs: AlignPair[];
+  pending: PickerPoint | null;
+  /** the overlay alignment when it started: Cancel / Esc put it back */
+  start?: { x: number; y: number; rotation: number; width: number };
+}
+export interface EditMessage { text: string; error?: boolean; warn?: boolean }
+/** Model tab: the part clicked in 3D (untagged parts have only a path). */
+export interface ModelPick { kind: string; id?: string; path?: string }
+export interface StickMove { id: string; from: LayoutPin; pin: PinInput }
+
+interface DragBase { start: [number, number]; moved: boolean; raf?: number }
+/** A room corner (vertex) or edge midpoint (mid: becomes a vertex drag on the first move). */
+export interface RoomDrag extends DragBase {
+  kind: 'vertex' | 'mid';
+  roomId: string;
+  /** the corner dragged (mid: set on the first move) */
+  index: number;
+  /** mid: the edge whose midpoint was grabbed */
+  edge: number;
+  base?: LayoutRoom;
+  preview?: LayoutRoom;
+}
+export interface MarkerDrag extends DragBase {
+  kind: 'marker';
+  id: string;
+  pos: MarkerPosition;
+  last?: { clientX: number; clientY: number };
+  /** model object under the pointer (the drop attaches to it) */
+  attach?: string | null;
+  snapped?: boolean;
+}
+export interface OverlayDrag extends DragBase {
+  kind: 'overlay';
+  plan: PlanPoint;
+  origin: [number, number];
+  floorId: string;
+}
+export type Drag = RoomDrag | MarkerDrag | OverlayDrag;
+
+/** Traced floor outlines per mesh piece and height (pick-outline). */
+export interface OutlineEntry { grid?: OutlineGrid | null; loops?: number[][][] }
 
 const SNAP_PX = 10; // snap radius never smaller than this many screen pixels
 
 export class EditMode {
-  constructor(card) {
+  card: EditCard;
+  tab: TabId;
+  selectedRoom: string | null;
+  selectedMarker: string | null;
+  drawing: Drawing | null;
+  picking: Picking | null;
+  _outlineCache: Map<string, OutlineEntry>;
+  _outlineModel: unknown;
+  _outlineAlign: string | null;
+  doorMode: boolean;
+  calibrating: { src: PlanPoint } | null;
+  colorPick: ColorPick;
+  overlayMove: boolean;
+  aligning: Aligning | null;
+  drag: Drag | null;
+  confirmDelete: boolean;
+  confirmModelDelete: boolean;
+  saveState: string;
+  message: EditMessage | null;
+  picker: MapPicker | null;
+  pivoting: boolean;
+  modelPick: ModelPick | null;
+  stick: { moves: StickMove[] } | null;
+  uploading: string | null;
+  _freshModel: boolean;
+  _snapPending: boolean;
+  _down: [number, number] | null;
+  _sliding: boolean;
+  _renderHeld: boolean;
+  _numTimer: ReturnType<typeof setTimeout> | undefined;
+  _renderedTab: TabId | null;
+  _reportOpen: boolean;
+  _advancedOpen: boolean;
+  _setupOpen: boolean;
+  _setupLast: string | null;
+  _treeCache: { idx: ViewIndex; objs: unknown; tree: TreeRows } | null;
+  _posCache: { idx: ViewIndex; map: Map<unknown, number> } | null;
+  panel: HTMLDivElement;
+  _onKey: (e: KeyboardEvent) => void;
+  _onWinMove: (e: PointerEvent) => void;
+  _onWinUp: () => void;
+  _handles: Map<string, HTMLDivElement>;
+  vwSel: string | null;
+  vwPick: { sel: string; idx: number } | null;
+  vwExpanded: Set<string>;
+  objExpanded: Set<string>;
+  objSel: string | null;
+  objTagFilter: string;
+  objTagBulk: string;
+  objPicked: Set<string>;
+  menu: HTMLDivElement | null;
+  _onMenuAway: (e: PointerEvent) => void;
+
+  constructor(card: EditCard) {
     this.card = card;
     this.tab = 'rooms';
     this.selectedRoom = null;
     this.selectedMarker = null;
     this.drawing = null; // { areaId, floorId, points, cursor }
     this.picking = null; // { areaId, busy, poly, floorId, note }
-    this._outlineCache = new Map();
+    this._outlineCache = new Map<string, OutlineEntry>();
     this._outlineModel = null;
     this._outlineAlign = null; // JSON of the model alignment the cached outlines were traced with
     this.doorMode = false;
@@ -64,32 +179,32 @@ export class EditMode {
     this._treeCache = null;
     this._posCache = null;
     this.panel = createPanel(this);
-    this._onKey = (e) => onKeyDown(this, e);
-    this._onWinMove = (e) => dragMove(this, e);
+    this._onKey = (e: KeyboardEvent) => onKeyDown(this, e);
+    this._onWinMove = (e: PointerEvent) => dragMove(this, e);
     this._onWinUp = () => dragEnd(this);
-    this._handles = new Map();
+    this._handles = new Map<string, HTMLDivElement>();
     this.vwSel = null; // a hidden view chosen in the Views tab (visible views follow the chips)
     this.vwPick = null; // { sel, idx } last part clicked in 3D on the Views tab
-    this.vwExpanded = new Set(); // room/zone rows showing their objects
-    this.objExpanded = new Set(); // Objects tab: room rows showing their objects (collapsed by default)
+    this.vwExpanded = new Set<string>(); // room/zone rows showing their objects
+    this.objExpanded = new Set<string>(); // Objects tab: room rows showing their objects (collapsed by default)
     this.objSel = null; // Objects tab: object picked in 3D / its row
     this.objTagFilter = ''; // Objects tab: show only objects with this tag ('' = all)
     this.objTagBulk = ''; // Objects tab: the tag typed for Add tag / Remove tag
-    this.objPicked = new Set(); // Objects tab: multi-select for Add tag / Remove tag
+    this.objPicked = new Set<string>(); // Objects tab: multi-select for Add tag / Remove tag
     this.menu = null;
-    this._onMenuAway = (e) => { if (this.menu && !e.composedPath().includes(this.menu)) closeMenu(this); };
+    this._onMenuAway = (e: PointerEvent) => { if (this.menu && !e.composedPath().includes(this.menu)) closeMenu(this); };
   }
 
-  get layout() { return this.card._layout; }
-  get hass() { return this.card._hass; }
-  get view() { return this.card._view; }
-  get floors() { return this.card._floors || []; }
+  get layout(): Layout { return this.card._layout; }
+  get hass(): Hass { return this.card._hass; }
+  get view(): FloorplanView { return this.card._view; }
+  get floors(): Floor[] { return this.card._floors || []; }
 
   // The floor that "Place", drawing and the door tool work on: the floor shown on its own, the view's
   // single linked floor, else (overview, several or no linked floors) the HA floor of the view's
   // primary level, else the first floor.
-  activeFloor() {
-    const c = this.card, has = (id) => !!id && this.floors.some((f) => f.id === id);
+  activeFloor(): string {
+    const c = this.card, has = (id: string | null | undefined): id is string => !!id && this.floors.some((f) => f.id === id);
     if (c._floorOnly && has(c._floor)) return c._floor;
     const st = c._viewState;
     if (st && !st.allFloors && st.floors.length === 1 && has(st.floors[0])) return st.floors[0];
@@ -99,15 +214,15 @@ export class EditMode {
     return this.floors[0].id;
   }
 
-  floorOf(room) {
+  floorOf(room: LayoutRoom): string {
     return roomFloorId(room, this.hass, this.floors);
   }
 
-  room(id) {
+  room(id: string | null | undefined): LayoutRoom | null {
     return (this.layout.rooms || []).find((r) => r.id === id) || null;
   }
 
-  snapRadius() {
+  snapRadius(): number {
     return Math.max(E.SNAP_RADIUS, SNAP_PX / Math.max(this.view.pixelsPerMetre(), 1e-6));
   }
 
@@ -164,11 +279,11 @@ export class EditMode {
     else this.render();
   }
 
-  commit(layout) {
+  commit(layout: Layout) {
     this.card._commit(layout);
   }
 
-  selectRoom(id) {
+  selectRoom(id: string | null) {
     this.selectedRoom = id;
     this.selectedMarker = null;
     this.doorMode = false;
@@ -179,7 +294,7 @@ export class EditMode {
     this.render();
   }
 
-  selectMarker(id) {
+  selectMarker(id: string | null) {
     this.selectedMarker = id;
     this.selectedRoom = null;
     this.doorMode = false;
@@ -190,18 +305,18 @@ export class EditMode {
   }
 
   // ---------- facade: the card's listeners and hooks, and the headless checks ----------
-  setSaveState(s) { setSaveState(this, s); }
+  setSaveState(s: string) { setSaveState(this, s); }
   render() { render(this); }
   onStates() { onStates(this); }
   onModelLoaded(changed = true) { onModelLoaded(this, changed); }
   onViewChanged() { onViewChanged(this); }
-  selectObject(id) { selectObject(this, id); }
-  setModelProps(patch, rerender = true) { setModelProps(this, patch, rerender); }
-  canvasDown(e) { canvasDown(this, e); }
-  canvasMove(e) { canvasMove(this, e); }
-  canvasUp(e) { canvasUp(this, e); }
-  canvasDownCapture(e) { canvasDownCapture(this, e); }
-  markerDown(m, e) { markerDown(this, m, e); }
+  selectObject(id: string) { selectObject(this, id); }
+  setModelProps(patch: Partial<LayoutModel>, rerender = true) { setModelProps(this, patch, rerender); }
+  canvasDown(e: PointerEvent) { canvasDown(this, e); }
+  canvasMove(e: PointerEvent) { canvasMove(this, e); }
+  canvasUp(e: PointerEvent) { canvasUp(this, e); }
+  canvasDownCapture(e: PointerEvent) { canvasDownCapture(this, e); }
+  markerDown(m: { id: string }, e: PointerEvent) { markerDown(this, m, e); }
   _syncStageClasses() { syncStageClasses(this); }
-  _traceOutline(mesh, hit) { return traceOutline(this, mesh, hit); }
+  _traceOutline(mesh: Mesh, hit: number[]) { return traceOutline(this, mesh, hit); }
 }

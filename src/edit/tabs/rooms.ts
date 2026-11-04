@@ -6,13 +6,18 @@ import { esc, fmt } from '../html.js';
 import { startDrawing, finishDrawing, cancelDrawing } from '../tools/draw.js';
 import { startPicking, cancelPicking, usePickedOutline } from '../tools/pick-outline.js';
 import { refreshOverlay } from '../tools/handles.js';
+import { defineTab } from './tab.js';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
+import type { EditMode } from '../../edit-mode.js';
+import type { HassArea } from '../../types/ha.js';
+import type { Layout, LayoutFloor, LayoutRoom } from '../../types/layout.js';
 
-export function sortedAreas(ed) {
+export function sortedAreas(ed: EditMode): HassArea[] {
   const areas = Object.values(ed.hass.areas || {});
   return areas.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function roomsTab(ed) {
+export function roomsTab(ed: EditMode): string {
   const d = ed.drawing;
   if (d) {
     return `<section class="box">
@@ -64,12 +69,13 @@ export function roomsTab(ed) {
   out += `<label class="room-labels">Room labels <select data-field="room-labels" ${yamlLabels ? 'disabled title="Set in the card YAML (room_labels)"' : ''}>
       ${[['size', 'Name and size'], ['name', 'Name only'], ['none', 'None']].map(([v, t]) => `<option value="${v}" ${v === rl ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       ${yamlLabels ? '<p class="hint">Set in the card YAML (room_labels), which wins over this setting.</p>' : ''}`;
-  const byFloor = new Map(ed.floors.map((f) => [f.id, []]));
-  byFloor.set('', []);
-  for (const a of areas) (byFloor.get(a.floor_id) || byFloor.get('')).push(a);
+  const byFloor = new Map<string, HassArea[]>(ed.floors.map((f) => [f.id, []]));
+  const noFloor: HassArea[] = [];
+  byFloor.set('', noFloor);
+  for (const a of areas) ((a.floor_id && byFloor.get(a.floor_id)) || noFloor).push(a);
   for (const [fid, list] of byFloor) {
     if (!list.length) continue;
-    const fname = fid ? ed.floors.find((f) => f.id === fid).name : 'No floor';
+    const fname = fid ? ed.floors.find((f) => f.id === fid)!.name : 'No floor'; // the keys are ed.floors' ids
     out += `<div class="sub">${esc(fname)}</div><ul class="list">`;
     for (const a of list) {
       const mr = (ed.card._modelRooms || []).find((x) => x.area_id === a.area_id);
@@ -85,7 +91,7 @@ export function roomsTab(ed) {
     }
     out += '</ul>';
   }
-  const orphans = rooms.filter((r) => !(ed.hass.areas || {})[r.area_id]);
+  const orphans = rooms.filter((r) => !r.area_id || !(ed.hass.areas || {})[r.area_id]);
   if (orphans.length) {
     out += '<div class="sub">Rooms without an HA area</div><ul class="list">';
     for (const r of orphans) out += `<li><span class="name">${esc(r.area_id || r.id)}</span><button data-act="select-room" data-id="${esc(r.id)}">Select</button></li>`;
@@ -110,19 +116,19 @@ export function roomsTab(ed) {
   return out;
 }
 
-const selected = (ed) => ed.room(ed.selectedRoom);
+const selected = (ed: EditMode) => ed.room(ed.selectedRoom);
 
-const acts = {
-  draw: (ed, btn) => { startDrawing(ed, btn.dataset.id); },
-  pick: (ed, btn) => { startPicking(ed, btn.dataset.id); },
+const acts: Record<string, ActHandler> = {
+  draw: (ed, btn) => { startDrawing(ed, btn.dataset.id || ''); },
+  pick: (ed, btn) => { startPicking(ed, btn.dataset.id || ''); },
   'pick-cancel': (ed) => { cancelPicking(ed); },
   'pick-use': (ed) => { usePickedOutline(ed); },
   'pick-draw': (ed) => { const a = ed.picking && ed.picking.areaId; ed.picking = null; if (a) startDrawing(ed, a); },
   finish: (ed) => { finishDrawing(ed); },
-  'undo-point': (ed) => { ed.drawing.points.pop(); refreshOverlay(ed); return 'render'; },
+  'undo-point': (ed) => { if (ed.drawing) ed.drawing.points.pop(); refreshOverlay(ed); return 'render'; }, // the button shows only while drawing
   'cancel-draw': (ed) => { cancelDrawing(ed); },
   'select-room': (ed, btn) => {
-    const id = btn.dataset.id;
+    const id = btn.dataset.id || null;
     const r = ed.room(id);
     const fid = r && ed.floorOf(r);
     if (fid && ed.card._floor !== fid) ed.card._setFloor(fid);
@@ -136,6 +142,7 @@ const acts = {
   },
   'delete-room': (ed) => {
     const sel = selected(ed);
+    if (!sel) return; // the room went away (rebuild) while the button was shown
     if (!ed.confirmDelete) { ed.confirmDelete = true; return 'render'; }
     ed.confirmDelete = false;
     ed.selectedRoom = null;
@@ -146,21 +153,22 @@ const acts = {
     const fid = E.newFloorId(ed.layout, ed.floors);
     ed.commit(E.upsertFloor(ed.layout, { id: fid, name: 'Floor ' + (ed.floors.length + 1), elevation: top ? top.elevation + 3 : 0, height: 2.7 }));
   },
-  'del-floor': (ed, btn) => { ed.commit(E.deleteFloor(ed.layout, btn.dataset.id)); },
+  'del-floor': (ed, btn) => { ed.commit(E.deleteFloor(ed.layout, btn.dataset.id || '')); },
 };
 
-function floorField(ed, el) {
+function floorField(ed: EditMode, el: FieldEl) {
   const f = el.dataset.field;
   const v = Number(el.value);
   if (!Number.isFinite(v)) return;
   const floor = ed.floors.find((x) => x.id === el.dataset.id);
+  if (!floor) return; // rows are rendered from ed.floors
   const stored = (ed.layout.floors || []).some((x) => x.id === floor.id);
-  const patch = { id: floor.id, [f === 'floor-elevation' ? 'elevation' : 'height']: v };
+  const patch: LayoutFloor = { id: floor.id, [f === 'floor-elevation' ? 'elevation' : 'height']: v };
   if (!stored) Object.assign(patch, { name: floor.name });
   ed.commit(E.upsertFloor(ed.layout, patch));
 }
 
-const fields = {
+const fields: Record<string, FieldHandler> = {
   'room-area': (ed, el) => {
     const sel = selected(ed);
     if (sel) ed.commit(E.upsertRoom(ed.layout, { ...sel, area_id: el.value }));
@@ -170,15 +178,15 @@ const fields = {
     if (sel) ed.commit(E.upsertRoom(ed.layout, { ...sel, outdoor: el.checked }));
   },
   'room-labels': (ed, el) => {
-    const l = { ...ed.layout };
+    const l: Layout = { ...ed.layout };
     if (el.value === 'size') delete l.room_labels; else l.room_labels = el.value;
     ed.commit(l);
   },
   'room-floor': (ed, el) => {
     const sel = selected(ed);
     if (!sel) return;
-    const area = ed.hass.areas && ed.hass.areas[sel.area_id];
-    const next = { ...sel, floor_id: el.value };
+    const area = ed.hass.areas && sel.area_id ? ed.hass.areas[sel.area_id] : undefined;
+    const next: LayoutRoom = { ...sel, floor_id: el.value };
     if (area && area.floor_id === el.value) delete next.floor_id;
     ed.card._setFloor(el.value);
     ed.commit(E.upsertRoom(ed.layout, next));
@@ -187,4 +195,5 @@ const fields = {
   'floor-height': floorField,
 };
 
-export const roomsTabDef = { id: 'rooms', html: roomsTab, acts, fields };
+export const roomsTabDef = defineTab({ id: 'rooms', html: roomsTab, acts, fields });
+

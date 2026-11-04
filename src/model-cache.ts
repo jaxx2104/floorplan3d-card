@@ -63,7 +63,7 @@ export function lruEvict(entries: LruEntry[], cap: number, keep: string | null =
 
 const mb = (n: number): string => (n / 1e6).toFixed(1);
 // total: content-length (0 unknown); smaller than what arrived (a gzip-encoded body): received bytes only
-export function progressText(loaded: number, total: number): string {
+export function progressText(loaded: number, total?: number | null): string {
   return total && loaded <= total ? `Downloading ${mb(loaded)} / ${mb(total)} MB` : `Downloading ${mb(loaded)} MB`;
 }
 

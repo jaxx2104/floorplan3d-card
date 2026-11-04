@@ -3,9 +3,15 @@
 
 import * as E from '../../editor.js';
 import { vertexDown, midDown } from './drag.js';
+import type { EditMode } from '../../edit-mode.js';
+import type { LayoutRoom, PlanPoint } from '../../types/layout.js';
+
+interface OverlayLine { points: PlanPoint[]; closed: boolean; floorId: string; color: number }
+interface OverlayFill { points: PlanPoint[]; floorId: string; color: number; opacity: number }
+interface OverlayHandle { element: HTMLDivElement; x: number; y: number; floorId: string }
 
 // ---------- overlay ----------
-export function handleEl(ed, key, cls) {
+export function handleEl(ed: EditMode, key: string, cls: string): HTMLDivElement {
   let el = ed._handles.get(key);
   if (!el) {
     el = document.createElement('div');
@@ -15,13 +21,13 @@ export function handleEl(ed, key, cls) {
   return el;
 }
 
-export function refreshOverlay(ed, preview) {
+export function refreshOverlay(ed: EditMode, preview?: LayoutRoom) {
   if (!ed.view) return;
   ed._syncStageClasses();
   const color = ed.card._built.theme ? ed.card._built.theme.primary : 0x03a9f4;
-  const lines = [], fills = [], handles = [];
-  const used = new Set();
-  const handle = (key, cls, x, y, floorId, setup) => {
+  const lines: OverlayLine[] = [], fills: OverlayFill[] = [], handles: OverlayHandle[] = [];
+  const used = new Set<string>();
+  const handle = (key: string, cls: string, x: number, y: number, floorId: string, setup?: (e: PointerEvent, el: HTMLDivElement) => void) => {
     const el = handleEl(ed, key, cls);
     used.add(key);
     el.onpointerdown = setup ? (e) => setup(e, el) : null;
@@ -36,7 +42,7 @@ export function refreshOverlay(ed, preview) {
     fills.push({ points: room.polygon, floorId: fid, color, opacity: 0.16 });
     lines.push({ points: room.polygon, closed: true, floorId: fid, color });
     room.polygon.forEach(([x, y], i) => {
-      const el = handle('v' + i, 'vertex', x, y, fid, (e, h) => vertexDown(ed, e, room.id, i, h));
+      const el = handle('v' + i, 'vertex', x, y, fid, (e) => vertexDown(ed, e, room.id, i));
       el.title = 'Drag to move, right-click to delete';
       el.oncontextmenu = (e) => {
         e.preventDefault();
@@ -47,7 +53,8 @@ export function refreshOverlay(ed, preview) {
     if (!ed.drag) {
       room.polygon.forEach((a, i) => {
         const b = room.polygon[(i + 1) % room.polygon.length];
-        const el = handle('m' + i, 'mid', (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, fid, (e, h) => midDown(ed, e, room.id, i, h));
+        const el = handle('m' + i, 'mid', (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, fid, (e) => midDown(ed, e, room.id, i));
+
         el.title = 'Drag to add a corner';
       });
     }

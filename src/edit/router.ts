@@ -10,15 +10,23 @@ import { refreshOverlay } from './tools/handles.js';
 import { startWindowDrag } from './tools/drag.js';
 import { cancelPivot, setPivot } from './tools/pivot.js';
 import { pickView, closeMenu } from './tools/view-menu.js';
+import type { EditMode } from '../edit-mode.js';
+import type { PlanPoint } from '../types/layout.js';
+
+export type ClickRoute = 'pivot' | 'align' | 'color' | 'calibrate' | 'pick-room' | 'objects' | 'views' | 'model' | 'plan';
+export type KeyRoute =
+  | { kind: 'menu' | 'pivot' | 'pick' | 'draw-finish' | 'draw-cancel' | 'draw-undo' }
+  | { kind: 'esc'; step: 'colorPick' | 'aligning' | 'doorMode' | 'selectedRoom' | 'selectedMarker' | null };
+type PointerPos = { clientX: number; clientY: number };
 
 export const CLICK_SLOP_PX = 5;
 
 // ---------- plan pointer events (from the card's canvas listeners) ----------
-export function canvasDown(ed, e) {
+export function canvasDown(ed: EditMode, e: PointerEvent) {
   ed._down = e.button === 0 ? [e.clientX, e.clientY] : null;
 }
 
-export function canvasMove(ed, e) {
+export function canvasMove(ed: EditMode, e: PointerEvent) {
   if (!ed.drawing) return;
   const p = planPoint(ed, e, ed.drawing.floorId);
   if (!p) return;
@@ -26,7 +34,7 @@ export function canvasMove(ed, e) {
   refreshOverlay(ed);
 }
 
-export function canvasUp(ed, e) {
+export function canvasUp(ed: EditMode, e: PointerEvent) {
   const d = ed._down;
   ed._down = null;
   if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) >= CLICK_SLOP_PX) return;
@@ -34,19 +42,19 @@ export function canvasUp(ed, e) {
 }
 
 // Plan point under the pointer at the map overlay's height (it lies on the lawn, not on the HA floor).
-export function mapPoint(ed, e) {
+export function mapPoint(ed: EditMode, e: PointerPos): PlanPoint | null {
   const pl = ed.view.mapPlane;
   const h = pl ? pl.position.y : ed.view.floorElevation(ed.card._mowerFloor());
-  return ed.view.planPoint(e.clientX, e.clientY, h);
+  return ed.view.planPoint(e.clientX, e.clientY, h) as PlanPoint | null; // the camera part returns [x, y] or null
 }
 
-export function planPoint(ed, e, floorId, z = 0) {
-  return ed.view.planPoint(e.clientX, e.clientY, ed.view.floorElevation(floorId) + z);
+export function planPoint(ed: EditMode, e: PointerPos, floorId: string, z = 0): PlanPoint | null {
+  return ed.view.planPoint(e.clientX, e.clientY, ed.view.floorElevation(floorId) + z) as PlanPoint | null; // [x, y] or null
 }
 
 // Which tool a click on the plan goes to; the order is the precedence (the first armed tool wins).
 // 'plan': drawing adds a point, the door tool adds a door, else the smallest room under it is selected.
-export function clickRoute(ed) {
+export function clickRoute(ed: EditMode): ClickRoute {
   if (ed.pivoting) return 'pivot';
   if (ed.aligning) return 'align';
   if (ed.colorPick) return 'color';
@@ -58,7 +66,7 @@ export function clickRoute(ed) {
   return 'plan';
 }
 
-export function click(ed, e) {
+export function click(ed: EditMode, e: PointerEvent) {
   switch (clickRoute(ed)) {
     case 'pivot': setPivot(ed, e); return;
     case 'align': alignClick(ed, e); return;
@@ -70,14 +78,14 @@ export function click(ed, e) {
       ed.colorPick = false;
       ed._syncStageClasses();
       if (kind === true) pickMowerColor(ed, hit.u, 1 - hit.v);
-      else pickMapColor(ed, kind, hit.u, 1 - hit.v);
+      else if (kind) pickMapColor(ed, kind, hit.u, 1 - hit.v); // the 'color' route: colorPick is set
       return;
     }
     case 'calibrate': {
       const p = planPoint(ed, e, ed.card._mowerFloor());
       if (!p) return;
       const plan = E.snapPoint(p, { radius: 0 }).point;
-      const { src } = ed.calibrating;
+      const { src } = ed.calibrating!; // the 'calibrate' route: set
       ed.calibrating = null;
       setMower(ed, { calibration: [...(mower(ed).calibration || []), { src, plan }] });
       return;
@@ -98,7 +106,7 @@ export function click(ed, e) {
   }
 }
 
-function planClick(ed, e) {
+function planClick(ed: EditMode, e: PointerEvent) {
   const fid = ed.drawing ? ed.drawing.floorId : ed.activeFloor();
   const p = planPoint(ed, e, fid);
   if (!p) return;
@@ -124,8 +132,8 @@ function planClick(ed, e) {
 
 // What a key does, in precedence order. null: ignored (typing in a field, or a key the armed tool
 // doesn't use). 'esc' carries the step of the Esc cascade (null: nothing to undo; still re-rendered).
-export function keyRoute(ed, key, target) {
-  if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return null;
+export function keyRoute(ed: EditMode, key: string, target: { tagName?: string } | null | undefined): KeyRoute | null {
+  if (target && /^(INPUT|SELECT|TEXTAREA)$/.test(String(target.tagName))) return null;
   if (ed.menu && key === 'Escape') return { kind: 'menu' };
   if (ed.pivoting) return key === 'Escape' ? { kind: 'pivot' } : null;
   if (ed.picking && !ed.drawing) return key === 'Escape' ? { kind: 'pick' } : null;
@@ -136,13 +144,13 @@ export function keyRoute(ed, key, target) {
     return null;
   }
   if (key !== 'Escape') return null;
-  const step = ed.colorPick ? 'colorPick' : ed.aligning ? 'aligning' : ed.doorMode ? 'doorMode'
+  const step: 'colorPick' | 'aligning' | 'doorMode' | 'selectedRoom' | 'selectedMarker' | null = ed.colorPick ? 'colorPick' : ed.aligning ? 'aligning' : ed.doorMode ? 'doorMode'
     : ed.selectedRoom ? 'selectedRoom' : ed.selectedMarker ? 'selectedMarker' : null;
   return { kind: 'esc', step };
 }
 
-export function onKeyDown(ed, e) {
-  const r = keyRoute(ed, e.key, e.composedPath()[0]);
+export function onKeyDown(ed: EditMode, e: KeyboardEvent) {
+  const r = keyRoute(ed, e.key, e.composedPath()[0] as Element | undefined);
   if (!r) return;
   switch (r.kind) {
     case 'menu': closeMenu(ed); break;
@@ -151,26 +159,28 @@ export function onKeyDown(ed, e) {
     case 'draw-finish': finishDrawing(ed); break;
     case 'draw-cancel': cancelDrawing(ed); break;
     case 'draw-undo':
-      ed.drawing.points.pop();
+      ed.drawing!.points.pop(); // keyRoute: only while drawing
       refreshOverlay(ed);
       ed.render();
       break;
-    default: // the Esc cascade: undo one thing (no preventDefault)
-      if (r.step === 'colorPick') ed.colorPick = false;
-      else if (r.step === 'aligning') cancelAlign(ed);
-      else if (r.step === 'doorMode') ed.doorMode = false;
-      else if (r.step === 'selectedRoom') ed.selectedRoom = null;
-      else if (r.step === 'selectedMarker') ed.selectMarker(null);
+    default: { // the Esc cascade: undo one thing (no preventDefault)
+      const step = r.kind === 'esc' ? r.step : null;
+      if (step === 'colorPick') ed.colorPick = false;
+      else if (step === 'aligning') cancelAlign(ed);
+      else if (step === 'doorMode') ed.doorMode = false;
+      else if (step === 'selectedRoom') ed.selectedRoom = null;
+      else if (step === 'selectedMarker') ed.selectMarker(null);
       ed._syncStageClasses();
       refreshOverlay(ed);
       ed.render();
       return;
+    }
   }
   e.preventDefault();
 }
 
-export function syncStageClasses(ed) {
-  ed.card._stage.classList.toggle('drawing', !!ed.drawing || !!ed.picking || ed.doorMode || !!ed.calibrating || ed.colorPick || !!ed.aligning || !!ed.pivoting);
+export function syncStageClasses(ed: EditMode) {
+  ed.card._stage.classList.toggle('drawing', !!ed.drawing || !!ed.picking || ed.doorMode || !!ed.calibrating || !!ed.colorPick || !!ed.aligning || !!ed.pivoting);
   ed.view.setPivotMarker(!!ed.card._editing && ed.tab === 'views');
   ed.card._stage.classList.toggle('moving', ed.overlayMove);
   const picking = !!ed.card._editing && (ed.tab === 'model' || ed.tab === 'views') && !!ed.view.model;
@@ -179,7 +189,8 @@ export function syncStageClasses(ed) {
 }
 
 // Overlay move tool: grab the pointer before OrbitControls sees it (capture phase on the stage).
-export function canvasDownCapture(ed, e) {
+export function canvasDownCapture(ed: EditMode, e: PointerEvent) {
+
   const o = mower(ed).overlay;
   if (!ed.overlayMove || !o || e.button !== 0) return;
   e.stopPropagation();

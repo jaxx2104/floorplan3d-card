@@ -7,48 +7,60 @@ import { typeOf } from '../../objects/types.js';
 import { resolveWash, WASH_DIRS } from '../../objects/wash.js';
 import { resolveActions, validateAction } from '../../actions.js';
 import { entOption, logoBox, esc } from '../html.js';
+import { defineTab } from './tab.js';
+import type { ActHandler, FieldEl, FieldHandler } from './tab.js';
+import type { EditMode } from '../../edit-mode.js';
+import type { ManifestLevel, ManifestObject, ObjectBinding } from '../host.js';
+import type { LayoutObject } from '../../types/layout.js';
 
-export function objectsAvailable(ed) {
+// actions.js is still JS: its destructured defaults are inferred as the only option types
+const resolveActionsFor = resolveActions as unknown as (opts: Record<string, unknown>) => Record<string, { action: string } | null | undefined>;
+
+/** A saved action (layout.objects[id].ui.<which>_action). */
+interface UiAction { action: string; target?: { entity_id?: string }; [key: string]: unknown }
+
+export function objectsAvailable(ed: EditMode): boolean {
   const mb = ed.view.model && ed.card.modelBindings();
   return !!(mb && mb.manifest.objects && mb.manifest.objects.length);
 }
 
 // Objects tab: model objects by level -> room (rooms collapsed), each with its entity binding.
-export function objectsTab(ed) {
+export function objectsTab(ed: EditMode): string {
   const mb = ed.card.modelBindings();
+  if (!mb) return ''; // the tab shows only with a model's objects (objectsAvailable)
   const objs = (mb && mb.manifest.objects) || [];
   const states = ed.hass.states;
-  const bindings = ed.card._bindings || new Map();
+  const bindings: Map<string, ObjectBinding> = ed.card._bindings || new Map();
   const ids = Object.keys(states).sort();
-  const DOMAINS = {
+  const DOMAINS: Record<string, string[]> = {
     light: ['light', 'switch'], light_strip: ['light', 'switch'], mower: ['lawn_mower'], dock: ['lawn_mower', 'binary_sensor'],
     ev_charger: ['sensor', 'switch', 'binary_sensor'], climate: ['climate'], cover: ['cover'],
   };
-  const ICONS = {
+  const ICONS: Record<string, string> = {
     light: 'mdi:lightbulb', light_strip: 'mdi:led-strip-variant', mower: 'mdi:robot-mower', dock: 'mdi:home-lightning-bolt',
     ev_charger: 'mdi:ev-station', climate: 'mdi:thermostat', cover: 'mdi:curtains',
   };
-  const listFor = (type) => {
+  const listFor = (type: string) => {
     const d = DOMAINS[type];
     return d ? ids.filter((id) => d.includes(id.split('.')[0])) : ids;
   };
   const types = [...new Set(objs.map((o) => (DOMAINS[o.type] ? o.type : 'other')))];
   const datalists = types.map((t) => `<datalist id="fp-obj-${t}">${listFor(t).map((x) => entOption(ed, x)).join('')}</datalist>`).join('');
-  const lo = ed.layout.objects || {};
+  const lo: Record<string, LayoutObject> = ed.layout.objects || {};
   const lgAll = layoutTags(ed.layout);
   // "Light on wall" (the wash): object > tag > model; the default option names what applies without a setting
-  const WASH_LABEL = { down: 'Down', up: 'Up', both: 'Up and down', none: 'None', point: 'Around the lamp', spot: 'Where it aims', model: 'from the model' };
-  const washSelect = (field, id, cur, def) => `<label class="owash">Light on wall <select data-field="${field}" data-id="${esc(id)}">
+  const WASH_LABEL: Record<string, string> = { down: 'Down', up: 'Up', both: 'Up and down', none: 'None', point: 'Around the lamp', spot: 'Where it aims', model: 'from the model' };
+  const washSelect = (field: string, id: string, cur: string | undefined, def: string) => `<label class="owash">Light on wall <select data-field="${field}" data-id="${esc(id)}">
       <option value="">Default (${esc(WASH_LABEL[def] || def)})</option>${WASH_DIRS.map((d) => `<option value="${d}"${cur === d ? ' selected' : ''}>${WASH_LABEL[d]}</option>`).join('')}</select></label>`;
-  const rowHtml = (o) => {
-    const b = bindings.get(o.id) || {};
+  const rowHtml = (o: ManifestObject) => {
+    const b: ObjectBinding = bindings.get(o.id) || {};
     const t = DOMAINS[o.type] ? o.type : 'other';
-    const saved = lo[o.id] || {};
+    const saved: LayoutObject = lo[o.id] || {};
     const explicit = saved.entity !== undefined;
     const sug = (o.suggest || {}).entity;
     let badge = '', value = '', ph = 'auto: none';
     if (explicit) {
-      value = saved.entity === null ? 'none' : saved.entity;
+      value = saved.entity === null ? 'none' : saved.entity ?? ''; // explicit: defined
       if (b.missing) badge = '<span class="badge warn">entity not found</span>';
     } else if (b.entity && b.from === 'mower') {
       badge = '<span class="badge">auto</span>'; ph = `auto: ${b.entity} (from Mower tab)`;
@@ -69,15 +81,15 @@ export function objectsTab(ed) {
         ${tagChips(o)}${objActionsHtml(ed, o, saved.ui)}</li>`;
   };
   // tags: chips (x removes), + adds (datalist of known tags)
-  const tagsOf = (o) => objectTags(o, lo[o.id], (bindings.get(o.id) || {}).entity, ed.hass); // from the layout: fresh right after an edit
+  const tagsOf = (o: ManifestObject): string[] => objectTags(o, lo[o.id], (bindings.get(o.id) || {}).entity, ed.hass); // from the layout: fresh right after an edit
   const allTags = [...new Set([...objs.flatMap(tagsOf), ...Object.keys(layoutTags(ed.layout))])].sort((a, b) => a.localeCompare(b));
-  const tagChips = (o) => `<div class="otags">${tagsOf(o).map((t) => `<span class="otag">${esc(t)}<button class="link" data-act="tag-rm"
+  const tagChips = (o: ManifestObject) => `<div class="otags">${tagsOf(o).map((t) => `<span class="otag">${esc(t)}<button class="link" data-act="tag-rm"
       data-id="${esc(o.id)}" data-tag="${esc(t)}" title="Remove the tag" aria-label="Remove ${esc(t)}">×</button></span>`).join('')}
       <input class="tagadd" list="fp-tag-names" data-field="tag-add" data-id="${esc(o.id)}" placeholder="+ tag" title="Add a tag (Enter)" aria-label="Add a tag"></div>`;
   const filter = ed.objTagFilter && allTags.includes(ed.objTagFilter) ? ed.objTagFilter : '';
   const shownObjs = filter ? objs.filter((o) => tagsOf(o).includes(filter)) : objs;
   for (const id of [...ed.objPicked]) if (!objs.some((o) => o.id === id)) ed.objPicked.delete(id);
-  const levelOf = new Map(mb.manifest.levels.map((l) => [l.id, l]));
+  const levelOf = new Map<string | undefined, ManifestLevel>(mb.manifest.levels.map((l) => [l.id, l]));
   const roomOf = new Map(mb.manifest.rooms.map((r) => [r.id, r]));
   const order = [...new Set([...mb.manifest.levels.map((l) => l.id), ...objs.map((o) => o.level)])];
   let out = datalists + `<datalist id="fp-tag-names">${allTags.map((x) => `<option value="${esc(x)}">`).join('')}</datalist>`
@@ -124,30 +136,31 @@ export function objectsTab(ed) {
 }
 
 // Objects tab: current and default tags of an object (default = fp.group + HA labels of its entity).
-export function objTags(ed, id) {
+export function objTags(ed: EditMode, id: string): { cur: string[]; def: string[] } {
   const mb = ed.card.modelBindings();
   const o = mb && mb.manifest.objects.find((x) => x.id === id);
-  const b = (ed.card._bindings && ed.card._bindings.get(id)) || {};
+  const b: ObjectBinding = (ed.card._bindings && ed.card._bindings.get(id)) || {};
   if (!o) return { cur: [], def: [] };
   return { cur: objectTags(o, (ed.layout.objects || {})[id], b.entity, ed.hass), def: objectTags(o, null, b.entity, ed.hass) };
 }
 
 // Objects tab: Tap / Hold / Double tap selects (Default = the model / type action) with the fields each needs.
-export function objActionsHtml(ed, o, ui = {}) {
-  const def = resolveActions({ modelUi: o.ui, kind: 'object', id: o.id, typeDefaults: typeOf(o.type).defaults });
+export function objActionsHtml(ed: EditMode, o: ManifestObject, ui: Record<string, unknown> | undefined = {}): string {
+  const def = resolveActionsFor({ modelUi: o.ui, kind: 'object', id: o.id, typeDefaults: typeOf(o.type).defaults });
   const KINDS = ['toggle', 'more-info', 'popup', 'navigate', 'url', 'perform-action', 'none'];
-  const FIELDS = {
+  const FIELDS: Record<string, [string, string][]> = {
     navigate: [['navigation_path', '/lovelace/0']], url: [['url_path', 'https://… or /local/…']],
     'perform-action': [['perform_action', 'light.turn_on'], ['target', 'target entity_id']],
   };
   const id = esc(o.id);
   let sels = '', fields = '', warn = '';
   for (const [w, label] of [['tap', 'Tap'], ['hold', 'Hold'], ['double_tap', 'Double tap']]) {
-    const cur = (ui || {})[`${w}_action`] || null;
-    const d = def[w] ? def[w].action : 'none';
+    const cur = ((ui || {})[`${w}_action`] || null) as UiAction | null; // saved by setObjAction
+    const dw = def[w];
+    const d = dw ? dw.action : 'none';
     sels += `<label class="act">${label}<select data-field="obj-act" data-id="${id}" data-which="${w}">
         <option value="">Default (${esc(d)})</option>${KINDS.map((k) => `<option value="${k}"${cur && cur.action === k ? ' selected' : ''}>${k}</option>`).join('')}</select></label>`;
-    for (const [key, ph] of (cur && FIELDS[cur.action]) || []) {
+    if (cur) for (const [key, ph] of FIELDS[cur.action] || []) {
       const v = key === 'target' ? (cur.target && cur.target.entity_id) || '' : cur[key] || '';
       fields += `<input data-field="obj-act-field" data-id="${id}" data-which="${w}" data-key="${key}" value="${esc(v)}" placeholder="${esc(`${label}: ${ph}`)}">`;
     }
@@ -165,17 +178,17 @@ export function objActionsHtml(ed, o, ui = {}) {
   return `<div class="oacts">${sels}</div>${fields}${warn}`;
 }
 
-export function setObjAction(ed, el) {
-  const id = el.dataset.id, which = el.dataset.which;
-  const cur = (((ed.layout.objects || {})[id] || {}).ui || {})[`${which}_action`] || null;
+export function setObjAction(ed: EditMode, el: FieldEl) {
+  const id = el.dataset.id || '', which = el.dataset.which || '';
+  const cur = ((((ed.layout.objects || {})[id] || {}).ui || {})[`${which}_action`] || null) as UiAction | null; // saved by this function
   if (el.dataset.field === 'obj-act') {
     const v = el.value;
     ed.commit(E.setObjectUi(ed.layout, id, which, v ? (cur && cur.action === v ? cur : { action: v }) : null));
     return;
   }
   if (!cur) return;
-  const key = el.dataset.key, v = el.value.trim();
-  const next = { ...cur };
+  const key = el.dataset.key || '', v = el.value.trim();
+  const next: UiAction = { ...cur };
   if (key === 'target') {
     if (v) next.target = { entity_id: v };
     else delete next.target;
@@ -185,32 +198,32 @@ export function setObjAction(ed, el) {
 }
 
 // A click on an object in 3D (Objects tab): open its room, select and show its row.
-export function selectObject(ed, id) {
+export function selectObject(ed: EditMode, id: string) {
   const mb = ed.card.modelBindings();
   const o = mb && mb.manifest.objects.find((x) => x.id === id);
   if (!o) return;
   ed.objSel = id;
   ed.objExpanded.add(`${o.level}/${o.room || ''}`);
   ed.render();
-  const row = [...ed.panel.querySelectorAll('li.obj')].find((x) => x.dataset.obj === id);
+  const row = [...ed.panel.querySelectorAll<HTMLElement>('li.obj')].find((x) => x.dataset.obj === id);
   if (row) {
     row.scrollIntoView({ block: 'nearest' });
     row.classList.add('flash');
   }
 }
 
-function bulkTag(ed, btn) {
+function bulkTag(ed: EditMode, btn: HTMLElement) {
   const tag = (ed.objTagBulk || '').trim();
   if (!tag) { ed.message = { text: 'Type a tag first.', warn: true }; ed.render(); return; }
   const ids = [...ed.objPicked];
-  const cur = (x) => objTags(ed, x).cur, def = (x) => objTags(ed, x).def;
+  const cur = (x: string) => objTags(ed, x).cur, def = (x: string) => objTags(ed, x).def;
   ed.commit(btn.dataset.act === 'tag-bulk-add' ? E.addTagToObjects(ed.layout, ids, tag, cur, def) : E.removeTagFromObjects(ed.layout, ids, tag, cur, def));
   ed.render();
 }
 
-const acts = {
+const acts: Record<string, ActHandler> = {
   'tag-rm': (ed, btn) => {
-    const id = btn.dataset.id;
+    const id = btn.dataset.id || '';
     const t = objTags(ed, id);
     ed.commit(E.setObjectTags(ed.layout, id, t.cur.filter((x) => x !== btn.dataset.tag), t.def));
     ed.render();
@@ -227,70 +240,74 @@ const acts = {
     ed.render();
   },
   'obj-expand': (ed, btn) => {
-    if (ed.objExpanded.has(btn.dataset.key)) ed.objExpanded.delete(btn.dataset.key);
-    else ed.objExpanded.add(btn.dataset.key);
+    const key = btn.dataset.key || '';
+    if (ed.objExpanded.has(key)) ed.objExpanded.delete(key);
+    else ed.objExpanded.add(key);
     ed.render();
   },
   'obj-test': (ed, btn) => {
-    if (!ed.card.testObject(btn.dataset.id)) ed.message = { text: 'Nothing to toggle: bind a working entity first.', warn: true };
+    if (!ed.card.testObject(btn.dataset.id || '')) ed.message = { text: 'Nothing to toggle: bind a working entity first.', warn: true };
     ed.render();
   },
 };
 
-const objAction = (ed, el) => {
+const objAction: FieldHandler = (ed, el) => {
   setObjAction(ed, el);
   ed.render();
 };
 
-const fields = {
+// every field of an object row carries its object / tag id in data-id
+const idOf = (el: FieldEl): string => el.dataset.id || '';
+
+const fields: Record<string, FieldHandler> = {
   'obj-entity': (ed, el) => {
     const v = el.value.trim();
-    ed.commit(E.setObject(ed.layout, el.dataset.id, { entity: v === '' ? undefined : v.toLowerCase() === 'none' ? null : v }));
+    ed.commit(E.setObject(ed.layout, idOf(el), { entity: v === '' ? undefined : v.toLowerCase() === 'none' ? null : v }));
     ed.render();
   },
   'obj-popup': (ed, el) => {
-    if (el.value !== 'custom') ed.commit(E.setObjectUi(ed.layout, el.dataset.id, 'popup', el.value ? ['toggle'] : null));
+    if (el.value !== 'custom') ed.commit(E.setObjectUi(ed.layout, idOf(el), 'popup', el.value ? ['toggle'] : null));
     ed.render();
   },
   'obj-act': objAction,
   'obj-act-field': objAction,
   'obj-hidden': (ed, el) => {
-    ed.commit(E.setObject(ed.layout, el.dataset.id, { hidden: el.checked }));
+    ed.commit(E.setObject(ed.layout, idOf(el), { hidden: el.checked }));
     ed.render();
   },
   'obj-label': (ed, el) => {
-    ed.commit(E.setObject(ed.layout, el.dataset.id, { label: el.value }));
+    ed.commit(E.setObject(ed.layout, idOf(el), { label: el.value }));
     ed.render();
   },
   'grp-label': (ed, el) => {
-    ed.commit(E.setTag(ed.layout, el.dataset.id, { label: el.value }));
+    ed.commit(E.setTag(ed.layout, idOf(el), { label: el.value }));
     ed.render();
   },
   'obj-wash': (ed, el) => {
-    ed.commit(E.setObject(ed.layout, el.dataset.id, { wash: el.value || undefined }));
+    ed.commit(E.setObject(ed.layout, idOf(el), { wash: el.value || undefined }));
     ed.render();
   },
   'grp-wash': (ed, el) => {
-    ed.commit(E.setTag(ed.layout, el.dataset.id, { wash: el.value }));
+    ed.commit(E.setTag(ed.layout, idOf(el), { wash: el.value }));
     ed.render();
   },
   'grp-entity': (ed, el) => {
-    ed.commit(E.setTag(ed.layout, el.dataset.id, { entity: el.value.trim() }));
+    ed.commit(E.setTag(ed.layout, idOf(el), { entity: el.value.trim() }));
     ed.render();
   },
   'tag-add': (ed, el) => {
     const v = el.value.trim();
     if (!v) return;
-    const t = objTags(ed, el.dataset.id);
-    if (!t.cur.includes(v)) ed.commit(E.setObjectTags(ed.layout, el.dataset.id, [...t.cur, v], t.def));
+    const t = objTags(ed, idOf(el));
+    if (!t.cur.includes(v)) ed.commit(E.setObjectTags(ed.layout, idOf(el), [...t.cur, v], t.def));
     ed.render();
   },
   'tag-bulk': (ed, el) => {
     ed.objTagBulk = el.value;
   },
   'obj-pick': (ed, el) => {
-    if (el.checked) ed.objPicked.add(el.dataset.id);
-    else ed.objPicked.delete(el.dataset.id);
+    if (el.checked) ed.objPicked.add(idOf(el));
+    else ed.objPicked.delete(idOf(el));
     ed.render();
   },
   'obj-tag-filter': (ed, el) => {
@@ -299,4 +316,5 @@ const fields = {
   },
 };
 
-export const objectsTabDef = { id: 'objects', html: objectsTab, acts, fields };
+export const objectsTabDef = defineTab({ id: 'objects', html: objectsTab, acts, fields });
+
