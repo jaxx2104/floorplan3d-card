@@ -553,6 +553,7 @@ export class Floorplan3dCard extends HTMLElement {
     this._popup.close();
     this._editing = !this._editing;
     this._body.classList.toggle('editing', this._editing);
+    this._view.setEditing(this._editing); // no idle path tracing (quality still) while editing
     if (this._editing) {
       const first = this._floors && this._floors[0];
       if (!this._view.model && this._floor === 'all' && first) this._setFloor(first.id);

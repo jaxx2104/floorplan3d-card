@@ -23,7 +23,9 @@
   "license": "MIT",
   "dependencies": {
     "lit": "3.3.3",
-    "three": "0.169.0"
+    "three": "0.169.0",
+    "three-gpu-pathtracer": "0.0.23",
+    "three-mesh-bvh": "0.7.8"
   },
   "devDependencies": {
     "@mdi/js": "7.4.47",

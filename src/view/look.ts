@@ -263,6 +263,7 @@ export class RenderLook {
       this._syncSurfaces(t.physicalMaterials);
     }
     this.indirect.sync(); // after the upgrades: a probe applies to the physical materials too
+    this.view.still.sync(); // the path tracer (quality still) freed in the other tiers and without a model
     const layer = this.view.objectLayer;
     if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
   }

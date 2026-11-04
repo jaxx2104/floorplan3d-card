@@ -135,7 +135,8 @@ async function qualityRun(quality) {
     }
     const sorted = [...times].sort((a, b) => a - b);
     const probe = { load: pr0, idle: pr1.caps - pr0.caps, small: pr2.caps - pr1.caps, big: pr3.caps - pr2.caps, forced: prForced, lamp: pr4.caps - prBase.caps, after: pr5.caps - pr4.caps, rooms: pr5.rooms, passes: pr5.passes, on: pr5.on, ms: probeMs };
-    return { probe, buildMs, msLoad: ms0, msSteady, surf, roundTrip, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+    const still = await ev(`JSON.stringify({ sessions: ${card}._view.stats.stillSessions, steps: ${card}._view.stats.stillSteps, session: !!${card}._view.still.session, chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) })`).then(JSON.parse);
+    return { probe, buildMs, still, msLoad: ms0, msSteady, surf, roundTrip, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
       idleContact: cb1 - cb0, contactForced: cbForced, contactChange: cbChange, contactMs, contactTotal: await contactBuilds(), shadowSteps: sh1.shadow - sh0.shadow, shadowLightSteps: sh1.lights - sh0.lights,
       idleBloom: bp1 - bp0, bloomForced: bp3 - bp2, framesForced: fr3 - fr2, bloomAway: bp4 - bp3, skippedAway: skip1 - skip0, framesAway: fr5 - fr4, bloomTotal: bp4,
       awayAvg: awayTimes.reduce((a, b) => a + b, 0) / Math.max(1, awayTimes.length),
@@ -184,6 +185,62 @@ async function qualityChecks() {
   // bound (2 x + 8 ms, env light only) left no room on the shared CI runner once probes were in
   check('high (bloom, PCSS, contact, physical materials, probes included): frame time <= 2.5 x standard + 8 ms', high.avg <= 2.5 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
   for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
+  for (const [name, r] of [['standard', std], ['high', high]]) {
+    check(`${name}: no path tracing, its chunk never loaded`, r.still.sessions === 0 && r.still.steps === 0 && !r.still.session && !r.still.chunk, JSON.stringify(r.still));
+  }
+  await stillChecks();
+}
+
+// Render quality 'still': idle progressive path tracing (test mode: a few samples a session).
+async function stillChecks() {
+  const q = await openDemo({ model: '1', view: '3d', cards: '1', quality: 'still' }, { width: 1200, height: 700 });
+  try {
+    const { page } = q;
+    const ev = (expr) => page.evaluate(expr);
+    await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
+    await ev('window.__demoMowerPaused = true');
+    const st = () => ev(`JSON.stringify((() => { const v = ${card}._view, s = v.still; return { sessions: v.stats.stillSessions, steps: v.stats.stillSteps, builds: v.stats.stillBuilds, frames: v.stats.frames,
+      active: s.active, done: s.done, hold: s.hold, spp: s.samples, after: Math.round(s.startedAfter), gl: v.renderer.getContext().getError(),
+      chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) }; })())`).then(JSON.parse);
+    const waitFor = (expr, timeout = 120000) => page.waitForFunction(expr, { timeout, polling: 200 }).then(() => true, () => false);
+    const traced = await waitFor(`${card}._view.still.done`);
+    const a = await st();
+    console.log(`     still: first session ${JSON.stringify(a)}`);
+    check('still: traces once idle (>= 3 s after the last frame), its chunk loaded, done at the test cap, no GL error', traced && a.sessions === 1 && a.builds === 1 && a.after >= 2900 && a.chunk && a.spp >= 3 && a.done && a.gl === 0, JSON.stringify(a));
+    await sleep(1500);
+    const b = await st();
+    check('still: nothing runs once the budget is spent (no tile, no frame)', b.steps === a.steps && b.frames === a.frames && b.sessions === 1, JSON.stringify(b));
+    // a camera move: the very next frame is the raster frame, the session ended
+    const moved = await ev(`new Promise((done) => { const v = ${card}._view, s0 = v.stats.stillSteps, f0 = v.stats.frames; v.persp.position.x += 0.3; v.persp.position.z += 0.3; v.controls.update();
+      requestAnimationFrame(() => requestAnimationFrame(() => done(JSON.stringify({ active: v.still.active, done: v.still.done, steps: v.stats.stillSteps - s0, frames: v.stats.frames - f0 })))); })`).then(JSON.parse);
+    check('still: a camera move ends the session at once (the next frame is raster)', !moved.active && !moved.done && moved.frames >= 1 && moved.steps === 0, JSON.stringify(moved));
+    await waitFor(`!${card}._view.dirty && ${card}._view.cam.controls.update() === false`, 5000);
+    await sleep(1500);
+    const c = await st();
+    check('still: the idle time counts again after the move (no session within 1.5 s)', c.sessions === 1 && !c.active, JSON.stringify(c));
+    const again = await waitFor(`${card}._view.still.done && ${card}._view.stats.stillSessions === 2`);
+    const d = await st();
+    check('still: a second idle session reuses the traced scene (no rebuild)', again && d.sessions === 2 && d.builds === 1 && d.gl === 0, JSON.stringify(d));
+    // held off: edit mode, off screen
+    await ev(`${card}._view.setEditing(true); ${card}._view.dirty = true`);
+    await sleep(4500);
+    const e = await st();
+    await ev(`${card}._view.setEditing(false); ${card}._view.setOnScreen(false); ${card}._view.dirty = true`);
+    await sleep(4500);
+    const f = await st();
+    await ev(`${card}._view.setOnScreen(true)`);
+    check('still: no trace while editing or off screen', e.sessions === 2 && e.hold === 'edit' && !e.active && f.sessions === 2 && f.hold === 'offscreen' && !f.active, JSON.stringify({ edit: e, off: f }));
+    // the tier changed to high: the path tracer freed, nothing traced
+    await ev(`${card}._view.setRenderOption({ quality: 'high' })`);
+    await sleep(4500);
+    const g = await ev(`JSON.stringify({ session: !!${card}._view.still.session, sessions: ${card}._view.stats.stillSessions, hold: ${card}._view.still.hold })`).then(JSON.parse);
+    check('still -> high: the path tracer freed, no session', !g.session && g.sessions === 2 && g.hold === 'tier', JSON.stringify(g));
+    // SwiftShader has no parallel shader compile: three warns once when the path tracer compiles (it then compiles at once)
+    const errors = q.errors.filter((m) => !m.includes('KHR_parallel_shader_compile extension not supported'));
+    if (errors.length) check('still demo without page errors', false, errors.slice(0, 3).join(' | '));
+  } finally {
+    await q.close();
+  }
 }
 
 if (QUALITY_ONLY) {

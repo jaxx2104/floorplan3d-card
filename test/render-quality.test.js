@@ -25,15 +25,20 @@ describe('normRenderOption', () => {
     const r = normRenderOption({ quality: 'ultra', tone_mapping: 'filmic', recipe: 3, bloom: true });
     expect(r.option).toEqual(RENDER_OPTION_DEFAULTS);
     expect(r.warnings).toHaveLength(4);
-    expect(r.warnings.join('\n')).toMatch(/render.quality: "ultra" is not one of standard, high/);
+    expect(r.warnings.join('\n')).toMatch(/render.quality: "ultra" is not one of standard, high, still/);
     expect(r.warnings.join('\n')).toMatch(/render.tone_mapping: "filmic"/);
     expect(r.warnings.join('\n')).toMatch(/render.recipe/);
     expect(r.warnings.join('\n')).toMatch(/render.bloom: unknown option/);
     expect(normRenderOption(5).warnings[0]).toMatch(/needs model, default or an object/);
   });
   it('tiers: standard turns nothing on, high the sky environment with AgX', () => {
-    expect(QUALITIES).toEqual(['standard', 'high']);
-    expect(QUALITY_TIERS.standard).toEqual({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false });
+    expect(QUALITIES).toEqual(['standard', 'high', 'still']);
+    expect(QUALITY_TIERS.standard).toEqual({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false, pathTrace: false });
+    expect(QUALITY_TIERS.high.pathTrace).toBe(false);
+    // 'still' is 'high' plus idle path tracing
+    expect({ ...QUALITY_TIERS.still, pathTrace: false }).toEqual({ ...QUALITY_TIERS.high });
+    expect(QUALITY_TIERS.still.pathTrace).toBe(true);
+    expect(normRenderOption({ quality: 'still' }).option.quality).toBe('still');
     expect(QUALITY_TIERS.high.lightProbes).toBe(true);
     expect(QUALITY_TIERS.high.bakedLightmaps).toBe(true);
     expect(QUALITY_TIERS.high.physicalMaterials).toBe(true);

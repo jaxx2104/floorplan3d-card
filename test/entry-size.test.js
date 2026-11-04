@@ -42,6 +42,20 @@ describe('entry size guard', () => {
     expect(inputsOf(staticClosure(impl))).not.toContain('src/edit-mode.ts');
     expect(outputs[impl].imports.some((i) => i.kind === 'dynamic-import' && i.path === edit)).toBe(true);
   });
+  it('the path tracer (quality still) is its own chunk, in neither the entry nor the card chunk', () => {
+    const impl = chunkOf('src/card-impl.ts'), tracer = chunkOf('src/path-tracer.ts');
+    expect(tracer, 'chunk').toMatch(/^dist\/chunks\/path-tracer-[A-Z0-9]+\.js$/);
+    const isLib = (k) => /node_modules\/(three-gpu-pathtracer|three-mesh-bvh)\//.test(k);
+    for (const f of [staticClosure(ENTRY), staticClosure(impl)]) {
+      expect(inputsOf(f).filter(isLib)).toEqual([]);
+      expect(inputsOf(f)).not.toContain('src/path-tracer.ts');
+      expect(f.has(tracer)).toBe(false);
+    }
+    expect(Object.keys(outputs[tracer].inputs).some((k) => k.includes('node_modules/three-gpu-pathtracer/'))).toBe(true);
+    expect(Object.keys(outputs[tracer].inputs).some((k) => k.includes('node_modules/three-mesh-bvh/'))).toBe(true);
+    // the card imports it on demand
+    expect(outputs[impl].imports.some((i) => i.kind === 'dynamic-import' && i.path === tracer)).toBe(true);
+  });
   it('lit (the edit panel) is in the edit chunk only', () => {
     const isLit = (k) => /node_modules\/(lit|lit-html|lit-element|@lit\/[^/]+)\//.test(k);
     const edit = chunkOf('src/edit-mode.ts');

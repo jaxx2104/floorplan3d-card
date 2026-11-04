@@ -21,6 +21,7 @@ import { SkyLayer } from './view/sky.ts';
 import { PlanStructure } from './view/structure.ts';
 import { MowerLayer } from './view/mower-layer.ts';
 import { MarkerOcclusion } from './view/occlusion.ts';
+import { StillTrace } from './view/still.ts';
 import type { ObjectLayer } from './objects/layer.ts';
 import type { Floor, Vec3 } from './types/layout.ts';
 
@@ -46,6 +47,9 @@ export interface ViewStats {
   contactBuilds: number; // contact shadow rebuilds (render quality 'high', the shadow casters changed)
   probeCaptures: number; // room light probe captures (render quality 'high', one room a frame while a pass runs)
   materialSwaps: number; // model materials upgraded to physical or restored (render quality 'high', look changes)
+  stillSessions: number; // idle path tracing sessions started (render quality 'still')
+  stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
+  stillBuilds: number; // path tracer scene builds (render quality 'still', the model or its visible geometry changed)
   mapUploads?: number;
 }
 
@@ -74,6 +78,8 @@ export class FloorplanView {
   structure: PlanStructure;
   mower: MowerLayer;
   occlusion: MarkerOcclusion;
+  /** idle path tracing (render quality 'still') */
+  still: StillTrace;
   labelRenderer: CSS2DRenderer;
   persp: THREE.PerspectiveCamera;
   ortho: THREE.OrthographicCamera;
@@ -142,6 +148,7 @@ export class FloorplanView {
     this.structure = new PlanStructure(this);
     this.mower = new MowerLayer(this);
     this.occlusion = new MarkerOcclusion(this);
+    this.still = new StillTrace(this);
     this.renderer.setPixelRatio(this.look._pixelRatio());
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.localClippingEnabled = true; // model cut-away
@@ -199,7 +206,7 @@ export class FloorplanView {
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
     this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
-    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0, probeCaptures: 0, materialSwaps: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0, probeCaptures: 0, materialSwaps: 0, stillSessions: 0, stillSteps: 0, stillBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure
@@ -577,6 +584,31 @@ export class FloorplanView {
     if (this.onObjectsInvalidate && this.model) this.onObjectsInvalidate();
   }
 
+  // The frame into the drawing buffer: depth pre-pass (ao, finish), the scene, bloom, finish. count: a frame of the
+  // loop (false: the 'still' tier drawing the frame on screen again to keep it under the trace).
+  _drawGl(count: boolean): void {
+    const look = this.look;
+    const ao = this.model ? look._ao : null, fin = this.model ? look._finish : null;
+    if (ao || (fin && fin.needsDepth)) {
+      if (!look._depthPass) look._depthPass = new DepthPrepass(this.renderer);
+      const depth = look._depthPass.render(this.scene, this.camera, ao ? ao.settings.resolution : 0.5);
+      if (ao) ao.begin(depth, this.camera);
+      if (fin && fin.needsDepth) {
+        this.camera.updateMatrixWorld();
+        fin.setFocus(look._focusBox());
+        fin.prepare(depth, this.camera);
+      }
+    }
+    try {
+      this.renderer.render(this.scene, this.camera);
+    } finally {
+      if (ao) ao.end();
+    }
+    const bloom = this.model ? look._bloom : null;
+    if (bloom && bloom.render(this.scene, this.camera) && count) this.stats.bloomPasses++; // before the finish: it grades the bloom too
+    if (fin) fin.apply();
+  }
+
   start(): void {
     if (this._raf) return;
     const cam = this.cam, look = this.look, sky = this.skyLayer; // direct part refs on the per-frame path
@@ -598,8 +630,9 @@ export class FloorplanView {
       look._stepScreens();
       look._stepSway();
       cam._stepOrbit();
-      if (!this.dirty) return;
+      if (!this.dirty) { this.still.idle(performance.now()); return; } // render quality 'still': trace once idle
       this.dirty = false;
+      this.still.frameDrawn(performance.now()); // a traced image is replaced by this frame
       this.stats.frames++;
       const t0 = this.onFrameTime ? performance.now() : 0;
       cam._updateDepth();
@@ -607,25 +640,7 @@ export class FloorplanView {
       sky._placeSkyBodies();
       if (look._updateContact()) this.stats.contactBuilds++; // the casters changed since the last frame (quality high)
       this.labelRenderer.domElement.classList.toggle('compact', cam.pixelsPerMetre() < COMPACT_PPM);
-      const ao = this.model ? look._ao : null, fin = this.model ? look._finish : null;
-      if (ao || (fin && fin.needsDepth)) {
-        if (!look._depthPass) look._depthPass = new DepthPrepass(this.renderer);
-        const depth = look._depthPass.render(this.scene, this.camera, ao ? ao.settings.resolution : 0.5);
-        if (ao) ao.begin(depth, this.camera);
-        if (fin && fin.needsDepth) {
-          this.camera.updateMatrixWorld();
-          fin.setFocus(look._focusBox());
-          fin.prepare(depth, this.camera);
-        }
-      }
-      try {
-        this.renderer.render(this.scene, this.camera);
-      } finally {
-        if (ao) ao.end();
-      }
-      const bloom = this.model ? look._bloom : null;
-      if (bloom && bloom.render(this.scene, this.camera)) this.stats.bloomPasses++; // before the finish: it grades the bloom too
-      if (fin) fin.apply();
+      this._drawGl(true);
       if (this.model && look.indirect.step()) this.stats.probeCaptures++; // a room's light probe, after the frame drew its shadow maps
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
@@ -638,6 +653,11 @@ export class FloorplanView {
   setOnScreen(on: unknown): void {
     this.onScreen = !!on;
     if (on) this.dirty = true;
+  }
+
+  // Edit mode opened / closed (the card): the 'still' tier traces only outside it.
+  setEditing(on: unknown): void {
+    this.still.setEditing(!!on);
   }
 
   stop(): void {
@@ -682,6 +702,7 @@ export class FloorplanView {
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
     this.look.dispose(); // ao, finish, depth pass
+    this.still.dispose(); // the path tracer
     this.mower.setMapOverlay(null);
     this.mower.setMowerWarning(null);
     this.skyLayer.dispose(); // sprites, room mask, rain / snow, compass ring

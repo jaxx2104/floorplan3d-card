@@ -306,7 +306,7 @@ export const cityLightsOn = (night: unknown): number => {
 // --- card option render: recipe source, quality tier, tone mapping ---
 
 /** Quality tiers, cheapest first. 'standard' is the look before tiers existed. */
-export type Quality = 'standard' | 'high';
+export type Quality = 'standard' | 'high' | 'still';
 /** What a tier turns on. A new effect adds a field here, off in 'standard', so 'standard' stays as it was. */
 export interface QualityTier {
   /** Tone mapping when the card sets none (null: the recipe's). */
@@ -329,10 +329,14 @@ export interface QualityTier {
   lightProbes: boolean;
   /** Lightmaps baked into the model (extras fp_lightmap on a second UV set) as the ambient light of their surfaces (lightmap.ts). */
   bakedLightmaps: boolean;
+  /** Idle progressive path tracing: the view traced and faded in once the camera has been still (still.ts). */
+  pathTrace: boolean;
 }
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
-  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false }),
-  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true }),
+  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false, lightProbes: false, bakedLightmaps: false, pathTrace: false }),
+  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true, pathTrace: false }),
+  // 'high' while the camera moves; path traced once the view is idle
+  still: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true, lightProbes: true, bakedLightmaps: true, pathTrace: true }),
 });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
 
@@ -348,7 +352,7 @@ export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; t
 export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'standard', toneMapping: null });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'standard' | 'high', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'standard' | 'high' | 'still', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): { option: RenderOption; warnings: string[] } {
