@@ -3,17 +3,28 @@
 // test, so the cut-away stays cut). Colour red = front face: the inside of a cut wall (its back faces)
 // is told apart. Transparent things, helpers, glass, sprites, points and lines are left out.
 import * as THREE from 'three';
+import type { Drawable } from './view/core.js';
+
+/** The material fields the pre-pass reads beyond Material's own (textured / physical materials). */
+type SourceMaterial = THREE.Material & { map?: THREE.Texture | null; alphaMap?: THREE.Texture | null; transmission?: number };
+type Flags = { isMesh?: boolean; isSprite?: boolean; isPoints?: boolean; isLine?: boolean };
 
 // Objects the depth pre-pass draws: visible opaque meshes that write depth (not helpers, glass, sprites,
 // points, lines).
-export function occludes(o) {
-  if (!o.isMesh || o.isSprite || (o.userData && (o.userData.helper || o.userData.seeThrough))) return false;
-  const mats = Array.isArray(o.material) ? o.material : [o.material];
-  return mats.length > 0 && mats.every((m) => m && m.visible !== false && !m.transparent && m.depthWrite !== false && m.colorWrite !== false && !(m.transmission > 0));
+export function occludes(o: Drawable): boolean {
+  const f = o as Flags;
+  if (!f.isMesh || f.isSprite || (o.userData && (o.userData.helper || o.userData.seeThrough))) return false;
+  const mats = (Array.isArray(o.material) ? o.material : [o.material]) as (SourceMaterial | undefined)[];
+  return mats.length > 0 && mats.every((m) => m && m.visible !== false && !m.transparent && m.depthWrite !== false && m.colorWrite !== false && !(m.transmission! > 0));
 }
 
 export class DepthPrepass {
-  constructor(renderer) {
+  renderer: THREE.WebGLRenderer;
+  size: THREE.Vector2;
+  target: THREE.WebGLRenderTarget;
+  _mats: WeakMap<THREE.Material, THREE.MeshBasicMaterial>;
+
+  constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
     this.size = new THREE.Vector2();
     this.target = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1), depthBuffer: true });
@@ -21,7 +32,7 @@ export class DepthPrepass {
   }
 
   // depth-only stand-in for a material: same side, clipping and alpha test
-  _depthMat(m) {
+  _depthMat(m: SourceMaterial): THREE.MeshBasicMaterial {
     let d = this._mats.get(m);
     if (!d) {
       d = new THREE.MeshBasicMaterial();
@@ -43,7 +54,7 @@ export class DepthPrepass {
   }
 
   // Render at resolution (share of the drawing buffer) for this camera -> this.target (depthTexture + front faces).
-  render(scene, camera, resolution) {
+  render(scene: THREE.Scene, camera: THREE.Camera, resolution: number): this {
     const r = this.renderer;
     const full = r.getDrawingBufferSize(new THREE.Vector2());
     const w = Math.max(1, Math.round(full.x * resolution)), h = Math.max(1, Math.round(full.y * resolution));
@@ -51,12 +62,13 @@ export class DepthPrepass {
       this.size.set(w, h);
       this.target.setSize(w, h);
     }
-    const swapped = [], hidden = [];
-    scene.traverseVisible((o) => {
-      if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
+    const swapped: [Drawable, THREE.Material | THREE.Material[] | undefined][] = [], hidden: THREE.Object3D[] = [];
+    scene.traverseVisible((obj) => {
+      const o = obj as Drawable, f = obj as Flags;
+      if (!(f.isMesh || f.isPoints || f.isLine || f.isSprite)) return;
       if (!occludes(o)) { o.visible = false; hidden.push(o); return; }
       swapped.push([o, o.material]);
-      o.material = Array.isArray(o.material) ? o.material.map((m) => this._depthMat(m)) : this._depthMat(o.material);
+      o.material = Array.isArray(o.material) ? o.material.map((m) => this._depthMat(m)) : this._depthMat(o.material!);
     });
     const prevTarget = r.getRenderTarget(), prevAutoClear = r.autoClear, prevShadow = r.shadowMap.needsUpdate;
     const clear = r.getClearColor(new THREE.Color()), clearAlpha = r.getClearAlpha();
@@ -77,8 +89,8 @@ export class DepthPrepass {
     return this;
   }
 
-  dispose() {
-    this.target.depthTexture.dispose();
+  dispose(): void {
+    this.target.depthTexture!.dispose(); // made with one in the constructor
     this.target.dispose();
   }
 }

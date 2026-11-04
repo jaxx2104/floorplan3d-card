@@ -8,6 +8,8 @@
 // After the frame render the canvas is copied and drawn back finished. Labels (CSS) stay as they are.
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import type { DepthPrepass } from './depth-pass.js';
+import { isPerspective, type ViewCamera } from './view/core.js';
 
 export const BOKEH_DEFAULTS = Object.freeze({ strength: 10, start: 0.5, range: 10, tilt: 0 });
 const BOKEH_RANGE = { strength: [0, 20], start: [0, 50], range: [0.5, 200], tilt: [0, 1] };
@@ -20,57 +22,61 @@ export const BOKEH_SAMPLES = 48;
 export const TILT_FALLOFF = 0.3;
 export const TILT_BAND = 0.1;
 
-function norm(opt, defaults, ranges) {
+export interface BokehSettings { strength: number; start: number; range: number; tilt: number }
+export interface GradeSettings { saturation: number; contrast: number; vignette: number }
+export interface FinishSettings { bokeh: BokehSettings | null; grade: GradeSettings | null }
+
+function norm<T extends object>(opt: unknown, defaults: Readonly<T>, ranges: Record<keyof T, number[]>): T | null {
   if (!opt) return null;
-  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  const o = opt === true ? {} : typeof opt === 'object' ? (opt as Record<string, unknown>) : null;
   if (!o) return null;
-  const out = {};
-  for (const [k, [lo, hi]] of Object.entries(ranges)) {
+  const out = {} as Record<keyof T, number>; // every key of ranges is set below
+  for (const [k, [lo, hi]] of Object.entries(ranges) as [keyof T & string, number[]][]) {
     const v = Number(o[k]);
-    out[k] = o[k] === undefined || !Number.isFinite(v) ? defaults[k] : Math.min(hi, Math.max(lo, v));
+    out[k] = o[k] === undefined || !Number.isFinite(v) ? (defaults[k] as number) : Math.min(hi, Math.max(lo, v));
   }
-  return out;
+  return out as T;
 }
 
 // Card option bokeh: true | { strength (px blur radius at most), start (m from the rooms: still sharp),
 // range (m further: full blur), tilt (0..1: tilt-shift blur above and below the rooms on screen) }
 // -> settings, or null (off).
-export function normBokeh(opt) {
-  const out = norm(opt, BOKEH_DEFAULTS, BOKEH_RANGE);
+export function normBokeh(opt: unknown): BokehSettings | null {
+  const out = norm<BokehSettings>(opt, BOKEH_DEFAULTS, BOKEH_RANGE);
   return out && out.strength > 0 ? out : null;
 }
 
 // Card option grade: true | { saturation (1 = as rendered), contrast (0..1 of an S-curve), vignette (0..1) }
 // -> settings, or null (off).
-export const normGrade = (opt) => norm(opt, GRADE_DEFAULTS, GRADE_RANGE);
+export const normGrade = (opt: unknown): GradeSettings | null => norm<GradeSettings>(opt, GRADE_DEFAULTS, GRADE_RANGE);
 
-const smooth = (t) => {
+const smooth = (t: number) => {
   const x = Math.max(0, Math.min(1, t));
   return x * x * (3 - 2 * x);
 };
 
 // Blur share 0..1 at a distance (m) from the rooms' box; must match the shader.
-export const cocAt = (dist, { start, range }) => smooth((dist - start) / range);
+export const cocAt = (dist: number, { start, range }: { start: number; range: number }): number => smooth((dist - start) / range);
 
 // Tilt-shift blur share 0..1 at screen height y (0..1) for the rooms' band [y0, y1]; must match the shader.
-export const tiltAt = (y, y0, y1, tilt) => tilt * smooth(Math.max(y0 - y, y - y1) / TILT_FALLOFF);
+export const tiltAt = (y: number, y0: number, y1: number, tilt: number): number => tilt * smooth(Math.max(y0 - y, y - y1) / TILT_FALLOFF);
 
 // Focus band (0..1, bottom up) on screen: TILT_BAND around the middle of the box's band, inside it.
-export function focusBand(band) {
+export function focusBand(band: [number, number] | null): [number, number] | null {
   if (!band) return null;
   const mid = (band[0] + band[1]) / 2, half = Math.min(TILT_BAND, (band[1] - band[0]) / 2);
   return [mid - half, mid + half];
 }
 
 // Screen band (0..1, bottom up) of a world box seen by a camera: [y0, y1], or null when it is behind it.
-export function screenBand(box, camera) {
+export function screenBand(box: THREE.Box3 | null | undefined, camera: ViewCamera): [number, number] | null {
   if (!box || box.isEmpty()) return null;
   let y0 = Infinity, y1 = -Infinity;
   const v = new THREE.Vector3();
   for (let i = 0; i < 8; i++) {
     v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
     v.applyMatrix4(camera.matrixWorldInverse);
-    if (camera.isPerspectiveCamera && v.z > -camera.near) return null;
+    if (isPerspective(camera) && v.z > -camera.near) return null;
     v.applyMatrix4(camera.projectionMatrix);
     const y = v.y * 0.5 + 0.5;
     y0 = Math.min(y0, y);
@@ -143,8 +149,17 @@ void main() {
 }`;
 
 export class ScreenFinish {
+  renderer: THREE.WebGLRenderer;
+  settings: FinishSettings;
+  box: THREE.Box3;
+  cocTarget: THREE.WebGLRenderTarget;
+  color: THREE.FramebufferTexture | null;
+  coc: THREE.ShaderMaterial;
+  finish: THREE.ShaderMaterial;
+  fsQuad: FullScreenQuad;
+
   // settings: { bokeh: normBokeh() | null, grade: normGrade() | null }
-  constructor(renderer, settings) {
+  constructor(renderer: THREE.WebGLRenderer, settings: FinishSettings) {
     this.renderer = renderer;
     this.settings = settings;
     this.box = new THREE.Box3();
@@ -165,21 +180,21 @@ export class ScreenFinish {
         saturation: { value: 1 }, contrast: { value: 0 }, vignette: { value: 0 }, aspect: { value: 1 },
       },
     });
-    this.fsQuad = new FullScreenQuad(null);
+    this.fsQuad = new FullScreenQuad(this.coc); // its material is set before every render
   }
 
-  get needsDepth() {
+  get needsDepth(): boolean {
     return !!this.settings.bokeh;
   }
 
   // The rooms' box (world) the lens focuses on.
-  setFocus(box) {
+  setFocus(box: THREE.Box3 | null | undefined): void {
     if (box && !box.isEmpty()) this.box.copy(box);
     else this.box.makeEmpty();
   }
 
   // Circle of confusion from the depth pre-pass, before the frame render (bokeh only).
-  prepare(depth, camera) {
+  prepare(depth: DepthPrepass, camera: ViewCamera): void {
     const b = this.settings.bokeh;
     if (!b) return;
     const r = this.renderer, u = this.coc.uniforms;

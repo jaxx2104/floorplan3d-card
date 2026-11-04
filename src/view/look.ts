@@ -13,9 +13,21 @@ import { AmbientOcclusion, normAo } from '../ao.js';
 import { ScreenFinish, normBokeh, normGrade } from '../finish.js';
 import { normSway, swayLean } from '../cloud-shadow.js';
 import { shadowInfo, sunDirection } from '../render-rules.js';
-import { frameInterval } from './core.js';
+import { frameInterval, isMesh, type Drawable } from './core.js';
+import type { FloorplanView } from '../view.js';
+import type { Manifest } from './model.js';
+import type { RenderSettings, DayNight, CityLights } from '../render-recipe.js';
+import type { SwaySettings } from '../cloud-shadow.js';
+import type { FinishSettings } from '../finish.js';
+import type { DepthPrepass } from '../depth-pass.js';
+import type { Screen } from '../screens.js';
+import type { HassEntity } from '../types/ha.js';
+import type { Vec3 } from './core.js';
 
-const TONE = {
+/** Sky state: night 0..1, unit vector toward the sun (world) or null, sun strength factor. */
+export interface SkyState { night: number; sunDir?: Vec3 | null; sun?: number }
+
+const TONE: Record<string, THREE.ToneMapping> = {
   None: THREE.NoToneMapping, Linear: THREE.LinearToneMapping, Reinhard: THREE.ReinhardToneMapping, Cineon: THREE.CineonToneMapping,
   ACESFilmic: THREE.ACESFilmicToneMapping, AgX: THREE.AgXToneMapping, Neutral: THREE.NeutralToneMapping,
 };
@@ -26,7 +38,33 @@ const SHADOW_MARGIN_M = 4;
 const SWAY_FRAME_MS = 66;
 
 export class RenderLook {
-  constructor(view) {
+  view: FloorplanView;
+  render: RenderSettings;
+  renderOption: 'model' | 'default';
+  renderFrom: { keys: number } | null;
+  background: DayNight;
+  furniture: 'color' | 'white';
+  daylight: boolean;
+  sky: SkyState;
+  _modelLook: boolean;
+  _cityModel: FloorplanView['model'];
+  _city: CityLights | null;
+  _sway: SwaySettings | null;
+  _swayClock: { at: number } | null;
+  _surround: DayNight | null;
+  _ao: AmbientOcclusion | null;
+  _finishOpts: FinishSettings | null;
+  _finish: ScreenFinish | null;
+  _depthPass: DepthPrepass | null;
+  _screens: Screen[] | null;
+  _screenStates: Record<string, HassEntity> | null;
+  _dome: { centre: THREE.Vector3; radius: number } | null;
+  _houseBox: THREE.Box3 | null;
+  _modelBottom: number | null;
+  _shadowBox: { centre: THREE.Vector3; radius: number } | null;
+  _sunStale: boolean;
+
+  constructor(view: FloorplanView) {
     this.view = view;
     // render settings: the card's defaults, replaced by the model's fp.render recipe while one is loaded
     this.render = mergeRender(null);
@@ -57,7 +95,7 @@ export class RenderLook {
 
   // Card option render: 'model' (the model's fp.render recipe) or 'default' (ignore it). Applied at the next model load.
   // A change with a model loaded re-applies the look now (the lamp pool size follows at the next load).
-  setRenderOption(opt) {
+  setRenderOption(opt: unknown): void {
     const next = opt === 'default' ? 'default' : 'model';
     if (next === this.renderOption) return;
     this.renderOption = next;
@@ -68,29 +106,29 @@ export class RenderLook {
   }
 
   // Pixel ratio: 1 in test mode, else the device's up to the recipe's pixelRatioMax.
-  _pixelRatio() {
+  _pixelRatio(): number {
     return this.view.test ? 1 : Math.min(window.devicePixelRatio || 1, this.render.pixelRatioMax);
   }
 
   // Lamp shadow maps this device affords: { max, mapSize } (see deviceShadowCap).
-  shadowCap() {
+  shadowCap(): { max: number; mapSize: number } {
     const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     return deviceShadowCap({ touch, dpr: window.devicePixelRatio || 1, cores: navigator.hardwareConcurrency });
   }
 
   // Shadow-capable lamp slots for the loaded settings: min(recipe max, device max, texture units - 9).
-  lampShadowCount() {
+  lampShadowCount(): number {
     return lampShadowSlots(this.render.lampShadows.max, this.shadowCap(), this.view.renderer.capabilities.maxTextures);
   }
 
   // The loaded model's recipe (unless render: default) -> this.render; renderer pixel ratio and camera fov / near.
-  _useRecipe(manifest) {
+  _useRecipe(manifest: Manifest): void {
     const recipe = this.renderOption === 'default' ? null : manifest.render;
     this.renderFrom = recipe ? { keys: manifest.renderKeys || Object.keys(recipe).length } : null;
     this._setRender(mergeRender(recipe));
   }
 
-  _setRender(render) {
+  _setRender(render: RenderSettings): void {
     render.lampShadows.mapSize = lampMapSize(render.lampShadows.mapSize, this.shadowCap()); // at most 1024 and the device cap
     this.render = render;
     const pr = this._pixelRatio();
@@ -103,7 +141,7 @@ export class RenderLook {
     if (cam.fov !== render.camera.fov) { cam.fov = render.camera.fov; cam.updateProjectionMatrix(); }
   }
 
-  setDaylight(day) {
+  setDaylight(day: unknown): void {
     this.daylight = !!day;
     this.sky = { night: day ? 0 : 1, sunDir: null };
     if (this.view.model || !this.view.modelLayer._modelId) this._applyLook(); // a model on its way applies its look
@@ -114,7 +152,7 @@ export class RenderLook {
   // or night entered / left 1 (sun.castShadow stays true, so no shader recompile).
   // shadow: false (time scrubber dragging): lights move now, the sun's shadow map is redrawn at the next
   // setSky with shadow true (the scrubber settled).
-  setSky({ night = 0, sunDir = null, sun = 1 } = {}, { shadow = true } = {}) {
+  setSky({ night = 0, sunDir = null, sun = 1 }: Partial<SkyState> = {}, { shadow = true }: { shadow?: boolean } = {}): void {
     const old = this.sky;
     this.sky = { night, sunDir, sun };
     this.daylight = night < 0.5;
@@ -128,7 +166,7 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
-  _applyLights() {
+  _applyLights(): void {
     const t = Math.max(0, Math.min(1, this.sky.night)), hemi = this.view.hemi, sun = this.view.sun;
     const k = skyLights(this.render, t); // the recipe's day / night colours and intensities
     hemi.color.setHex(k.hemiSky);
@@ -155,7 +193,7 @@ export class RenderLook {
 
   // Card option city_lights (true or { windows, glow, share, strength, street, glass }): lit windows, lit
   // glass and street light at night, see cloud-shadow.js.
-  setCityLights(opt) {
+  setCityLights(opt: unknown): void {
     const next = normCityLights(opt);
     if (JSON.stringify(next) === JSON.stringify(this._city || null)) return;
     this._city = next;
@@ -168,15 +206,16 @@ export class RenderLook {
   // Which model materials draw lit windows or lit glass, and which sway (shader defines: recompiled only when
   // they change), and the site's ground height for the street light and the sway. A material shared by a
   // plant and something else sways as a whole outside the rooms.
-  _cityWindows() {
+  _cityWindows(): void {
     // per material: lit by the first mesh that asks for it, sways when any of its meshes does
-    const want = new Map();
-    this.view.model.root.traverse((o) => {
-      if (!o.isMesh) return;
+    const want = new Map<THREE.Material, { lit: 'glow' | 'windows' | null; sway: boolean }>();
+    const root = this.view.model!.root; // callers checked view.model
+    root.traverse((o) => {
+      if (!isMesh(o)) return;
       const info = shadowInfo(o);
       const lit = cityLitFor(info.names, info.layers, this._city);
       const sway = !!this._sway && this._sway.plants.some((p) => info.names.includes(p) || info.layers.includes(p));
-      for (const m of [].concat(o.material)) {
+      for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) {
         if (!m || !m.userData.fpCloud) continue;
         const w = want.get(m) || { lit: null, sway: false };
         want.set(m, { lit: w.lit || lit, sway: w.sway || sway });
@@ -188,18 +227,18 @@ export class RenderLook {
       m.userData.fpSway = sway;
       m.needsUpdate = true;
     }
-    const box = new THREE.Box3().setFromObject(this.view.model.root);
+    const box = new THREE.Box3().setFromObject(root);
     this.view.skyLayer._cloudU.fpCityGround.value = box.isEmpty() ? 0 : box.min.y;
   }
 
   // Card option sway (true or { plants, strength }): the plants outside sway in the wind (weather wind_speed),
   // redrawn at up to 1000 / SWAY_FRAME_MS frames a second while the card is on screen.
   // Card option max_fps: frames a second of the animations (null: their own defaults, 15-30).
-  setMaxFps(fps) {
+  setMaxFps(fps: unknown): void {
     this.view._maxFps = Number(fps) > 0 ? Number(fps) : null;
   }
 
-  setSway(opt) {
+  setSway(opt: unknown): void {
     const next = normSway(opt);
     if (JSON.stringify(next) === JSON.stringify(this._sway || null)) return;
     this._sway = next;
@@ -209,7 +248,7 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
-  _stepSway() {
+  _stepSway(): void {
     const S = this._swayClock || (this._swayClock = { at: 0 });
     if (!this._sway || !this.view.model || !this.view.onScreen || this.view.test || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { S.at = 0; return; }
     const now = performance.now();
@@ -220,7 +259,7 @@ export class RenderLook {
   }
 
   // Card option surround_light (true or { day, night }): ambient light around the house, not in the rooms.
-  setSurroundLight(opt) {
+  setSurroundLight(opt: unknown): void {
     const next = normSurroundLight(opt);
     if (JSON.stringify(next) === JSON.stringify(this._surround || null)) return;
     this._surround = next;
@@ -230,7 +269,7 @@ export class RenderLook {
   }
 
   // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
-  setAo(opt) {
+  setAo(opt: unknown): void {
     const next = normAo(opt);
     if (JSON.stringify(next) === JSON.stringify(this._ao ? this._ao.settings : null)) return;
     if (this._ao) this._ao.dispose();
@@ -244,17 +283,17 @@ export class RenderLook {
 
   // Card options bokeh (true or { strength, start, range, tilt }) and grade (true or { saturation, contrast,
   // vignette }): the finish over the frame, see finish.js.
-  setBokeh(opt) {
+  setBokeh(opt: unknown): void {
     this._setFinish({ ...this._finishOpts, bokeh: normBokeh(opt) });
   }
 
-  setGrade(opt) {
+  setGrade(opt: unknown): void {
     this._setFinish({ ...this._finishOpts, grade: normGrade(opt) });
   }
 
-  _setFinish(next) {
+  _setFinish(opts: Partial<FinishSettings>): void {
     const prev = this._finishOpts || { bokeh: null, grade: null };
-    next = { bokeh: next.bokeh || null, grade: next.grade || null };
+    const next: FinishSettings = { bokeh: opts.bokeh || null, grade: opts.grade || null };
     if (JSON.stringify(next) === JSON.stringify(prev)) return;
     this._finishOpts = next;
     if (this._finish) this._finish.dispose();
@@ -263,14 +302,14 @@ export class RenderLook {
   }
 
   // The box the lens focuses on: the rooms on the visible floors, floor to ceiling (else the house box).
-  _focusBox() {
+  _focusBox(): THREE.Box3 {
     const box = new THREE.Box3();
     for (const solid of this.view.skyLayer._roomSolids()) box.setFromPoints(solid.concat(box.isEmpty() ? [] : [box.min.clone(), box.max.clone()]));
     return box;
   }
 
   // Card option background ('#rrggbb' or { day, night }). Re-applied now with a model loaded.
-  setBackground(opt) {
+  setBackground(opt: unknown): void {
     const next = backgroundColors(opt);
     if (next.day === this.background.day && next.night === this.background.night) return;
     this.background = next;
@@ -281,7 +320,7 @@ export class RenderLook {
 
   // Card option furniture: 'white' shows every material that carries extras fp_white ([r, g, b] linear, the
   // model's white look) in that colour instead of its own; anything else ('color', unset) the modelled colour.
-  setFurniture(opt) {
+  setFurniture(opt: unknown): void {
     const next = opt === 'white' ? 'white' : 'color';
     if (next === this.furniture) return;
     this.furniture = next;
@@ -289,31 +328,31 @@ export class RenderLook {
   }
 
   // hass.states for the animated screens (fp_anim): each plays while its entity is on.
-  setScreenStates(states) {
+  setScreenStates(states: Record<string, HassEntity> | null | undefined): void {
     this._screenStates = states || null;
     if (this._applyScreens()) this.view.dirty = true;
   }
 
-  _applyScreens() {
+  _applyScreens(): boolean {
     let changed = false;
     for (const s of this._screens || []) if (setScreenOn(s, screenOn(s.anim, this._screenStates))) changed = true;
     return changed;
   }
 
   // Advance the playing screens to the frame for now; only a changed frame asks for a render.
-  _stepScreens() {
+  _stepScreens(): void {
     if (!this._screens || !this._screens.length || !this.view.onScreen) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     const t = performance.now() / 1000;
     for (const s of this._screens) if (s.on && showFrame(s, frameAt(s.anim, t))) this.view.dirty = true;
   }
 
-  _applyFurniture() {
+  _applyFurniture(): boolean {
     return !!this.view.model && paintFurniture(this.view.model.root, this.furniture === 'white') > 0;
   }
 
   // Renderer, light and shadow settings for model / no model and day / night.
-  _applyLook() {
+  _applyLook(): void {
     const r = this.view.renderer, day = this.view.model ? this.daylight : true, sun = this.view.sun, hemi = this.view.hemi;
     this._modelLook = !!this.view.model;
     if (this.view.model) {
@@ -354,7 +393,8 @@ export class RenderLook {
       sun.target.position.set(0, 0, 0);
     }
     // toneMapping / shadowMap changes need the shaders rebuilt
-    this.view.scene.traverse((o) => {
+    this.view.scene.traverse((obj) => {
+      const o = obj as Drawable;
       if (!o.material) return;
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
     });
@@ -363,17 +403,18 @@ export class RenderLook {
 
   // Fit the sun's shadow camera to the house: storey / basement / roof levels (untagged: meshes up
   // to 30 m across) + 4 m, not the whole plot, so the 2048² map stays sharp. Sun azimuth from fp.north.
-  _fitShadow({ redraw = true } = {}) {
-    if (!this.view.model) return;
+  _fitShadow({ redraw = true }: { redraw?: boolean } = {}): void {
+    const model = this.view.model;
+    if (!model) return;
     const sun = this.view.sun;
     this.view.modelGroup.updateMatrixWorld(true);
     let box = new THREE.Box3();
-    for (const l of this.view.model.manifest.levels) {
+    for (const l of model.manifest.levels) {
       if (l.role === 'storey' || l.role === 'basement' || l.role === 'roof') box.union(new THREE.Box3().setFromObject(l.node));
     }
     if (box.isEmpty()) {
-      this.view.model.root.traverse((o) => {
-        if (!o.isMesh) return;
+      model.root.traverse((o) => {
+        if (!isMesh(o)) return;
         const b = new THREE.Box3().setFromObject(o);
         if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) <= SHADOW_MESH_M) box.union(b);
       });
@@ -392,7 +433,7 @@ export class RenderLook {
     const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
     this._shadowBox = { centre: centre.clone(), radius };
     this.view.skyLayer._applyMoonLight();
-    const dir = new THREE.Vector3(...(this.sky.sunDir || sunDirection(this.view.model.north, this.view.modelGroup.rotation.y)));
+    const dir = new THREE.Vector3(...(this.sky.sunDir || sunDirection(model.north, this.view.modelGroup.rotation.y)));
     sun.target.position.copy(centre);
     sun.position.copy(centre).addScaledVector(dir, radius * 2.5);
     const cam = sun.shadow.camera;
@@ -410,14 +451,14 @@ export class RenderLook {
 
   // The shadow casters changed (model, visibility, cut, section): the sun's map (while it is up) and
   // every lit pool shadow map. Dark lights are redrawn when they light up.
-  _shadowDirty() {
+  _shadowDirty(): void {
     this._sunShadow();
     if (this.view.objectLayer) this.view._flagShadows(this.view.objectLayer.shadowsStale());
     this.view.stats.shadow++;
   }
 
   // Sun map: redraw now when the sun is up, else once it rises (setSky).
-  _sunShadow() {
+  _sunShadow(): void {
     if (this.view.sun.intensity > 0) {
       this._sunStale = false;
       this.view._flagShadows([this.view.sun]);
@@ -427,14 +468,14 @@ export class RenderLook {
   }
 
   // lights: the pool lights whose shadow maps must be redrawn (lit, moved or reassigned).
-  requestShadowUpdate(lights) {
+  requestShadowUpdate(lights: THREE.Light[] | null | undefined): void {
     this.view._flagShadows(lights);
     this.view.stats.shadow++;
     this.view.dirty = true;
   }
 
   // Ambient occlusion, the finish and the depth pass (view.dispose).
-  dispose() {
+  dispose(): void {
     this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();

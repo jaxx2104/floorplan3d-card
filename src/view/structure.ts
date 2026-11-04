@@ -6,18 +6,40 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { centroid } from '../placement.js';
 import { wallSegments } from '../layout.js';
-import { planToWorld } from './core.js';
+import { planToWorld, type ViewRoom, type ViewTheme } from './core.js';
+import type { FloorplanView } from '../view.js';
+import type { Floor, PlanPoint } from '../types/layout.js';
 import { OCCLUSION_DELAY_MS } from './occlusion.js';
 
 const WALL_THICKNESS = 0.12;
 const GLOW_RADIUS = 2.2;
 
-let glowTexture = null;
-function getGlowTexture() {
+/** Editor overlay (setOverlay): outlines, fills and DOM handles in plan metres. */
+export interface OverlaySpec {
+  lines?: { points: PlanPoint[]; closed?: boolean; floorId: string; color?: THREE.ColorRepresentation }[];
+  fills?: { points: PlanPoint[]; floorId: string; color?: THREE.ColorRepresentation; opacity?: number }[];
+  handles?: { element: HTMLElement; x: number; y: number; floorId: string }[];
+}
+/** A marker to show (setMarkers). */
+export interface MarkerSpec { id: string; element: HTMLElement; x: number; y: number; z: number; floorId: string }
+/** A light that is on (setGlows): rgb 0..255, strength 0..1. */
+export interface GlowSpec { id: string; x: number; y: number; floorId: string; rgb: number[]; strength: number }
+export interface StructureOptions { wallHeight?: number; walls?: boolean; fills?: boolean; outlines?: boolean; labels?: boolean }
+/** Edit-mode stem of a marker: line to the floor and a disc on it. */
+export interface Stem { line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>; disc: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial> }
+interface StemResources {
+  lineGeo: THREE.BufferGeometry;
+  discGeo: THREE.CircleGeometry;
+  lineMat: THREE.LineBasicMaterial;
+  discMat: THREE.MeshBasicMaterial;
+}
+
+let glowTexture: THREE.CanvasTexture | null = null;
+function getGlowTexture(): THREE.CanvasTexture {
   if (glowTexture) return glowTexture;
   const c = document.createElement('canvas');
   c.width = c.height = 128;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d')!; // a fresh 2D canvas context
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0, 'rgba(255,255,255,1)');
   grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
@@ -30,7 +52,12 @@ function getGlowTexture() {
 }
 
 export class PlanStructure {
-  constructor(view) {
+  view: FloorplanView;
+  stems: Map<string, Stem>;
+  _stemsOn: boolean;
+  _stemRes: StemResources | null;
+
+  constructor(view: FloorplanView) {
     this.view = view;
     this.stems = new Map(); // id -> { line, disc }
     this._stemsOn = false;
@@ -39,7 +66,7 @@ export class PlanStructure {
 
   // Editor overlay. lines: [{points, closed, floorId, color}], fills: [{points, floorId, color, opacity}],
   // handles: [{element, x, y, floorId}] (DOM, CSS2D).
-  setOverlay({ lines = [], fills = [], handles = [] } = {}) {
+  setOverlay({ lines = [], fills = [], handles = [] }: OverlaySpec = {}): void {
     this.view._clearGroup(this.view.overlayGroup);
     this.view.cssObjects = this.view.cssObjects.filter((c) => c.kind !== 'handle');
     for (const f of fills) {
@@ -77,14 +104,7 @@ export class PlanStructure {
     this.view.dirty = true;
   }
 
-  // Move one handle without rebuilding the overlay (vertex drag).
-  moveHandle(element, x, y, floorId) {
-    const c = this.view.cssObjects.find((o) => o.kind === 'handle' && o.obj.element === element);
-    if (c) c.obj.position.copy(planToWorld(x, y, 0.03, this.view.floorElevation(floorId)));
-    this.view.dirty = true;
-  }
-
-  moveMarker(id, x, y, z, floorId) {
+  moveMarker(id: string, x: number, y: number, z: number, floorId: string): void {
     const m = this.view.markerObjects.get(id);
     if (!m) return;
     m.obj.position.copy(planToWorld(x, y, z, this.view.floorElevation(floorId)));
@@ -101,7 +121,7 @@ export class PlanStructure {
     this.view.dirty = true;
   }
 
-  setTheme(theme) {
+  setTheme(theme: ViewTheme): void {
     this.view.theme = theme;
     this.view.look._applyLook();
     for (const g of this.view.glows.values()) {
@@ -112,7 +132,7 @@ export class PlanStructure {
   }
 
   // floors: [{id, elevation, height}], rooms: [{room, floorId, label}]
-  setStructure(floors, rooms, { wallHeight = 1.0, walls = true, fills = true, outlines = true, labels = true } = {}) {
+  setStructure(floors: Floor[], rooms: ViewRoom[], { wallHeight = 1.0, walls = true, fills = true, outlines = true, labels = true }: StructureOptions = {}): void {
     this.view.floors = floors;
     this.view._rooms = rooms;
     this.view.skyLayer._updateRoomMask();
@@ -179,7 +199,7 @@ export class PlanStructure {
   }
 
   // markers: [{id, element, x, y, z, floorId}]
-  setMarkers(markers) {
+  setMarkers(markers: MarkerSpec[]): void {
     for (const { obj } of this.view.markerObjects.values()) this.view._removeCss(obj);
     this.view.markerObjects.clear();
     this.view.cssObjects = this.view.cssObjects.filter((c) => c.kind !== 'marker');
@@ -198,7 +218,7 @@ export class PlanStructure {
 
   // Edit mode: a thin vertical line from every shown marker down to its floor plus a small disc
   // on the floor, so a marker at mounting height reads as standing over one spot while orbiting.
-  setStems(on) {
+  setStems(on: unknown): void {
     this._stemsOn = !!on;
     if (on) this._buildStems();
     else this._disposeStems();
@@ -206,7 +226,7 @@ export class PlanStructure {
     this.view.dirty = true;
   }
 
-  _stemColor() {
+  _stemColor(): THREE.Color {
     const c = new THREE.Color('#03a9f4');
     try {
       const css = getComputedStyle(this.view.container).getPropertyValue('--primary-color').trim();
@@ -215,10 +235,10 @@ export class PlanStructure {
     return c;
   }
 
-  _buildStems() {
+  _buildStems(): void {
     this._disposeStems();
     const color = this._stemColor();
-    const res = {
+    const res: StemResources = {
       lineGeo: new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]),
       discGeo: new THREE.CircleGeometry(0.08, 24).rotateX(-Math.PI / 2),
       lineMat: new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }),
@@ -237,7 +257,7 @@ export class PlanStructure {
     }
   }
 
-  _placeStem(id, world, floorId) {
+  _placeStem(id: string, world: THREE.Vector3, floorId: string): void {
     const st = this.stems.get(id);
     if (!st) return;
     const floor = this.view.floorElevation(floorId);
@@ -249,7 +269,7 @@ export class PlanStructure {
     st.line.visible = st.disc.visible && h > 0.01;
   }
 
-  _disposeStems() {
+  _disposeStems(): void {
     for (const { line, disc } of this.stems.values()) this.view.stemGroup.remove(line, disc);
     this.stems.clear();
     if (this._stemRes) {
@@ -259,8 +279,8 @@ export class PlanStructure {
   }
 
   // glows: [{id, x, y, floorId, rgb, strength}] (lights that are on)
-  setGlows(glows) {
-    const seen = new Set();
+  setGlows(glows: GlowSpec[]): void {
+    const seen = new Set<string>();
     let changed = false;
     for (const g of glows) {
       seen.add(g.id);

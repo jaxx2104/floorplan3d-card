@@ -5,6 +5,8 @@
 // its tone mapping, MSAA and background.
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import type { DepthPrepass } from './depth-pass.js';
+import { isPerspective, type ViewCamera } from './view/core.js';
 
 export const AO_DEFAULTS = Object.freeze({ intensity: 1, radius: 0.5, resolution: 0.5 });
 const AO_RANGE = { intensity: [0, 4], radius: [0.05, 3], resolution: [0.25, 1] };
@@ -13,12 +15,13 @@ export const AO_SAMPLES = 16;
 export const AO_FLOOR = 0.45;
 
 // Card option ao: true | { intensity, radius (m), resolution (share of the canvas) } -> settings, or null (off).
-export function normAo(opt) {
+export interface AoSettings { intensity: number; radius: number; resolution: number }
+export function normAo(opt: unknown): AoSettings | null {
   if (!opt) return null;
-  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  const o = opt === true ? {} : typeof opt === 'object' ? (opt as Record<string, unknown>) : null;
   if (!o) return null;
-  const out = {};
-  for (const [k, [lo, hi]] of Object.entries(AO_RANGE)) {
+  const out = {} as AoSettings; // every key of AO_RANGE is set below
+  for (const [k, [lo, hi]] of Object.entries(AO_RANGE) as [keyof AoSettings, number[]][]) {
     const v = Number(o[k]);
     out[k] = o[k] === undefined || !Number.isFinite(v) ? AO_DEFAULTS[k] : Math.min(hi, Math.max(lo, v));
   }
@@ -102,14 +105,27 @@ varying vec2 vUv;
 void main() { gl_FragColor = vec4(vec3(texture2D(tAo, vUv).x), 1.0); }`;
 
 export class AmbientOcclusion {
-  constructor(renderer, settings) {
+  renderer: THREE.WebGLRenderer;
+  settings: AoSettings;
+  size: THREE.Vector2;
+  aoTarget: THREE.WebGLRenderTarget;
+  blurTarget: THREE.WebGLRenderTarget;
+  sao: THREE.ShaderMaterial;
+  blur: THREE.ShaderMaterial;
+  fsQuad: FullScreenQuad;
+  object: THREE.Group;
+  quad: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+  _tDepth: THREE.IUniform<THREE.Texture | null>;
+  _tFront: THREE.IUniform<THREE.Texture | null>;
+
+  constructor(renderer: THREE.WebGLRenderer, settings: AoSettings) {
     this.renderer = renderer;
     this.settings = settings;
     this.size = new THREE.Vector2();
     const rt = () => new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
     this.aoTarget = rt();
     this.blurTarget = rt();
-    const tDepth = { value: null }, tFront = { value: null }, invProj = { value: new THREE.Matrix4() };
+    const tDepth: THREE.IUniform<THREE.Texture | null> = { value: null }, tFront: THREE.IUniform<THREE.Texture | null> = { value: null }, invProj = { value: new THREE.Matrix4() };
     this.sao = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: SAO_FRAG, depthTest: false, depthWrite: false,
       uniforms: { tDepth, tFront, invProj, texel: { value: new THREE.Vector2() }, radius: { value: 0 }, intensity: { value: 0 }, projScale: { value: 0 }, persp: { value: 1 } },
@@ -118,7 +134,7 @@ export class AmbientOcclusion {
       vertexShader: VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false,
       uniforms: { tDepth, tFront, invProj, tAo: { value: null }, dir: { value: new THREE.Vector2() } },
     });
-    this.fsQuad = new FullScreenQuad(null);
+    this.fsQuad = new FullScreenQuad(this.sao); // its material is set before every render
     // multiplies the canvas colour, keeps its alpha
     const apply = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: APPLY_FRAG, uniforms: { tAo: { value: this.aoTarget.texture } },
@@ -142,7 +158,7 @@ export class AmbientOcclusion {
     this._tFront = tFront;
   }
 
-  _setSize(w, h) {
+  _setSize(w: number, h: number): void {
     if (this.size.x === w && this.size.y === h) return;
     this.size.set(w, h);
     this.aoTarget.setSize(w, h);
@@ -151,7 +167,7 @@ export class AmbientOcclusion {
 
   // SAO and blur from the depth pre-pass (depth-pass.js) for this camera; shows the quad for the next scene
   // render (end() hides it).
-  begin(depth, camera) {
+  begin(depth: DepthPrepass, camera: ViewCamera): void {
     const r = this.renderer, s = this.settings;
     const w = depth.size.x, h = depth.size.y;
     this._setSize(w, h);
@@ -166,7 +182,7 @@ export class AmbientOcclusion {
     u.texel.value.set(1 / w, 1 / h);
     u.radius.value = s.radius;
     u.intensity.value = s.intensity;
-    u.persp.value = camera.isPerspectiveCamera ? 1 : 0;
+    u.persp.value = isPerspective(camera) ? 1 : 0;
     u.projScale.value = proj.elements[5] * 0.5 * h;
     r.setClearColor(0xffffff, 1);
     this.fsQuad.material = this.sao;
@@ -189,11 +205,11 @@ export class AmbientOcclusion {
     this.object.visible = true;
   }
 
-  end() {
+  end(): void {
     this.object.visible = false;
   }
 
-  dispose() {
+  dispose(): void {
     if (this.object.parent) this.object.parent.remove(this.object);
     this.quad.geometry.dispose();
     this.quad.material.dispose();

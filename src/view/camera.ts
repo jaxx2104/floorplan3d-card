@@ -8,7 +8,14 @@ import { pivotCamera, rayPlaneY, orthoZoom, topZoom } from '../views.js';
 import { SUN_DISC_M, MOON_DISC_M } from '../sky.js';
 import { recipeFar } from '../render-recipe.js';
 import { depthRange, depthChanged } from '../render-rules.js';
-import { planToWorld, frameInterval } from './core.js';
+import { planToWorld, frameInterval, isMesh, type CameraPose, type TopCameraPose } from './core.js';
+import type { FloorplanView } from '../view.js';
+
+type CameraTween =
+  | { top: true; t0: number; from: { target: THREE.Vector3; zoom: number }; to: { target: THREE.Vector3; zoom: number } }
+  | { top?: undefined; t0: number; from: { pos: THREE.Vector3; target: THREE.Vector3 }; to: { pos: THREE.Vector3; target: THREE.Vector3 } };
+/** Depth-range bounds (_sceneBounds). */
+export interface SceneBounds { house: THREE.Box3; centre: THREE.Vector3; radius: number }
 
 const TOOLBAR_PX = 48; // plan is framed below the card's toolbar
 const MAX_FRAME_MESH_M = 60; // meshes larger than this are left out when framing the model
@@ -16,7 +23,7 @@ const ORBIT_FRAME_MS = 50; // idle orbit: at most 20 frames a second (wall table
 const SKY_FRAME_MARGIN_M = 1; // top view: margin around a visible sun / moon disc
 
 // Turn a camera position around the target's vertical axis by angle radians (counter-clockwise from above).
-export function orbitStep(position, target, angle) {
+export function orbitStep(position: THREE.Vector3, target: THREE.Vector3, angle: number): THREE.Vector3 {
   const dx = position.x - target.x, dz = position.z - target.z, c = Math.cos(angle), sn = Math.sin(angle);
   position.x = target.x + dx * c + dz * sn;
   position.z = target.z - dx * sn + dz * c;
@@ -24,9 +31,23 @@ export function orbitStep(position, target, angle) {
 }
 
 export class CameraRig {
-  constructor(view) {
+  view: FloorplanView;
+  /** OrbitControls, rebuilt by setMode; made by _makeControls at the end of the view's constructor */
+  controls!: OrbitControls;
+  _tween: CameraTween | null;
+  _framed: boolean;
+  _camMovedAt: number;
+  _minDistance: number | null;
+  _orthoHalf: number | null;
+  _lastCam3d: CameraPose | null;
+  _zoomTo: 'center' | 'cursor';
+  _orbit: { speed: number; frameAt: number } | null;
+  _bounds: SceneBounds | null;
+  pivotMarker: THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null;
+  _onWheel: () => void;
+
+  constructor(view: FloorplanView) {
     this.view = view;
-    this.controls = null; // OrbitControls, rebuilt by setMode
     this._tween = null; // camera tween { t0, from, to } (top: { top: true, ... })
     this._framed = false; // the 3D camera was placed once (the first move is instant)
     this._camMovedAt = 0; // last controls change (occlusion waits for a still camera)
@@ -40,7 +61,7 @@ export class CameraRig {
     this._onWheel = () => { this.view.dirty = true; };
   }
 
-  _makeControls() {
+  _makeControls(): void {
     const prevTarget = this.controls && this.controls.target.clone();
     if (this.controls) this.controls.dispose();
     const c = new OrbitControls(this.view.camera, this.view.renderer.domElement);
@@ -69,13 +90,13 @@ export class CameraRig {
   }
 
   // Zoom pivot: 'cursor' zooms towards the pointer, 'center' (default) zooms and rotates around the target.
-  setZoomTo(mode) {
+  setZoomTo(mode: string): void {
     this._zoomTo = mode === 'cursor' ? 'cursor' : 'center';
     this.controls.zoomToCursor = this._zoomTo === 'cursor';
   }
 
   // Rotation centre under a screen point: the model surface, else the horizontal plane at height y.
-  pivotPoint(clientX, clientY, y = 0) {
+  pivotPoint(clientX: number, clientY: number, y = 0): number[] | null {
     const pick = this.view.modelLayer.pickModel(clientX, clientY);
     if (pick && pick.hit) return pick.hit.point;
     const r = this.view.renderer.domElement.getBoundingClientRect();
@@ -87,7 +108,7 @@ export class CameraRig {
 
   // Move the rotation centre to a world point; the camera keeps its angle and distance (tweened).
   // Returns the new camera { position, target }.
-  setPivot(point) {
+  setPivot(point: number[] | null | undefined): CameraPose | null {
     if (this.view.mode !== '3d' || !point) return null;
     const cam = pivotCamera(this.getCamera(), point);
     this.setCamera(cam);
@@ -95,7 +116,7 @@ export class CameraRig {
   }
 
   // Edit mode: show the rotation centre as a small cross (three short lines, primary colour).
-  setPivotMarker(on) {
+  setPivotMarker(on: boolean): void {
     if (!on) {
       if (this.pivotMarker) {
         this.view.scene.remove(this.pivotMarker);
@@ -118,12 +139,12 @@ export class CameraRig {
     this.view.dirty = true;
   }
 
-  setControlsEnabled(on) {
+  setControlsEnabled(on: boolean): void {
     this.controls.enabled = on;
   }
 
   // Plan point [x, y] under a screen position, on the horizontal plane at world height `height`.
-  planPoint(clientX, clientY, height) {
+  planPoint(clientX: number, clientY: number, height: number): [number, number] | null {
     const r = this.view.renderer.domElement.getBoundingClientRect();
     if (!r.width || !r.height) return null;
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
@@ -134,7 +155,7 @@ export class CameraRig {
 
   // The map overlay under a screen position: the ray hits the overlay plane itself (clouds, helpers,
   // markers and the model are ignored). -> { u, v, x, y } (texture uv, v up; plan point) or null.
-  mapHit(clientX, clientY) {
+  mapHit(clientX: number, clientY: number): { u: number; v: number; x: number; y: number } | null {
     const pl = this.view.mower.mapPlane;
     const r = this.view.renderer.domElement.getBoundingClientRect();
     if (!pl || !r.width || !r.height) return null;
@@ -147,34 +168,34 @@ export class CameraRig {
   }
 
   // Screen position (client px) of a plan point, the inverse of planPoint.
-  screenPoint(x, y, z, floorId) {
+  screenPoint(x: number, y: number, z: number, floorId: string | null | undefined): [number, number] {
     const v = planToWorld(x, y, z, this.view.floorElevation(floorId)).project(this.view.camera);
     const r = this.view.renderer.domElement.getBoundingClientRect();
     return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
   }
 
   // Client px of a world point, null when it is behind the camera or outside the depth range.
-  projectWorld(world) {
+  projectWorld(world: THREE.Vector3): [number, number] | null {
     const v = world.clone().project(this.view.camera);
     if (!(v.z >= -1 && v.z <= 1)) return null;
     const r = this.view.renderer.domElement.getBoundingClientRect();
     return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
   }
 
-  getCamera() {
+  getCamera(): CameraPose {
     if (this.view.mode === 'top' && this._lastCam3d) return this._lastCam3d;
-    const r = (a) => a.toArray().map((x) => Math.round(x * 100) / 100);
+    const r = (a: THREE.Vector3) => a.toArray().map((x) => Math.round(x * 100) / 100);
     return { position: r(this.view.persp.position), target: r(this.controls.target) };
   }
 
   // Top view: ortho centre in plan metres + zoom (1 = 10 m half height), or null outside top mode.
-  getTopCamera() {
+  getTopCamera(): TopCameraPose | null {
     if (this.view.mode !== 'top') return null;
-    const t = this.controls.target, r = (x) => Math.round(x * 100) / 100 + 0;
+    const t = this.controls.target, r = (x: number) => Math.round(x * 100) / 100 + 0;
     return { center: [r(t.x), r(-t.z)], zoom: Math.round(topZoom(this.view.ortho.zoom, this._orthoHalf || 10) * 1000) / 1000 };
   }
 
-  setTopCamera(c, { instant = false } = {}) {
+  setTopCamera(c: TopCameraPose | null | undefined, { instant = false }: { instant?: boolean } = {}): void {
     if (this.view.mode !== 'top' || !c) return;
     const target = new THREE.Vector3(c.center[0], this.controls.target.y, -c.center[1]);
     const zoom = orthoZoom(c.zoom, this._orthoHalf || 10);
@@ -187,7 +208,7 @@ export class CameraRig {
     this.view.dirty = true;
   }
 
-  _placeOrtho(target, zoom) {
+  _placeOrtho(target: THREE.Vector3, zoom: number): void {
     this.view.ortho.zoom = zoom;
     this.view.ortho.position.set(target.x, target.y + 60, target.z);
     this.view.ortho.lookAt(target);
@@ -196,7 +217,7 @@ export class CameraRig {
     this.controls.update();
   }
 
-  setCamera(cam, { instant = false } = {}) {
+  setCamera(cam: CameraPose | null | undefined, { instant = false }: { instant?: boolean } = {}): void {
     if (this.view.mode !== '3d' || !cam) return;
     const pos = new THREE.Vector3(...cam.position), target = new THREE.Vector3(...cam.target);
     // saved cameras must not be clamped by the zoom limits; relaxed until the next fit()
@@ -207,12 +228,12 @@ export class CameraRig {
   }
 
   // cam: {position, target} or null for the default framing.
-  resetCamera(cam) {
+  resetCamera(cam?: CameraPose | null): void {
     if (cam) this.setCamera(cam);
     else this.fit();
   }
 
-  _moveCamera(pos, target, instant) {
+  _moveCamera(pos: THREE.Vector3, target: THREE.Vector3, instant?: boolean): void {
     if (instant || !this._framed) {
       this._tween = null;
       this.view.persp.position.copy(pos);
@@ -227,11 +248,11 @@ export class CameraRig {
   }
 
   // The 3D camera before switching to Top (null until then).
-  get lastCamera3d() {
+  get lastCamera3d(): CameraPose | null {
     return this._lastCam3d || null;
   }
 
-  setMode(mode) {
+  setMode(mode: '3d' | 'top'): void {
     if (mode === this.view.mode) return;
     if (this.view.mode === '3d') this._lastCam3d = this.getCamera();
     this.view.mode = mode;
@@ -243,7 +264,7 @@ export class CameraRig {
   }
 
   // Frame the rooms of the visible floor(s); the model when there are no rooms (or asked to).
-  fit({ model = false, instant = false } = {}) {
+  fit({ model = false, instant = false }: { model?: boolean; instant?: boolean } = {}): void {
     const box = new THREE.Box3();
     if (!model) {
       // rooms as data (independent of fills/outlines/walls flags), on the visible floors
@@ -261,8 +282,8 @@ export class CameraRig {
       // only the parts currently shown, and not above the cut
       this.view.modelGroup.updateMatrixWorld(true);
       this.view.model.root.traverse((o) => {
-        if (!o.isMesh) return;
-        for (let p = o; p; p = p.parent) if (!p.visible) return;
+        if (!isMesh(o)) return;
+        for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return;
         const b = new THREE.Box3().setFromObject(o);
         // a world ground plane or a long road would frame the whole neighbourhood
         if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) > MAX_FRAME_MESH_M) return;
@@ -273,7 +294,7 @@ export class CameraRig {
     if (box.isEmpty()) box.set(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, 0, 5));
     if (this.view.mode === 'top' && this.view.model && this.view.skyLayer._skyOn) { // top view: the house, plus a visible sun / moon disc (the ring may be cut)
       this.view.skyLayer._placeSkyBodies();
-      for (const [s, disc] of [[this.view.skyLayer.skySprites.sun, SUN_DISC_M], [this.view.skyLayer.skySprites.moon, MOON_DISC_M]]) {
+      for (const [s, disc] of [[this.view.skyLayer.skySprites.sun, SUN_DISC_M], [this.view.skyLayer.skySprites.moon, MOON_DISC_M]] as const) {
         if (!s || !s.visible) continue;
         const r = disc / 2 + SKY_FRAME_MARGIN_M;
         box.expandByPoint(new THREE.Vector3(s.position.x - r, box.min.y, s.position.z - r));
@@ -302,7 +323,7 @@ export class CameraRig {
       const dir = this.view.model
         ? new THREE.Vector3(0.42, 0.616, 0.69).normalize() // 3/4 view
         : new THREE.Vector3(0.18, 0.95, 0.75).normalize(); // from the south, high up
-      const corners = [];
+      const corners: THREE.Vector3[] = [];
       for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
       // start far, then shrink until the projected corners fill ~85 % of the view
       let dist = Math.max(size.x, size.z, 4) * 3;
@@ -332,7 +353,7 @@ export class CameraRig {
 
   // Depth-range bounds: the house box (rooms + model meshes up to 60 m) and the bounding sphere of
   // everything (terrain included).
-  _sceneBounds() {
+  _sceneBounds(): SceneBounds {
     const house = new THREE.Box3(), full = new THREE.Box3();
     for (const { room, floorId } of this.view._rooms || []) {
       if (!room.polygon || room.polygon.length < 3) continue;
@@ -344,7 +365,7 @@ export class CameraRig {
     if (this.view.model) {
       this.view.modelGroup.updateMatrixWorld(true);
       this.view.model.root.traverse((o) => {
-        if (!o.isMesh) return;
+        if (!isMesh(o)) return;
         const b = new THREE.Box3().setFromObject(o);
         full.union(b);
         if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) <= MAX_FRAME_MESH_M) house.union(b);
@@ -357,7 +378,7 @@ export class CameraRig {
   }
 
   // Near / far from the camera position (depth precision where the model is); only on > 1 % changes.
-  _updateDepth() {
+  _updateDepth(): void {
     const cam = this.view.camera, ortho = cam === this.view.ortho;
     const b = this._bounds || (this._bounds = this._sceneBounds());
     const p = cam.position;
@@ -379,8 +400,8 @@ export class CameraRig {
     cam.updateProjectionMatrix();
   }
 
-  _stepTween(now) {
-    const tw = this._tween;
+  _stepTween(now: number): void {
+    const tw = this._tween!; // the render loop steps only a running tween
     const t = Math.min(1, (now - tw.t0) / 400);
     const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     if (tw.top) {
@@ -397,7 +418,7 @@ export class CameraRig {
     if (t === 1) this._tween = null;
   }
 
-  _updateOrtho() {
+  _updateOrtho(): void {
     const half = this._orthoHalf || 10;
     const { w, h } = this.view.size;
     const aspect = w / (h + TOOLBAR_PX);
@@ -406,14 +427,14 @@ export class CameraRig {
   }
 
   // Screen pixels per plan metre at the orbit target.
-  pixelsPerMetre() {
+  pixelsPerMetre(): number {
     const { h } = this.view.size;
     if (this.view.mode === 'top') return (h * this.view.ortho.zoom) / (this.view.ortho.top - this.view.ortho.bottom);
     const dist = this.view.persp.position.distanceTo(this.controls.target);
     return h / (2 * dist * Math.tan((this.view.persp.fov * Math.PI) / 360));
   }
 
-  resize(w, h) {
+  resize(w: number, h: number): void {
     if (!w || !h) return;
     this.view.size = { w, h };
     this.view.renderer.setSize(w, h);
@@ -427,16 +448,16 @@ export class CameraRig {
 
   // Idle orbit (card option idle_orbit): the 3D camera turns around its target at speed degrees a second,
   // after any camera tween, while the card is on screen and the page visible. A drag stops it.
-  startOrbit(speed) {
+  startOrbit(speed: unknown): void {
     const v = Number(speed);
     this._orbit = v ? { speed: v, frameAt: 0 } : null;
   }
 
-  stopOrbit() {
+  stopOrbit(): void {
     this._orbit = null;
   }
 
-  _stepOrbit() {
+  _stepOrbit(): void {
     const o = this._orbit;
     if (!o) return;
     if (this.view.mode === 'top' || this._tween || !this.view.onScreen || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { o.frameAt = 0; return; }

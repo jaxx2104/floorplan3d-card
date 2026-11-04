@@ -3,6 +3,19 @@
 // World = card world: (x, elevation + z, -y) of plan metres.
 
 import { ruleFor, pointInPolygon } from './placement.js';
+import type { PlanPoint } from './types/layout.js';
+
+export type Vec3 = [number, number, number];
+type VecLike = number[] | { x: number; y: number; z: number };
+export type SurfaceKind = 'wall' | 'ceiling' | 'floor';
+/** A search kind: a surface, or 'all' / 'any' (every direction / any orientation). */
+export type SearchKind = SurfaceKind | 'all' | 'any';
+
+export interface RayGroup { dirs: Vec3[]; max: number }
+export interface RaySearch extends RayGroup { from: number }
+/** A ray hit (arrays or {x, y, z}). */
+export interface SurfaceHit { point: VecLike; normal: VecLike; distance: number; dir: VecLike }
+export interface ChosenSurface { point: number[]; normal: number[]; distance: number }
 
 export const SURFACE_OFFSET = 0.05; // markers float 5 cm off the surface
 export const WALL_RANGE = 2.5; // horizontal search for a wall (m)
@@ -12,25 +25,25 @@ export const STICK_DISTANCE = 0.15; // "Stick all": pins farther than this from 
 const WALL_NY = 0.3; // |n.y| below: a wall
 const FLAT_NY = 0.7; // |n.y| above: a ceiling / floor
 
-export const HORIZONTAL_DIRS = Array.from({ length: 8 }, (_, i) => {
+export const HORIZONTAL_DIRS: Vec3[] = Array.from({ length: 8 }, (_, i): Vec3 => {
   const a = (i * Math.PI) / 4;
-  const r = (v) => (Math.abs(v) < 1e-12 ? 0 : v);
+  const r = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
   return [r(Math.cos(a)), 0, r(Math.sin(a))];
 });
-const UP = [[0, 1, 0]];
-const DOWN = [[0, -1, 0]];
+const UP: Vec3[] = [[0, 1, 0]];
+const DOWN: Vec3[] = [[0, -1, 0]];
 
 // The surface a device type sticks to (placement.js rules): wall / corner / door anchors -> 'wall',
 // the ceiling grid -> 'ceiling', floor-standing centre devices (vacuum, mower) -> 'floor'.
-export function surfaceKind(domain, deviceClass) {
+export function surfaceKind(domain: string, deviceClass?: string | null): SurfaceKind | null {
   const r = ruleFor(domain, deviceClass);
   if (r.anchor !== 'center') return 'wall';
   if (r.z === 'ceiling') return 'ceiling';
-  return Number.isFinite(r.z) && r.z < 0.5 ? 'floor' : null;
+  return typeof r.z === 'number' && Number.isFinite(r.z) && r.z < 0.5 ? 'floor' : null;
 }
 
 // The rays to cast for a kind ('all' = every direction, for the distance to any surface).
-export function rayGroups(kind) {
+export function rayGroups(kind: SearchKind | null | undefined): RayGroup[] {
   const wall = { dirs: HORIZONTAL_DIRS, max: WALL_RANGE };
   const up = { dirs: UP, max: CEILING_RANGE };
   const down = { dirs: DOWN, max: FLOOR_RANGE };
@@ -44,12 +57,12 @@ export function rayGroups(kind) {
 const CEILING_START_BELOW = 1.0; // the upward ray starts 1 m below the computed point (≥ 0.5 m above the floor)
 const CEILING_ABOVE = 0.3; // ceilings count up to 0.3 m above the floor's height, never the floor above
 const FLOOR_BELOW = 0.3; // floors count down to 0.3 m below the floor, never the floor below (stair openings)
-const r6 = (v) => Math.round(v * 1e6) / 1e6;
+const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 // Rays for a point at plan height z on a floor of floorHeight (2.7 when unknown), staying on that floor:
 // [{ dirs, max, from }] with `from` the plan height (above the floor) of the ray origin.
 // 'all' (distance to any surface, stick-all) casts every ray from the point itself.
-export function surfaceSearch(kind, z, floorHeight = 2.7) {
+export function surfaceSearch(kind: SearchKind | null | undefined, z: number, floorHeight: number = 2.7): RaySearch[] {
   const h = Number.isFinite(floorHeight) && floorHeight > 0 ? floorHeight : 2.7;
   const top = h + CEILING_ABOVE, bottom = -FLOOR_BELOW;
   const wall = { dirs: HORIZONTAL_DIRS, max: WALL_RANGE, from: z };
@@ -64,14 +77,15 @@ export function surfaceSearch(kind, z, floorHeight = 2.7) {
   return [];
 }
 
-const arr = (v) => (Array.isArray(v) ? v : [v.x, v.y, v.z]);
+const arr = (v: VecLike): number[] => (Array.isArray(v) ? v : [v.x, v.y, v.z]);
 
 // hits: [{ point, normal, distance, dir }] (arrays or {x,y,z}). Returns the hit to stick to
 // ({ point: 5 cm off the surface, normal facing the ray origin, distance }) or null (keep the point).
 // kind 'any' takes the nearest hit of any orientation. opts.accept(point) can reject candidates.
-export function chooseSurface(kind, hits, { accept = null } = {}) {
+export function chooseSurface(kind: SearchKind | null | undefined, hits: (SurfaceHit | null | undefined)[] | null | undefined,
+  { accept = null }: { accept?: ((point: number[]) => boolean) | null } = {}): ChosenSurface | null {
   if (!kind || !Array.isArray(hits)) return null;
-  let best = null;
+  let best: ChosenSurface | null = null;
   for (const hit of hits) {
     if (!hit || !Number.isFinite(hit.distance)) continue;
     const p = arr(hit.point), d = arr(hit.dir);
@@ -90,37 +104,39 @@ export function chooseSurface(kind, hits, { accept = null } = {}) {
   return best;
 }
 
-export function nearestDistance(hits) {
+export function nearestDistance(hits: ({ distance: number } | null | undefined)[] | null | undefined): number {
   let d = Infinity;
   for (const h of hits || []) if (h && Number.isFinite(h.distance) && h.distance < d) d = h.distance;
   return d;
 }
 
 // "Stick all to surfaces": a free (not attached) pin with a surface nearby, but not on it.
-export function needsStick(pin, nearest, threshold = STICK_DISTANCE) {
+export function needsStick(pin: { attach?: unknown } | null | undefined, nearest: number, threshold = STICK_DISTANCE): boolean {
   return !!pin && !pin.attach && Number.isFinite(nearest) && nearest > threshold;
 }
 
 // Where "Stick all" moves a pin: the surface its type sticks to when that is at most twice as far
 // as the nearest surface, else the nearest one (a floor lamp pinned in a corner goes to the wall,
 // not up to the ceiling). hits: every ray (rayGroups('all')).
-export function stickSurface(kind, hits) {
+export function stickSurface(kind: SearchKind | null | undefined, hits: (SurfaceHit | null | undefined)[]): ChosenSurface | null {
   const near = chooseSurface('any', hits);
   const typed = kind && chooseSurface(kind, hits);
   return typed && near && typed.distance <= 2 * near.distance ? typed : near;
 }
 
-export function worldOf(p, elevation = 0) {
+export interface PlanXYZ { x: number; y: number; z: number }
+
+export function worldOf(p: PlanXYZ, elevation = 0): Vec3 {
   return [p.x, elevation + p.z, -p.y || 0];
 }
 
-export function planOf(w, elevation = 0) {
-  const r = (v) => Math.round(v * 1e9) / 1e9 || 0;
+export function planOf(w: number[], elevation = 0): PlanXYZ {
+  const r = (v: number) => Math.round(v * 1e9) / 1e9 || 0;
   return { x: r(w[0]), y: r(-w[2]), z: r(w[1] - elevation) };
 }
 
 // Inside the polygon or within margin of one of its edges (no polygon: anywhere).
-export function nearPolygon(pt, poly, margin) {
+export function nearPolygon(pt: PlanPoint, poly: PlanPoint[] | null | undefined, margin: number): boolean {
   if (!poly || poly.length < 3) return true;
   if (pointInPolygon(pt, poly)) return true;
   for (let i = 0; i < poly.length; i++) {
@@ -133,31 +149,35 @@ export function nearPolygon(pt, poly, margin) {
 }
 
 // Cache key of one computed point (mm) in its room: a changed room, height or floor computes it again.
-export function surfaceKey(kind, floorId, p, roomId = '') {
-  const mm = (v) => Math.round(v * 1000);
+export function surfaceKey(kind: string, floorId: string, p: PlanXYZ, roomId = ''): string {
+  const mm = (v: number) => Math.round(v * 1000);
   return `${kind}|${floorId}|${roomId}|${mm(p.x)},${mm(p.y)},${mm(p.z)}`;
 }
 
 // Ground under the mower (marker, model, map): one ray per GROUND_CELL square, cast at the cell
 // centre and remembered (misses too) until the model placement key changes or clear().
 export const GROUND_CELL = 0.5;
-export class GroundCache {
+export class GroundCache<T = unknown> {
+  cell: number;
+  key: unknown;
+  map: Map<string, T | null>;
+
   constructor(cell = GROUND_CELL) {
     this.cell = cell;
     this.key = null;
     this.map = new Map();
   }
 
-  clear() {
+  clear(): void {
     this.map.clear();
   }
 
   // ray(cx, cy) -> any value (null = no ground); cached per cell
-  get(x, y, key, ray) {
+  get(x: number, y: number, key: unknown, ray: (cx: number, cy: number) => T | null | undefined): T | null {
     if (key !== this.key) { this.key = key; this.map.clear(); }
     const i = Math.floor(x / this.cell), j = Math.floor(y / this.cell);
     const k = i + ',' + j;
-    if (this.map.has(k)) return this.map.get(k);
+    if (this.map.has(k)) return this.map.get(k)!;
     const v = ray((i + 0.5) * this.cell, (j + 0.5) * this.cell) ?? null;
     this.map.set(k, v);
     return v;

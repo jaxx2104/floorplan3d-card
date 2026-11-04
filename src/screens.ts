@@ -4,21 +4,44 @@
 // The screen plays while its entity is on: state 'on', or a number above `above` when that is given
 // (e.g. a desk plug's power for monitors). Off, its emissive goes dark. No entity: always on.
 
-const TEX = ['map', 'emissiveMap'];
+import type * as THREE from 'three';
+import type { HassEntity } from './types/ha.js';
+import { isMesh, meshMaterials } from './view/core.js';
+
+const TEX = ['map', 'emissiveMap'] as const;
+
+export interface ScreenAnim {
+  frames: number;
+  fps: number;
+  entity: string | null;
+  above: number | null;
+}
+
+/** A material that may carry textures and an emissive colour (MeshStandardMaterial and the like). */
+export type ScreenMaterial = THREE.Material & { map?: THREE.Texture | null; emissiveMap?: THREE.Texture | null; emissive?: THREE.Color };
+
+export interface Screen {
+  mat: ScreenMaterial;
+  anim: ScreenAnim;
+  emissive: THREE.Color | null;
+  frame: number;
+  on: boolean;
+}
 
 // The animation spec of a material, or null.
-export function animOf(mat) {
-  const a = mat && mat.userData && mat.userData.fp_anim;
+export function animOf(mat: THREE.Material | null | undefined): ScreenAnim | null {
+  const a: unknown = mat && mat.userData && mat.userData.fp_anim;
   if (!a || typeof a !== 'object') return null;
-  const frames = Math.floor(Number(a.frames));
-  const fps = Number(a.fps);
+  const spec = a as { frames?: unknown; fps?: unknown; entity?: unknown; above?: unknown };
+  const frames = Math.floor(Number(spec.frames));
+  const fps = Number(spec.fps);
   if (!(frames > 1) || !(fps > 0)) return null;
-  const above = a.above == null ? null : Number(a.above);
-  return { frames, fps, entity: typeof a.entity === 'string' ? a.entity : null, above: Number.isFinite(above) ? above : null };
+  const above = spec.above == null ? null : Number(spec.above);
+  return { frames, fps, entity: typeof spec.entity === 'string' ? spec.entity : null, above: Number.isFinite(above) ? above : null };
 }
 
 // Is the screen showing, given hass.states?
-export function screenOn(anim, states) {
+export function screenOn(anim: ScreenAnim, states: Record<string, HassEntity> | null | undefined): boolean {
   if (!anim.entity) return true;
   const st = states && states[anim.entity];
   if (!st) return false;
@@ -30,14 +53,14 @@ export function screenOn(anim, states) {
 }
 
 // Frame index at time t (seconds).
-export const frameAt = (anim, t) => Math.floor(Math.max(0, t) * anim.fps) % anim.frames;
+export const frameAt = (anim: ScreenAnim, t: number): number => Math.floor(Math.max(0, t) * anim.fps) % anim.frames;
 
 // Every animated material under root (each once): { mat, anim, emissive (the modelled colour), frame, on }.
-export function collectScreens(root) {
-  const out = [], seen = new Set();
+export function collectScreens(root: THREE.Object3D): Screen[] {
+  const out: Screen[] = [], seen = new Set<THREE.Material>();
   root.traverse((o) => {
-    if (!o.isMesh) return;
-    for (const mat of Array.isArray(o.material) ? o.material : [o.material]) {
+    if (!isMesh(o)) return;
+    for (const mat of meshMaterials(o) as ScreenMaterial[]) {
       if (!mat || seen.has(mat)) continue;
       seen.add(mat);
       const anim = animOf(mat);
@@ -49,7 +72,7 @@ export function collectScreens(root) {
 }
 
 // Show frame k of a screen. -> true when it changed.
-export function showFrame(s, k) {
+export function showFrame(s: Screen, k: number): boolean {
   if (s.frame === k) return false;
   s.frame = k;
   for (const key of TEX) {
@@ -60,7 +83,7 @@ export function showFrame(s, k) {
 }
 
 // Turn a screen on or off (off: no glow, back to frame 0). -> true when it changed.
-export function setScreenOn(s, on) {
+export function setScreenOn(s: Screen, on: boolean): boolean {
   if (s.on === on) return false;
   s.on = on;
   if (s.mat.emissive && s.emissive) {

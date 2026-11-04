@@ -8,13 +8,37 @@ import { moonLight, moonLitRight, SUN_MIN_Y, SUN_DISC_M, MOON_DISC_M } from '../
 import { cloudLight, coverageChanged, convexHull, hullDistance, skyKeepOut } from '../weather.js';
 import { precipAmounts, placeDrops, makePrecipUniforms, makePrecipLayer, drawRoomMask, RAIN_MAX, SNOW_MAX, PRECIP_FRAME_MS } from '../precip.js';
 import { swayLean, makeCloudUniforms, cloudPattern, cloudShadowParams, cloudShadowOffset, roomMaskFrame, roomMaskTexture } from '../cloud-shadow.js';
-import { testMode, frameInterval } from './core.js';
+import { testMode, frameInterval, isPerspective, type Drawable, type Vec3 } from './core.js';
+import type { FloorplanView } from '../view.js';
+import type { CloudUniforms } from '../cloud-shadow.js';
+import type { PrecipKind, PrecipUniforms } from '../precip.js';
+import type { PlanPoint } from '../types/layout.js';
+
+/** A body on the sky dome: unit vector toward it (world); the moon also its phase and lit share. */
+export interface SkyBody { dir: Vec3; phase?: number; illumination?: number; latitude?: number }
+export interface SkyBodiesSpec { sun?: SkyBody | null; moon?: SkyBody | null; north?: Vec3 | number[] | null; on?: boolean }
+export interface WeatherSpec { coverage?: unknown; clouds?: unknown; condition?: string | null; wind?: unknown }
+/** Weather state: coverage % applied (null before the first), clouds option, drift time (s), last drift frame. */
+export interface WeatherState {
+  applied: number | null;
+  show: boolean;
+  t: number;
+  frameAt: number;
+  shown: number;
+  wind: number;
+  condition?: string | null;
+  falling?: boolean;
+}
+type SkySprite = THREE.Sprite;
+type PrecipLayer = THREE.LineSegments | THREE.Points;
+/** Screen hull of a room: [x, y] px from the centre, y up. */
+type Hull = number[][];
 
 const CLOUD_FRAME_MS = 50; // cloud shadow drift: at most 20 frames per second
 
 // Sun sprite texture: warm disc (half the sprite) in a soft glow.
-let sunTexture = null;
-function getSunTexture() {
+let sunTexture: THREE.CanvasTexture | null = null;
+function getSunTexture(): THREE.CanvasTexture {
   if (sunTexture) return sunTexture;
   const c = document.createElement('canvas');
   const n = testMode() ? 64 : 128, r = n / 2;
@@ -37,7 +61,7 @@ function getSunTexture() {
 
 // Moon disc (90 % of the canvas): lit part by illumination, lit on the right when `waxing`
 // (see moonLitRight: waxing seen from the northern hemisphere), the dark part faint.
-export function drawMoon(g, size, illumination, waxing) {
+export function drawMoon(g: CanvasRenderingContext2D, size: number, illumination: number, waxing: boolean): void {
   const r = size * 0.45, cx = size / 2, cy = size / 2;
   g.clearRect(0, 0, size, size);
   g.fillStyle = 'rgba(120,135,170,0.22)';
@@ -57,7 +81,20 @@ export function drawMoon(g, size, illumination, waxing) {
 }
 
 export class SkyLayer {
-  constructor(view) {
+  view: FloorplanView;
+  skyBodies: { sun: SkyBody | null; moon: SkyBody | null };
+  skySprites: { sun: SkySprite | null; moon: SkySprite | null };
+  _moonKey: string | null;
+  skyRing: THREE.Group | null;
+  _skyOn: boolean;
+  _skyNorth: Vec3 | number[] | null;
+  weather: WeatherState;
+  _cloudU: CloudUniforms;
+  _roomMask: THREE.CanvasTexture | null;
+  _precipU: PrecipUniforms;
+  _precip: Record<PrecipKind, PrecipLayer | null>;
+
+  constructor(view: FloorplanView) {
     this.view = view;
     this.skyBodies = { sun: null, moon: null }; // { dir: [x, y, z] world, phase?, illumination? }
     this.skySprites = { sun: null, moon: null };
@@ -76,7 +113,7 @@ export class SkyLayer {
   // Sun / moon on a dome around the house: { sun: { dir } | null, moon: { dir, phase, illumination } | null,
   // north: [x, y, z] world unit vector of true north, on: sky_bodies }. Each body sits at house centre
   // + dir x dome radius, so its azimuth / elevation read off the compass ring (3D and top view).
-  setSkyBodies({ sun = null, moon = null, north = null, on = true } = {}) {
+  setSkyBodies({ sun = null, moon = null, north = null, on = true }: SkyBodiesSpec = {}): void {
     this._skyOn = !!on;
     this.skyBodies = on ? { sun: sun && sun.dir ? sun : null, moon: moon && moon.dir ? moon : null } : { sun: null, moon: null };
     if (this.skyBodies.sun && !this.skySprites.sun) this.skySprites.sun = this._skySprite(getSunTexture());
@@ -99,11 +136,11 @@ export class SkyLayer {
   }
 
   // Unit ring (scaled to the dome radius) with a tick and an "N" on local +x (turned to true north).
-  _makeSkyRing() {
+  _makeSkyRing(): void {
     const g = new THREE.Group();
-    const pts = [];
+    const pts: THREE.Vector3[] = [];
     for (let i = 0; i < 128; i++) { const a = (i / 128) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a), 0, Math.sin(a))); }
-    const line = (opacity) => new THREE.LineBasicMaterial({ color: 0xffb74d, transparent: true, opacity, depthWrite: false, toneMapped: false, fog: false });
+    const line = (opacity: number) => new THREE.LineBasicMaterial({ color: 0xffb74d, transparent: true, opacity, depthWrite: false, toneMapped: false, fog: false });
     const ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), line(0.25));
     const tick = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0.94, 0, 0), new THREE.Vector3(1.08, 0, 0)]), line(0.6));
     const c = document.createElement('canvas');
@@ -129,7 +166,7 @@ export class SkyLayer {
     this.view.skyGroup.add(g);
   }
 
-  _skySprite(map) {
+  _skySprite(map: THREE.Texture): SkySprite {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, toneMapped: false, fog: false }));
     s.castShadow = s.receiveShadow = false;
     s.frustumCulled = false; // placed per frame
@@ -141,31 +178,32 @@ export class SkyLayer {
   }
 
   // Redraw the moon texture only when the shape changes visibly (texture upload, no shader change).
-  _paintMoon(moon) {
-    const tex = this.skySprites.moon.material.map, ill = Math.round((Number(moon.illumination) || 0) * 50) / 50;
+  _paintMoon(moon: SkyBody): void {
+    const tex = this.skySprites.moon!.material.map!, ill = Math.round((Number(moon.illumination) || 0) * 50) / 50;
     const right = moonLitRight(moon.phase, moon.latitude); // mirrored south of the equator
     const key = ill + (right ? '+' : '-');
     if (key === this._moonKey) return;
     this._moonKey = key;
-    const g = tex.image.getContext && tex.image.getContext('2d');
-    if (g) drawMoon(g, tex.image.width, ill, right);
+    const canvas = tex.image as HTMLCanvasElement; // made by setSkyBodies
+    const g = canvas.getContext && canvas.getContext('2d');
+    if (g) drawMoon(g, canvas.width, ill, right);
     tex.needsUpdate = true;
   }
 
-  _applyMoonLight() {
+  _applyMoonLight(): void {
     const l = this.view.moonLight, moon = this.skyBodies.moon;
     l.intensity = this.view.model ? moonLight(this.view.look.sky.night, moon) * cloudLight(this.weather.applied || 0).moon : 0;
     if (l.intensity > 0 && this.view.look._shadowBox) {
       const { centre, radius } = this.view.look._shadowBox;
       l.target.position.copy(centre);
-      l.position.copy(centre).addScaledVector(new THREE.Vector3(...moon.dir), radius * 2.5);
+      l.position.copy(centre).addScaledVector(new THREE.Vector3(...moon!.dir), radius * 2.5); // lit only with a moon (moonLight)
       l.target.updateMatrixWorld();
     }
   }
 
   // Weather: { coverage 0..100, clouds: option clouds (cloud shadows, rain, snow), condition: the state }. Applied only when the coverage moved >= 5 points
   // (or reached 0 / 100) or the option changed: light values, disc opacities, cloud shadows. Returns true when applied.
-  setWeather({ coverage = 0, clouds = true, condition = null, wind = 0 } = {}) {
+  setWeather({ coverage = 0, clouds = true, condition = null, wind = 0 }: WeatherSpec = {}): boolean {
     const w = this.weather;
     w.wind = Math.max(0, Number(wind) || 0); // m/s: the plants' sway (uniform only)
     this._cloudU.fpSway.value = this.view.look._sway ? swayLean(w.wind, this.view.look._sway.strength) : 0;
@@ -182,7 +220,7 @@ export class SkyLayer {
   }
 
   // Disc opacity and cloud shadows for the coverage and night (uniforms only, no shader change).
-  _cloudLook() {
+  _cloudLook(): void {
     const c = (this.weather.applied || 0) / 100, t = Math.max(0, Math.min(1, this.view.look.sky.night || 0)), L = cloudLight(c * 100, t);
     if (this.skySprites.sun) this.skySprites.sun.material.opacity = L.sunDisc * (this.skySprites.sun.userData.clear ?? 1);
     if (this.skySprites.moon) this.skySprites.moon.material.opacity = L.moon * (this.skySprites.moon.userData.clear ?? 1);
@@ -193,18 +231,18 @@ export class SkyLayer {
   }
 
   // Cloud shadows show: a model (patched materials), the clouds option, the sky on, some coverage.
-  _cloudShadowsOn() {
+  _cloudShadowsOn(): boolean {
     return this._weatherFxOn() && (this.weather.applied || 0) > 0;
   }
 
   // Weather effects (cloud shadows, rain, snow) may show: a model, the clouds option, the sky on.
-  _weatherFxOn() {
+  _weatherFxOn(): boolean {
     return !!this.view.model && this._skyOn && !this.view.sectionClip && this.weather.show;
   }
 
   // Cloud shadows drifting over the model's surroundings (not the rooms: _updateRoomMask), with
   // weather.t; shown with a model, the clouds option and the sky on, in 3D and top view alike.
-  _placeClouds() {
+  _placeClouds(): void {
     const w = this.weather, U = this._cloudU, shown = this._cloudShadowsOn() ? 1 : 0;
     if (shown !== w.shown && this.view.model) { w.shown = shown; this.view.look._applyLights(); } // the sun's strength depends on it
     w.shown = shown;
@@ -215,45 +253,45 @@ export class SkyLayer {
   // Rain / snow for the condition around the house (precip.js): layers made on first use (again when
   // the amount changes), falling from above the rooms to the bottom of the model; the screen mask of
   // the room hulls is redrawn each frame while they show. Returns true while something falls.
-  _placePrecip(hull) {
+  _placePrecip(hull: Hull[] | null): boolean {
     const P = this._precip, U = this._precipU, d = this.view.look._dome, w = this.weather;
     const amt = this._weatherFxOn() && d ? precipAmounts(w.condition) : { rain: 0, snow: 0 };
     let falling = false;
-    for (const [kind, max] of [['rain', RAIN_MAX], ['snow', SNOW_MAX]]) {
+    for (const [kind, max] of [['rain', RAIN_MAX], ['snow', SNOW_MAX]] as const) {
       const count = Math.round(max * (amt[kind] || 0));
       let layer = P[kind];
       if (layer && layer.userData.count !== count && count) { this._disposePrecip(kind); layer = null; }
       if (!layer && count) {
         const rooms = (this.view._rooms || []).map((x) => x.room.polygon).filter((pl) => pl && pl.length >= 3);
-        layer = P[kind] = makePrecipLayer(kind, placeDrops(count, [d.centre.x, d.centre.z], d.radius, rooms), U);
+        layer = P[kind] = makePrecipLayer(kind, placeDrops(count, [d!.centre.x, d!.centre.z], d!.radius, rooms), U); // count > 0 needs the dome
         layer.userData.count = count;
         this.view.skyGroup.add(layer);
       }
       if (layer) layer.visible = count > 0;
       falling = falling || count > 0;
     }
-    if (!falling) return false;
+    if (!falling || !d) return false; // (falling implies the dome)
     const hb = this.view.look._houseBox, size = this.view.renderer.getSize(new THREE.Vector2()), buf = this.view.renderer.getDrawingBufferSize(new THREE.Vector2());
     U.uTop.value = (hb ? hb.max.y : d.centre.y + 3) + 3;
     U.uBottom.value = this.view.look._modelBottom ?? d.centre.y;
     U.uTime.value = w.t;
     U.uRes.value.copy(buf);
-    U.uMask.value = drawRoomMask(hull, size.x, size.y, U.uMask.value);
+    U.uMask.value = drawRoomMask(hull, size.x, size.y, U.uMask.value as THREE.CanvasTexture | null); // only drawRoomMask sets it
     return true;
   }
 
-  _disposePrecip(kind) {
+  _disposePrecip(kind: PrecipKind): void {
     const l = this._precip[kind];
     if (!l) return;
     l.removeFromParent();
     l.geometry.dispose();
-    l.material.dispose();
+    (l.material as THREE.Material).dispose(); // made with one ShaderMaterial
     this._precip[kind] = null;
   }
 
   // Room mask for the cloud shadows from the room polygons (all floors), from the lowest room floor up.
-  _updateRoomMask() {
-    const U = this._cloudU, polys = [];
+  _updateRoomMask(): void {
+    const U = this._cloudU, polys: PlanPoint[][] = [];
     let floor = Infinity;
     for (const { room, floorId } of this.view._rooms || []) {
       if (!room.polygon || room.polygon.length < 3) continue;
@@ -273,8 +311,8 @@ export class SkyLayer {
 
   // The rooms as boxes (as fit(): room polygons on the visible floors, floor to ceiling), each a list
   // of world points; without room polygons the house box as one.
-  _roomSolids() {
-    const out = [];
+  _roomSolids(): THREE.Vector3[][] {
+    const out: THREE.Vector3[][] = [];
     for (const { room, floorId } of this.view._rooms || []) {
       if (!this.view._shows(floorId) || !room.polygon || room.polygon.length < 3) continue;
       const f = this.view.floors.find((x) => x.id === floorId);
@@ -290,13 +328,13 @@ export class SkyLayer {
 
   // The rooms on screen: one convex hull per room (px from the centre, y up); [] without rooms, null
   // when a corner is behind the camera (the camera is in or right over the rooms: no sky).
-  _roomHull() {
-    const cam = this.view.camera, size = this.view.renderer.getSize(new THREE.Vector2()), v = new THREE.Vector3(), hulls = [];
+  _roomHull(): Hull[] | null {
+    const cam = this.view.camera, size = this.view.renderer.getSize(new THREE.Vector2()), v = new THREE.Vector3(), hulls: Hull[] = [];
     cam.updateMatrixWorld();
     for (const solid of this._roomSolids()) {
-      const pts = [];
+      const pts: number[][] = [];
       for (const p of solid) {
-        if (cam.isPerspectiveCamera && v.copy(p).applyMatrix4(cam.matrixWorldInverse).z > -cam.near) return null;
+        if (isPerspective(cam) && v.copy(p).applyMatrix4(cam.matrixWorldInverse).z > -cam.near) return null;
         v.copy(p).project(cam);
         pts.push([v.x * size.x / 2, v.y * size.y / 2]);
       }
@@ -307,7 +345,7 @@ export class SkyLayer {
 
   // Screen distance (px, < 0 inside) of a world point from the nearest room hull, and the screen size (px)
   // of a world length there.
-  _skyScreen(hulls, pos, radius) {
+  _skyScreen(hulls: Hull[], pos: THREE.Vector3, radius: number): { dist: number; r: number } {
     const cam = this.view.camera, size = this.view.renderer.getSize(new THREE.Vector2());
     const c = pos.clone().project(cam);
     const e = pos.clone().addScaledVector(new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), radius).project(cam);
@@ -316,7 +354,7 @@ export class SkyLayer {
   }
 
   // Opacity factor 0..1 of a sky sprite (world centre, world radius): gone where it covers a room.
-  _skyClear(hulls, pos, radius) {
+  _skyClear(hulls: Hull[] | null, pos: THREE.Vector3, radius: number): number {
     if (hulls === null) return 0;
     if (!hulls.length) return 1;
     const { dist, r } = this._skyScreen(hulls, pos, radius);
@@ -328,17 +366,17 @@ export class SkyLayer {
   // where it would cover the rooms on screen (the dome is smaller than the orbit). In 3D the disc is
   // then pushed back along the camera ray to near the far plane (same spot and size on screen), so the
   // surroundings hide it: it only shows over open background, not floating over a neighbour building.
-  _placeSkyBodies() {
+  _placeSkyBodies(): void {
     const d = this.view.look._dome, on = !!this.view.model && this._skyOn && !!d && !this.view.sectionClip; // the section's global plane would cut them
     const hull = on ? this._roomHull() : [];
-    const cam = this.view.camera, back = this.view.mode !== 'top' && cam.isPerspectiveCamera;
-    const put = (sprite, body, minY, size, radius) => {
+    const cam = this.view.camera, back = this.view.mode !== 'top' && isPerspective(cam);
+    const put = (sprite: SkySprite | null, body: SkyBody | null, minY: number, size: number, radius: number) => {
       if (!sprite) return;
       const show = on && !!body && body.dir[1] > minY;
       sprite.visible = show;
       if (!show) return;
-      const dome = (sprite.userData.domePos || (sprite.userData.domePos = new THREE.Vector3()));
-      dome.copy(d.centre).addScaledVector(new THREE.Vector3(...body.dir).normalize(), d.radius);
+      const dome: THREE.Vector3 = (sprite.userData.domePos || (sprite.userData.domePos = new THREE.Vector3()));
+      dome.copy(d!.centre).addScaledVector(new THREE.Vector3(...body.dir).normalize(), d!.radius); // on implies the dome
       sprite.userData.clear = this._skyClear(hull, dome, radius);
       if (!sprite.userData.clear) sprite.visible = false;
       sprite.position.copy(dome);
@@ -358,17 +396,17 @@ export class SkyLayer {
     if (!ring) return;
     ring.visible = on;
     if (!on) return;
-    ring.position.set(d.centre.x, d.centre.y + 0.02, d.centre.z);
-    ring.scale.setScalar(d.radius);
+    ring.position.set(d!.centre.x, d!.centre.y + 0.02, d!.centre.z); // on implies the dome
+    ring.scale.setScalar(d!.radius);
     const n = this._skyNorth || [0, 0, -1];
     ring.rotation.y = Math.atan2(-n[2], n[0]); // local +x -> north
     const label = ring.children.find((o) => o.userData.ringLabel);
-    if (label) label.scale.setScalar(1.4 / d.radius); // ~1.4 m in the world
+    if (label) label.scale.setScalar(1.4 / d!.radius); // ~1.4 m in the world
   }
 
   // Cloud shadow drift / rain and snow: at most one frame per CLOUD_FRAME_MS (PRECIP_FRAME_MS while
   // something falls), only while they show, the card is on screen and the page visible.
-  _driftClouds() {
+  _driftClouds(): void {
     const w = this.weather;
     const moving = (w.shown && this._cloudU.fpCloudStrength.value) || w.falling;
     if (!moving || !this.view.onScreen || (this.view.test && !this.view.test.drift) || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { w.frameAt = 0; return; }
@@ -384,10 +422,10 @@ export class SkyLayer {
 
   // Sky resources (view.dispose): sprite textures except the shared sun texture, the room mask, rain /
   // snow and the compass ring.
-  dispose() {
+  dispose(): void {
     for (const s of Object.values(this.skySprites)) {
       if (!s) continue;
-      if (s.material.map !== sunTexture) s.material.map.dispose();
+      if (s.material.map !== sunTexture) s.material.map!.dispose(); // every sky sprite has its texture
       s.material.dispose();
     }
     this.skySprites = { sun: null, moon: null };
@@ -398,7 +436,7 @@ export class SkyLayer {
     if (this._precipU.uMask.value) this._precipU.uMask.value.dispose();
     this._precipU.uMask.value = null;
     if (this.skyRing) {
-      this.skyRing.traverse((o) => { if (o.material && o.material.map) o.material.map.dispose(); });
+      this.skyRing.traverse((obj) => { const o = obj as Drawable; const m = o.material as THREE.SpriteMaterial | undefined; if (m && m.map) m.map.dispose(); });
       this.view._clearGroup(this.skyRing);
     }
     this.skyRing = null;

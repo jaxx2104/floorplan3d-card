@@ -6,25 +6,28 @@ const DAY_MS = 86400000, J1970 = 2440588, J2000 = 2451545;
 const OBLIQUITY = RAD * 23.4397;
 const SUN_DIST_KM = 149598000;
 
-const toDays = (ms) => ms / DAY_MS - 0.5 + J1970 - J2000;
-const rightAscension = (l, b) => Math.atan2(Math.sin(l) * Math.cos(OBLIQUITY) - Math.tan(b) * Math.sin(OBLIQUITY), Math.cos(l));
-const declination = (l, b) => Math.asin(Math.sin(b) * Math.cos(OBLIQUITY) + Math.cos(b) * Math.sin(OBLIQUITY) * Math.sin(l));
-const siderealTime = (d, lw) => RAD * (280.16 + 360.9856235 * d) - lw;
+const toDays = (ms: number) => ms / DAY_MS - 0.5 + J1970 - J2000;
+const rightAscension = (l: number, b: number) => Math.atan2(Math.sin(l) * Math.cos(OBLIQUITY) - Math.tan(b) * Math.sin(OBLIQUITY), Math.cos(l));
+const declination = (l: number, b: number) => Math.asin(Math.sin(b) * Math.cos(OBLIQUITY) + Math.cos(b) * Math.sin(OBLIQUITY) * Math.sin(l));
+const siderealTime = (d: number, lw: number) => RAD * (280.16 + 360.9856235 * d) - lw;
+
+export interface MoonPosition { azimuth: number; elevation: number; phase: number; illumination: number }
+export interface SunPosition { azimuth: number; elevation: number }
 
 // Atmospheric refraction (rad) for an altitude h (rad), clamped at the horizon.
-function refraction(h) {
+function refraction(h: number): number {
   if (h < 0) h = 0;
   return 0.0002967 / Math.tan(h + 0.00312536 / (h + 0.08901179));
 }
 
-function sunCoords(d) {
+function sunCoords(d: number): { dec: number; ra: number } {
   const M = RAD * (357.5291 + 0.98560028 * d);
   const C = RAD * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
   const L = M + C + RAD * 102.9372 + Math.PI;
   return { dec: declination(L, 0), ra: rightAscension(L, 0) };
 }
 
-function moonCoords(d) {
+function moonCoords(d: number): { ra: number; dec: number; dist: number } {
   const L = RAD * (218.316 + 13.176396 * d); // ecliptic longitude
   const M = RAD * (134.963 + 13.064993 * d); // mean anomaly
   const F = RAD * (93.272 + 13.229350 * d); // mean distance
@@ -35,7 +38,7 @@ function moonCoords(d) {
 // date: Date or ms; lat / lon degrees. -> { azimuth (deg from north, clockwise, 0..360),
 // elevation (deg, refraction included), phase 0..1 (0 new, 0.5 full, < 0.5 waxing), illumination 0..1 }
 // or null without a valid time / location.
-export function moonPosition(date, latDeg, lonDeg) {
+export function moonPosition(date: Date | number, latDeg: number, lonDeg: number): MoonPosition | null {
   const ms = date instanceof Date ? date.getTime() : Number(date);
   if (!Number.isFinite(ms) || !Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) return null;
   const d = toDays(ms), phi = RAD * latDeg, lw = RAD * -lonDeg;
@@ -61,7 +64,7 @@ export function moonPosition(date, latDeg, lonDeg) {
 // Sun position (suncalc formulas): date Date or ms, lat / lon degrees -> { azimuth (deg from north,
 // clockwise, 0..360), elevation (deg, geometric: no refraction, so it stays smooth across the horizon) }
 // or null without a valid time / location.
-export function sunPosition(date, latDeg, lonDeg) {
+export function sunPosition(date: Date | number, latDeg: number, lonDeg: number): SunPosition | null {
   const ms = date instanceof Date ? date.getTime() : Number(date);
   if (!Number.isFinite(ms) || !Number.isFinite(latDeg) || !Number.isFinite(lonDeg)) return null;
   const d = toDays(ms), phi = RAD * latDeg, lw = RAD * -lonDeg;
@@ -76,17 +79,18 @@ export function sunPosition(date, latDeg, lonDeg) {
 // Today and the minutes are in HA's time zone (hass.config.time_zone), else the browser's.
 export const SCRUB_STEP_MIN = 15;
 export const SCRUB_IDLE_MS = 120000; // back to live after 2 minutes without slider input
-export const snapMinutes = (m) => Math.min(1440, Math.max(0, Math.round((Number(m) || 0) / SCRUB_STEP_MIN) * SCRUB_STEP_MIN));
+export const snapMinutes = (m: unknown): number => Math.min(1440, Math.max(0, Math.round((Number(m) || 0) / SCRUB_STEP_MIN) * SCRUB_STEP_MIN));
 
-const fmts = new Map();
+interface WallClock { y: number; mo: number; d: number; h: number; mi: number; s: number }
+const fmts = new Map<string, Intl.DateTimeFormat | null>();
 // wall-clock parts of ms in time zone tz -> { y, mo (0-based), d, h, mi, s } or null (unknown zone)
-function tzParts(ms, tz) {
+function tzParts(ms: number, tz: string | null | undefined): WallClock | null {
   if (!tz) return null;
   let f = fmts.get(tz);
   if (f === undefined) {
     try {
       f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
-    } catch (e) {
+    } catch {
       f = null;
     }
     fmts.set(tz, f);
@@ -96,10 +100,11 @@ function tzParts(ms, tz) {
   return { y: +p.year, mo: +p.month - 1, d: +p.day, h: +p.hour % 24, mi: +p.minute, s: +p.second };
 }
 // zone offset (ms) at ms: wall clock as UTC - real UTC
-const tzOffset = (ms, tz) => { const p = tzParts(ms, tz); return Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000; };
+// (only called with a zone tzParts knows: sliderDate checked it)
+const tzOffset = (ms: number, tz: string | null): number => { const p = tzParts(ms, tz)!; return Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000; };
 
 // Minutes since midnight of ms in the zone (browser's without a valid tz).
-export function tzMinutes(ms, tz) {
+export function tzMinutes(ms: number, tz: string | null | undefined): number {
   const p = tzParts(ms, tz);
   if (p) return p.h * 60 + p.mi;
   const d = new Date(ms);
@@ -107,7 +112,7 @@ export function tzMinutes(ms, tz) {
 }
 
 // Today (in tz) at minutes since its midnight -> Date.
-export function sliderDate(now, minutes, tz = null) {
+export function sliderDate(now: Date | number, minutes: number, tz: string | null = null): Date {
   const ms = now instanceof Date ? now.getTime() : Number(now);
   const p = tzParts(ms, tz);
   if (!p) {
@@ -121,17 +126,17 @@ export function sliderDate(now, minutes, tz = null) {
   t = wall - tzOffset(t, tz); // the offset at the result (DST change days)
   return new Date(t);
 }
-export const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+export const hhmm = (m: number): string =>`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 // Moonlight intensity: night (0..1) > 0.5 and the moon above the horizon (dir[1] > 0, world up).
-export function moonLight(night, moon) {
+export function moonLight(night: number, moon: { dir?: number[] | null; illumination?: unknown } | null | undefined): number {
   if (!(night > 0.5) || !moon || !moon.dir || !(moon.dir[1] > 0)) return 0;
   const ill = Math.max(0, Math.min(1, Number(moon.illumination) || 0));
   return 0.05 + 0.15 * ill * Math.min(1, night);
 }
 
 // Dome around the house the sun / moon sit on: radius from the house's horizontal radius (m).
-export const domeRadius = (houseRadius) => Math.max(12, 1.4 * (Number(houseRadius) || 0));
+export const domeRadius = (houseRadius: unknown): number => Math.max(12, 1.4 * (Number(houseRadius) || 0));
 // The sun disc shows down to 2 degrees below the horizon (y of its unit vector); the moon only above it.
 export const SUN_MIN_Y = Math.sin(-2 * RAD);
 // World size of the discs on the dome (m).
@@ -140,7 +145,7 @@ export const MOON_DISC_M = 1.3;
 
 // Lit side of the moon disc: right while waxing (phase < 0.5) seen from the northern hemisphere,
 // mirrored south of the equator.
-export function moonLitRight(phase, latitude) {
+export function moonLitRight(phase: unknown, latitude: unknown): boolean {
   const waxing = !((Number(phase) || 0) > 0.5);
   return Number(latitude) < 0 ? !waxing : waxing;
 }

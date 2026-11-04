@@ -5,12 +5,14 @@
 // average dimming instead. Uniforms only after the one-time material patch.
 import * as THREE from 'three';
 
-const clamp01 = (x) => Math.max(0, Math.min(1, x));
+import type { PlanPoint } from './types/layout.js';
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 // World size (m) of one tile of the shadow pattern, wind speed (m/s) and direction (unit x/z).
 export const CLOUD_TILE_M = 56;
 export const CLOUD_WIND_MS = 1.5;
-export const CLOUD_WIND = [0.8, 0.6];
+export const CLOUD_WIND: [number, number] = [0.8, 0.6];
 // Direct sunlight left under a cloud (the rest of the light there is the sky's).
 export const CLOUD_UMBRA = 0.1;
 
@@ -18,20 +20,21 @@ export const CLOUD_UMBRA = 0.1;
 // shade (higher = fewer patches), strength: how much of the direct light a cloud takes, roomShade:
 // the direct light in the rooms (no patches there: the average dimming, cloudLight's sun factor) }.
 // With the shadows on, the sun itself stays at its clear-sky strength: sunny gaps between the patches.
-export function cloudShadowParams(coverage, roomShade = 1) {
+export function cloudShadowParams(coverage: unknown, roomShade: unknown = 1): { cover: number; strength: number; roomShade: number } {
   const c = clamp01((Number(coverage) || 0) / 100);
   return { cover: 1 - c, strength: c > 0 ? 1 - CLOUD_UMBRA : 0, roomShade: c > 0 ? clamp01(Number(roomShade)) : 1 };
 }
 
 // Pattern offset (tiles) after t seconds of wind.
-export function cloudShadowOffset(t) {
+export function cloudShadowOffset(t: unknown): [number, number] {
   const d = ((Number(t) || 0) * CLOUD_WIND_MS) / CLOUD_TILE_M;
   return [-(CLOUD_WIND[0] * d) % 1, -(CLOUD_WIND[1] * d) % 1];
 }
 
 // Room mask frame: the x/z bounds (card world: x, -y) of the room polygons plus a margin, as
 // { minX, minZ, sizeX, sizeZ }, or null without rooms.
-export function roomMaskFrame(polygons, margin = 0.3) {
+export interface RoomMaskFrame { minX: number; minZ: number; sizeX: number; sizeZ: number }
+export function roomMaskFrame(polygons: PlanPoint[][] | null | undefined, margin = 0.3): RoomMaskFrame | null {
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
   for (const poly of polygons || []) {
     for (const [x, y] of poly) {
@@ -44,7 +47,28 @@ export function roomMaskFrame(polygons, margin = 0.3) {
 }
 
 // Uniforms shared by every patched material.
-export function makeCloudUniforms() {
+export interface CloudUniforms {
+  [name: string]: THREE.IUniform;
+  fpCloudMap: THREE.IUniform<THREE.Texture | null>;
+  fpCloudOffset: THREE.IUniform<THREE.Vector2>;
+  fpCloudTile: THREE.IUniform<number>;
+  fpCloudCover: THREE.IUniform<number>;
+  fpCloudStrength: THREE.IUniform<number>;
+  fpRoomShade: THREE.IUniform<number>;
+  fpRoomMask: THREE.IUniform<THREE.Texture | null>;
+  fpRoomFrame: THREE.IUniform<THREE.Vector4>;
+  fpRoomFloor: THREE.IUniform<number>;
+  fpOutSky: THREE.IUniform<THREE.Color>;
+  fpOutGround: THREE.IUniform<THREE.Color>;
+  fpCity: THREE.IUniform<number>;
+  fpCityGround: THREE.IUniform<number>;
+  fpCityParams: THREE.IUniform<THREE.Vector4>;
+  fpTime: THREE.IUniform<number>;
+  fpSway: THREE.IUniform<number>;
+  fpWindDir: THREE.IUniform<THREE.Vector2>;
+}
+
+export function makeCloudUniforms(): CloudUniforms {
   return {
     fpCloudMap: { value: null },
     fpCloudOffset: { value: new THREE.Vector2() },
@@ -147,7 +171,7 @@ float fpCloudShade() {
 `;
 // directional lights only (sun, moon): the shade multiplies their colour before the shading model
 const DIR_INFO = 'getDirectionalLightInfo( directionalLight, directLight );';
-export function shadeDirectional(chunk) {
+export function shadeDirectional(chunk: string): string | null {
   if (!chunk.includes(DIR_INFO)) return null;
   return `float fpShade = fpCloudShade();\n${chunk.replace(DIR_INFO, `${DIR_INFO}\n\t\tdirectLight.color *= fpShade;`)}`;
 }
@@ -202,10 +226,13 @@ if ( fpCity > 0.0 ) {
 `;
 
 // Lit materials only (the ones with direct light to shade).
-export const shadable = (m) => !!(m && (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial));
+export const shadable = (m: THREE.Material | null | undefined): m is THREE.MeshStandardMaterial | THREE.MeshLambertMaterial | THREE.MeshPhongMaterial => {
+  const f = m as { isMeshStandardMaterial?: boolean; isMeshLambertMaterial?: boolean; isMeshPhongMaterial?: boolean } | null | undefined;
+  return !!(f && (f.isMeshStandardMaterial || f.isMeshLambertMaterial || f.isMeshPhongMaterial));
+};
 
 // Patch a material once (shader compiled with the shade; later changes are uniforms only).
-export function patchCloudShadow(mat, uniforms) {
+export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): boolean {
   if (!shadable(mat) || mat.userData.fpCloud) return false;
   mat.userData.fpCloud = true;
   const prev = mat.onBeforeCompile;
@@ -229,8 +256,8 @@ export function patchCloudShadow(mat, uniforms) {
 
 // Seamless shadow pattern (canvas, 256 px, red = density): soft blobs wrapped around the tile, then
 // equalized (values spread evenly over 0..1) so a threshold of 1 - c shades a share c of the ground.
-let pattern = null;
-export function cloudPattern() {
+let pattern: THREE.CanvasTexture | null = null;
+export function cloudPattern(): THREE.CanvasTexture {
   if (pattern) return pattern;
   const n = 256, c = document.createElement('canvas');
   c.width = c.height = n;
@@ -263,10 +290,10 @@ export function cloudPattern() {
 }
 
 // Histogram equalization of the red channel of RGBA pixels (in place; g, b follow, alpha 255).
-export function equalize(d) {
-  const count = new Array(256).fill(0), n = d.length / 4;
+export function equalize(d: Uint8ClampedArray | number[]): void {
+  const count: number[] = new Array(256).fill(0), n = d.length / 4;
   for (let i = 0; i < d.length; i += 4) count[d[i]]++;
-  const map = new Array(256);
+  const map: number[] = new Array(256);
   let below = 0;
   for (let v = 0; v < 256; v++) { map[v] = Math.round(((below + count[v] / 2) / n) * 255); below += count[v]; }
   for (let i = 0; i < d.length; i += 4) { const v = map[d[i]]; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
@@ -274,7 +301,7 @@ export function equalize(d) {
 
 // Room mask texture (red = room) for a frame from roomMaskFrame: the polygons filled, edges a little
 // soft. Returns a CanvasTexture (dispose it when replaced).
-export function roomMaskTexture(polygons, frame, px = 256) {
+export function roomMaskTexture(polygons: PlanPoint[][], frame: RoomMaskFrame | null, px = 256): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = px;
   const g = c.getContext('2d');
@@ -301,15 +328,17 @@ export function roomMaskTexture(polygons, frame, px = 256) {
 
 // Card option sway: true | { plants: [mesh / material names or layers that sway], strength } -> settings or null.
 export const SWAY_DEFAULTS = Object.freeze({ plants: Object.freeze(['decoration']), strength: 1 });
-export function normSway(opt) {
+export interface SwaySettings { plants: string[]; strength: number }
+export function normSway(opt: unknown): SwaySettings | null {
   if (!opt) return null;
-  const o = opt === true ? {} : typeof opt === 'object' ? opt : null;
+  const o = opt === true ? {} : typeof opt === 'object' ? (opt as { strength?: unknown; plants?: unknown }) : null;
   if (!o) return null;
   const v = Number(o.strength);
   const strength = o.strength === undefined || !Number.isFinite(v) ? SWAY_DEFAULTS.strength : Math.min(5, Math.max(0, v));
-  const plants = o.plants === undefined ? [...SWAY_DEFAULTS.plants] : [].concat(o.plants).filter((x) => typeof x === 'string' && x);
+  const plants = o.plants === undefined ? [...SWAY_DEFAULTS.plants]
+    : ([] as unknown[]).concat(o.plants).filter((x): x is string => typeof x === 'string' && !!x);
   return strength > 0 && plants.length ? { plants, strength } : null;
 }
 
 // Lean (m at SWAY_HEIGHT_M) for a wind speed (m/s): a breath in calm air, at most 0.6 m in a gale.
-export const swayLean = (wind, strength = 1) => strength * Math.min(0.6, 0.08 + 0.04 * Math.max(0, Number(wind) || 0));
+export const swayLean = (wind: unknown, strength = 1): number => strength * Math.min(0.6, 0.08 + 0.04 * Math.max(0, Number(wind) || 0));
