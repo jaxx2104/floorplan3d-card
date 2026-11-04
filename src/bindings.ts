@@ -2,13 +2,56 @@
 // which HA area each room/zone is. Saved choices live in layout.model.levels / .rooms; anything
 // not saved is derived here, so re-exports and HA changes never need manual repair.
 
-const SHOW = ['with', 'only', 'always', 'hidden', 'all-only'];
+import type { Floor, PlanPoint, SavedLevelBinding } from './types/layout.js';
+import type { ManifestLevel, ManifestRoom } from './types/manifest.js';
 
-const isPlainObject = (v) => v !== null && typeof v === 'object' && v.constructor === Object;
+export type ShowMode = 'with' | 'only' | 'always' | 'hidden' | 'all-only';
+const SHOW: readonly unknown[] = ['with', 'only', 'always', 'hidden', 'all-only'];
 
-export function levelsFromFloorMap(map) {
+/** The fields of a manifest level the bindings read (tests pass partial levels). */
+export type LevelLike = Pick<ManifestLevel, 'id'> & Partial<Pick<ManifestLevel, 'role' | 'order' | 'elevation' | 'height' | 'minY' | 'label'>>;
+type FloorLike = Pick<Floor, 'id' | 'elevation'>;
+
+/** Resolved binding of one model level: how it shows and which HA floor it belongs to. */
+export interface LevelAssign {
+  show: ShowMode;
+  floor: string | null;
+  auto: boolean;
+  stale?: boolean;
+}
+export interface RoomAreaAssign {
+  area: string | null;
+  auto: boolean;
+  stale?: boolean;
+}
+/** Model alignment: position [x, y, z] (plan metres + height), rotation (degrees), scale. */
+export interface Align {
+  position?: number[];
+  rotation?: number;
+  scale?: number;
+}
+/** A model room / zone as a layout room (card plan). */
+export interface ModelRoom {
+  id: string;
+  modelId: string;
+  label: string;
+  area_id: string | null;
+  floor_id: string;
+  polygon: PlanPoint[];
+  doors: PlanPoint[];
+  outdoor: boolean;
+  fromModel: true;
+}
+export interface FloorOverride { id: string; elevation: number; height?: number }
+export interface IdDiff { added: string[]; missing: string[] }
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && v.constructor === Object;
+// manifest entries carry string ids
+const idsOf = (entries: unknown): string[] => (Array.isArray(entries) ? entries : []).map((e: { id: string }) => e.id);
+
+export function levelsFromFloorMap(map: unknown): Record<string, SavedLevelBinding> {
   if (!isPlainObject(map)) return {};
-  const out = {};
+  const out: Record<string, SavedLevelBinding> = {};
   for (const [id, v] of Object.entries(map)) {
     if (typeof v !== 'string') continue;
     out[id] = v === 'always' || v === 'hidden' ? { show: v } : { floor: v };
@@ -16,13 +59,13 @@ export function levelsFromFloorMap(map) {
   return out;
 }
 
-export function migrateModel(model) {
+export function migrateModel<T>(model: T): T | Record<string, unknown> {
   if (!isPlainObject(model) || !('floor_map' in model)) return model;
   const { floor_map: fm, ...rest } = model;
-  return { ...rest, levels: { ...levelsFromFloorMap(fm), ...model.levels } };
+  return { ...rest, levels: { ...levelsFromFloorMap(fm), ...(model.levels as Record<string, unknown> | undefined) } };
 }
 
-const byOrder = (a, b) => {
+const byOrder = (a: LevelLike, b: LevelLike): number => {
   // legacy models without order/elevation: stack bottom-up by their lowest point
   if (a.order == null && b.order == null && a.elevation == null && b.elevation == null) return (a.minY || 0) - (b.minY || 0);
   const aOrd = a.order ?? (a.role === 'basement' ? -1 : 0);
@@ -30,20 +73,20 @@ const byOrder = (a, b) => {
   return aOrd - bOrd;
 };
 
-export function resolveLevels(levels, floors, saved = {}) {
+export function resolveLevels(levels: readonly LevelLike[], floors: readonly FloorLike[], saved: unknown = {}): Record<string, LevelAssign> {
   const safeSaved = isPlainObject(saved) ? saved : {};
-  const ids = new Set(floors.map((f) => f.id));
-  const out = {};
-  const stale = new Set();
+  const ids = new Set<unknown>(floors.map((f) => f.id));
+  const out: Record<string, LevelAssign> = {};
+  const stale = new Set<string>();
   for (const l of levels) {
     const s = safeSaved[l.id];
     if (!isPlainObject(s)) continue;
     if (s.show && SHOW.includes(s.show) && s.show !== 'with' && s.show !== 'only') {
-      out[l.id] = { show: s.show, floor: ids.has(s.floor) ? s.floor : null, auto: false };
+      out[l.id] = { show: s.show as ShowMode, floor: ids.has(s.floor) ? (s.floor as string) : null, auto: false }; // SHOW / floor ids checked
     } else if (s.floor === null && !s.show) {
       out[l.id] = { show: 'always', floor: null, auto: false }; // "belongs to no HA floor"
     } else if (ids.has(s.floor)) {
-      out[l.id] = { show: s.show === 'only' ? 'only' : 'with', floor: s.floor, auto: false };
+      out[l.id] = { show: s.show === 'only' ? 'only' : 'with', floor: s.floor as string, auto: false }; // in the floor ids
     } else {
       stale.add(l.id); // saved floor was deleted in HA: fall back to the defaults below
     }
@@ -51,7 +94,7 @@ export function resolveLevels(levels, floors, saved = {}) {
   for (const l of levels) if (!out[l.id] && ids.has(l.id)) out[l.id] = { show: 'with', floor: l.id, auto: true };
 
   // only with/only bindings reserve a floor; pinned always/hidden/all-only keep their floor for zones only
-  const used = new Set(Object.values(out).filter((v) => v.show === 'with' || v.show === 'only').map((v) => v.floor).filter(Boolean));
+  const used = new Set(Object.values(out).filter((v) => v.show === 'with' || v.show === 'only').map((v) => v.floor).filter((f): f is string => !!f));
   const storeys = levels.filter((l) => !out[l.id] && (l.role === 'storey' || l.role === 'basement')).sort(byOrder);
   const free = floors.filter((f) => !used.has(f.id)).sort((a, b) => a.elevation - b.elevation);
   // align the model's order 0 with HA's floor at elevation 0 (a basement must not take the ground floor)
@@ -65,8 +108,8 @@ export function resolveLevels(levels, floors, saved = {}) {
 
   // the exterior goes with the lowest above-ground storey's floor (not a basement)
   const storeyFloors = levels.filter((l) => (l.role === 'storey' || l.role === 'basement') && out[l.id] && out[l.id].floor)
-    .map((l) => floors.find((f) => f.id === out[l.id].floor));
-  const byElev = (a, b) => a.elevation - b.elevation;
+    .map((l) => floors.find((f) => f.id === out[l.id].floor)!); // bound floors come from `floors`
+  const byElev = (a: FloorLike, b: FloorLike): number => a.elevation - b.elevation;
   const ground = storeyFloors.filter((f) => f.elevation >= 0).sort(byElev)[0] || storeyFloors.sort(byElev)[0]
     || floors.slice().sort(byElev)[0];
   const groundFloor = ground ? ground.id : null;
@@ -82,7 +125,11 @@ export function resolveLevels(levels, floors, saved = {}) {
 
 // Visibility of a model level for the selected floor ('all' or a floor id). `with` stacks:
 // shown on its floor and on every floor above it (by elevation).
-export function levelVisible(assign, visibleFloor, elevationOf) {
+export function levelVisible(
+  assign: LevelAssign | null | undefined,
+  visibleFloor: string,
+  elevationOf?: ((floorId: string | null) => number | null | undefined) | null,
+): boolean {
   if (!assign) return true;
   if (assign.show === 'hidden') return false;
   if (assign.show === 'always') return true;
@@ -94,21 +141,25 @@ export function levelVisible(assign, visibleFloor, elevationOf) {
   return a !== undefined && a !== null && v !== undefined && v !== null && a < v;
 }
 
-export function resolveRoomAreas(rooms, areaIds, saved = {}) {
+export function resolveRoomAreas(
+  rooms: readonly (Pick<ManifestRoom, 'id'> & { suggest?: ManifestRoom['suggest'] | null })[],
+  areaIds: Iterable<string>,
+  saved: unknown = {},
+): Record<string, RoomAreaAssign> {
   const safeSaved = isPlainObject(saved) ? saved : {};
-  const areas = new Set(areaIds);
-  const out = {};
+  const areas = new Set<unknown>(areaIds);
+  const out: Record<string, RoomAreaAssign> = {};
   for (const r of rooms) {
     const s = safeSaved[r.id];
-    if (isPlainObject(s) && 'area' in s && (s.area === null || areas.has(s.area))) { out[r.id] = { area: s.area, auto: false }; continue; }
+    if (isPlainObject(s) && 'area' in s && (s.area === null || areas.has(s.area))) { out[r.id] = { area: s.area as string | null, auto: false }; continue; } // null or an area id
     const sug = r.suggest && r.suggest.area;
-    const area = sug && areas.has(sug) ? sug : areas.has(r.id) ? r.id : null;
+    const area: string | null = sug && areas.has(sug) ? sug : areas.has(r.id) ? r.id : null;
     out[r.id] = isPlainObject(s) && 'area' in s ? { area, auto: true, stale: true } : { area, auto: true };
   }
   return out;
 }
 
-export function transformPoint([x, y], { position = [0, 0, 0], rotation = 0, scale = 1 } = {}) {
+export function transformPoint([x, y]: readonly number[], { position = [0, 0, 0], rotation = 0, scale = 1 }: Align = {}): PlanPoint {
   const a = (rotation * Math.PI) / 180;
   const c = Math.cos(a), s = Math.sin(a);
   const px = x * scale, py = y * scale;
@@ -116,7 +167,7 @@ export function transformPoint([x, y], { position = [0, 0, 0], rotation = 0, sca
 }
 
 // Inverse of transformPoint: world plan point -> model plan point.
-export function inverseTransformPoint([x, y], { position = [0, 0, 0], rotation = 0, scale = 1 } = {}) {
+export function inverseTransformPoint([x, y]: readonly number[], { position = [0, 0, 0], rotation = 0, scale = 1 }: Align = {}): PlanPoint {
   const a = (rotation * Math.PI) / 180;
   const c = Math.cos(a), s = Math.sin(a);
   const dx = x - (position[0] || 0), dy = y - (position[1] || 0);
@@ -124,12 +175,19 @@ export function inverseTransformPoint([x, y], { position = [0, 0, 0], rotation =
   return [(dx * c + dy * s) / k, (-dx * s + dy * c) / k];
 }
 
-export function modelRooms(rooms, levelAssign, roomAreas, align) {
-  const safeLevelAssign = isPlainObject(levelAssign) ? levelAssign : {};
-  const safeRoomAreas = isPlainObject(roomAreas) ? roomAreas : {};
-  const out = [];
+type RoomInput = Pick<ManifestRoom, 'id' | 'label'> & { level?: string | null; outline?: readonly PlanPoint[] | null; doors?: readonly PlanPoint[] | null; kind?: ManifestRoom['kind'] };
+
+export function modelRooms(
+  rooms: readonly RoomInput[],
+  levelAssign: Record<string, LevelAssign> | null | undefined,
+  roomAreas: Record<string, RoomAreaAssign> | null | undefined,
+  align?: Align,
+): ModelRoom[] {
+  const safeLevelAssign: Record<string, LevelAssign> = isPlainObject(levelAssign) ? levelAssign : {};
+  const safeRoomAreas: Record<string, RoomAreaAssign> = isPlainObject(roomAreas) ? roomAreas : {};
+  const out: ModelRoom[] = [];
   for (const r of rooms) {
-    const lv = safeLevelAssign[r.level];
+    const lv = safeLevelAssign[String(r.level)];
     if (!r.outline || !lv || !lv.floor || lv.show === 'hidden') continue; // levels without an HA floor or hidden carry no rooms
     out.push({
       id: 'm:' + r.id, modelId: r.id, label: r.label,
@@ -144,30 +202,34 @@ export function modelRooms(rooms, levelAssign, roomAreas, align) {
   return out;
 }
 
-export function combineRooms(drawn, fromModel) {
+export function combineRooms<D extends { area_id?: string | null }, M extends { area_id?: string | null }>(drawn: readonly D[] | null | undefined, fromModel: readonly M[]): (D | M)[] {
   const covered = new Set(fromModel.map((r) => r.area_id).filter(Boolean));
   return [...fromModel, ...(drawn || []).filter((r) => !covered.has(r.area_id))];
 }
 
-export function levelFloorOverrides(levels, levelAssign, { position = [0, 0, 0], scale = 1 } = {}) {
-  const safeLevelAssign = isPlainObject(levelAssign) ? levelAssign : {};
-  const out = [];
-  const done = new Set();
+export function levelFloorOverrides(
+  levels: readonly LevelLike[],
+  levelAssign: Record<string, LevelAssign> | null | undefined,
+  { position = [0, 0, 0], scale = 1 }: Align = {},
+): FloorOverride[] {
+  const safeLevelAssign: Record<string, LevelAssign> = isPlainObject(levelAssign) ? levelAssign : {};
+  const out: FloorOverride[] = [];
+  const done = new Set<string>();
   for (const l of levels) {
     const a = safeLevelAssign[l.id];
     if (l.role === 'exterior' || l.role === 'roof' || !a || (a.show !== 'with' && a.show !== 'only') || !a.floor || done.has(a.floor)) continue;
     if (l.elevation === null || l.elevation === undefined) continue;
     done.add(a.floor);
-    const o = { id: a.floor, elevation: Math.round((l.elevation * scale + (position[2] || 0)) * 1000) / 1000 };
+    const o: FloorOverride = { id: a.floor, elevation: Math.round((l.elevation * scale + (position[2] || 0)) * 1000) / 1000 };
     if (l.height) o.height = Math.round(l.height * scale * 1000) / 1000;
     out.push(o);
   }
   return out;
 }
 
-export function bindingDiff(manifest, model) {
-  const one = (entries, saved) => {
-    const ids = new Set((Array.isArray(entries) ? entries : []).map((e) => e.id));
+export function bindingDiff(manifest: unknown, model: unknown): { levels: IdDiff & { kept: string[] }; rooms: IdDiff & { kept: string[] } } {
+  const one = (entries: unknown, saved: unknown): IdDiff & { kept: string[] } => {
+    const ids = new Set(idsOf(entries));
     const keys = Object.keys(isPlainObject(saved) ? saved : {});
     return {
       kept: [...ids].filter((id) => keys.includes(id)),
@@ -176,14 +238,15 @@ export function bindingDiff(manifest, model) {
     };
   };
   const safeManifest = isPlainObject(manifest) ? manifest : {};
-  return { levels: one(safeManifest.levels, model && model.levels), rooms: one(safeManifest.rooms, model && model.rooms) };
+  const m = model as { levels?: unknown; rooms?: unknown } | null | undefined; // layout.model, read loosely
+  return { levels: one(safeManifest.levels, m && m.levels), rooms: one(safeManifest.rooms, m && m.rooms) };
 }
 
 // Compare the manifest with the snapshot of ids the user has already seen ({ levels: [], rooms: [] }).
 // No snapshot means nothing to report.
-export function snapshotDiff(manifest, known) {
-  const one = (entries, ids) => {
-    const cur = (Array.isArray(entries) ? entries : []).map((e) => e.id);
+export function snapshotDiff(manifest: unknown, known: unknown): { levels: IdDiff; rooms: IdDiff } {
+  const one = (entries: unknown, ids: unknown): IdDiff => {
+    const cur = idsOf(entries);
     if (!Array.isArray(ids)) return { added: [], missing: [] };
     return { added: cur.filter((id) => !ids.includes(id)), missing: ids.filter((id) => !cur.includes(id)) };
   };
@@ -193,14 +256,14 @@ export function snapshotDiff(manifest, known) {
 }
 
 // Elevation/height for levels the model did not tag with numbers, measured from their geometry.
-export function measuredElevations(levels) {
+export function measuredElevations(levels: readonly LevelLike[]): Record<string, { elevation: number; height: number }> {
   const storeys = levels.filter((l) => (l.role === 'storey' || l.role === 'basement')).slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.minY ?? 0) - (b.minY ?? 0));
-  const snap = (v) => Math.round(v / 0.05) * 0.05;
-  const r3 = (v) => Math.round(v * 1000) / 1000 + 0;
+  const snap = (v: number): number => Math.round(v / 0.05) * 0.05;
+  const r3 = (v: number): number => Math.round(v * 1000) / 1000 + 0;
   const ground = storeys.find((l) => l.role === 'storey' && (l.minY ?? 0) <= 0.5) || storeys.find((l) => l.role === 'storey');
-  const elev = (l) => (Number.isFinite(l.elevation) ? l.elevation : l === ground ? ((l.minY ?? 0) <= 0.5 ? 0 : Math.max(0, Math.round(l.minY))) : snap(l.minY ?? 0));
-  const out = {};
+  const elev = (l: LevelLike): number => (typeof l.elevation === 'number' && Number.isFinite(l.elevation) ? l.elevation : l === ground ? ((l.minY ?? 0) <= 0.5 ? 0 : Math.max(0, Math.round(l.minY ?? 0))) : snap(l.minY ?? 0));
+  const out: Record<string, { elevation: number; height: number }> = {};
   storeys.forEach((l, i) => {
     if (Number.isFinite(l.elevation)) return;
     const e = elev(l);

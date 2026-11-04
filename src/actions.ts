@@ -2,38 +2,47 @@
 // Pure: resolution (type defaults < model fp.ui < layout ui < card YAML `actions:`), a description of
 // what to do (actionCall; the card executes it), popup link rows and the double-tap sequencer.
 
-export const KINDS = ['toggle', 'more-info', 'navigate', 'url', 'perform-action', 'assist', 'popup', 'none'];
-const KIND_SET = new Set(KINDS);
-export const WHICH = ['tap', 'hold', 'double_tap'];
+import type { ActionConfig, ObjectUi } from './types/layout.js';
+import type { HassServiceTarget } from './types/ha.js';
+
+export type ActionKind = 'toggle' | 'more-info' | 'navigate' | 'url' | 'perform-action' | 'assist' | 'popup' | 'none';
+export type ActionWhich = 'tap' | 'hold' | 'double_tap';
+export type PopupSource = 'type' | 'model' | 'layout' | 'yaml';
+
+export const KINDS: readonly ActionKind[] = ['toggle', 'more-info', 'navigate', 'url', 'perform-action', 'assist', 'popup', 'none'];
+const KIND_SET = new Set<unknown>(KINDS);
+export const WHICH: readonly ActionWhich[] = ['tap', 'hold', 'double_tap'];
 export const DOUBLE_TAP_MS = 250;
 const TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
 
-const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const domainOf = (e) => String(e).split('.')[0];
+const plain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const domainOf = (e: string): string => String(e).split('.')[0];
 
 // [domain, service, data] toggling an entity (domains without their own toggle use homeassistant.toggle).
-export function toggleCall(entity) {
+export function toggleCall(entity: string): [string, string, { entity_id: string }] {
   const d = domainOf(entity);
   return TOGGLE_DOMAINS.has(d) ? [d, 'toggle', { entity_id: entity }] : ['homeassistant', 'toggle', { entity_id: entity }];
 }
 
 /** One action in HA's shape { action, ... }; a bare string is the action name; legacy call-service accepted. Invalid: null. */
-export function normAction(v) {
+export function normAction(v: unknown): ActionConfig | null {
   if (typeof v === 'string') return KIND_SET.has(v) ? { action: v } : null;
   if (!plain(v)) return null;
   if (v.action === 'call-service' || (v.action === 'perform-action' && (v.service !== undefined || v.service_data !== undefined))) {
     const { service, service_data: sd, ...rest } = v;
-    const out = { ...rest, action: 'perform-action' };
+    const out: ActionConfig = { ...rest, action: 'perform-action' };
     if (service !== undefined && out.perform_action === undefined) out.perform_action = service;
     if (sd !== undefined && out.data === undefined) out.data = sd;
     return out;
   }
-  return KIND_SET.has(v.action) ? { ...v } : null;
+  return KIND_SET.has(v.action) ? { ...v, action: v.action as string } : null; // KIND_SET holds strings only
 }
 
 // The actions one ui-like source sets: `<which>_action`, else the legacy `<which>` key.
-function fromSource(ui) {
-  const out = {};
+interface SourceActions { tap?: ActionConfig; hold?: ActionConfig; double_tap?: ActionConfig; popup?: unknown[] }
+
+function fromSource(ui: unknown): SourceActions {
+  const out: SourceActions = {};
   if (!plain(ui)) return out;
   for (const w of WHICH) {
     const a = normAction(ui[`${w}_action`] !== undefined ? ui[`${w}_action`] : ui[w]);
@@ -51,23 +60,43 @@ function fromSource(ui) {
  * extended by the bound light's capabilities (popupRows), layout / YAML lists are taken as written.
  * tags: the object's tags in order (a later tag wins over an earlier one).
  */
-export function resolveActions({ modelUi, layoutUi, yaml, kind = 'object', id, entityId, deviceId, typeDefaults, tags } = {}) {
+export interface ResolveActionsInput {
+  modelUi?: ObjectUi | Record<string, unknown> | null;
+  layoutUi?: ObjectUi | null;
+  yaml?: unknown;
+  kind?: 'object' | 'marker' | string;
+  id?: string;
+  entityId?: string | null;
+  deviceId?: string | null;
+  typeDefaults?: ObjectUi | null;
+  tags?: readonly string[] | null;
+}
+
+export interface ResolvedActions {
+  tap: ActionConfig;
+  hold: ActionConfig;
+  double_tap: ActionConfig | null;
+  popup: unknown[];
+  popupSource: PopupSource;
+}
+
+export function resolveActions({ modelUi, layoutUi, yaml, kind = 'object', id, entityId, deviceId, typeDefaults, tags }: ResolveActionsInput = {}): ResolvedActions {
   const y = plain(yaml) ? yaml : {};
   const tagKeys = kind === 'object' && Array.isArray(tags) ? tags.map((t) => `tag:${t}`) : [];
-  const keys = [deviceId && `device:${deviceId}`, ...tagKeys, entityId, kind === 'object' && id && `object:${id}`].filter(Boolean);
-  const names = ['type', 'model', 'layout', ...keys.map(() => 'yaml')];
+  const keys = [deviceId && `device:${deviceId}`, ...tagKeys, entityId, kind === 'object' && id && `object:${id}`].filter((k): k is string => !!k);
+  const names: PopupSource[] = ['type', 'model', 'layout', ...keys.map((): PopupSource => 'yaml')];
   const sources = [typeDefaults, modelUi, layoutUi, ...keys.map((k) => y[k])].map(fromSource);
-  const out = { tap: { action: 'none' }, hold: { action: 'none' }, double_tap: null, popup: ['state'], popupSource: 'type' };
+  const out: ResolvedActions = { tap: { action: 'none' }, hold: { action: 'none' }, double_tap: null, popup: ['state'], popupSource: 'type' };
   sources.forEach((s, i) => { Object.assign(out, s); if (s.popup) out.popupSource = names[i]; });
   if (out.double_tap && out.double_tap.action === 'none') out.double_tap = null;
   return out;
 }
 
 // url_path: http(s) or a path on the HA host; never javascript: / data: and the like
-const safeUrl = (u) => /^https?:\/\//i.test(u) || (u.startsWith('/') && !u.startsWith('//'));
+const safeUrl = (u: string): boolean => /^https?:\/\//i.test(u) || (u.startsWith('/') && !u.startsWith('//'));
 
 /** A message for an action missing a required field, else null (entity-based actions are checked at run time). */
-export function validateAction(a) {
+export function validateAction(a: ActionConfig | null | undefined): string | null {
   if (!a) return null;
   switch (a.action) {
     case 'navigate': return a.navigation_path ? null : 'navigate needs navigation_path';
@@ -84,17 +113,15 @@ export function validateAction(a) {
   }
 }
 
-function confirmText(a, call, userId) {
+function confirmText(a: ActionConfig, call: ActionCallBase, userId: string | null): string | null {
   const c = a.confirmation;
   if (!c || call.kind === 'none' || call.kind === 'error') return null;
   if (plain(c) && userId && Array.isArray(c.exemptions) && c.exemptions.some((x) => plain(x) && x.user === userId)) return null;
   if (plain(c) && typeof c.text === 'string' && c.text) return c.text;
-  const what = {
-    service: () => `run ${call.domain}.${call.service}`,
-    navigate: () => `open ${call.path}`,
-    url: () => `open ${call.url}`,
-  }[call.kind];
-  return `Are you sure you want to ${what ? what() : a.action}?`;
+  const what = call.kind === 'service' ? `run ${call.domain}.${call.service}`
+    : call.kind === 'navigate' ? `open ${call.path}`
+    : call.kind === 'url' ? `open ${call.url}` : null;
+  return `Are you sure you want to ${what ?? a.action}?`;
 }
 
 /**
@@ -104,14 +131,25 @@ function confirmText(a, call, userId) {
  * { kind: 'navigate', path, replace } | { kind: 'url', url, newTab } | { kind: 'assist', action } |
  * { kind: 'popup' } | { kind: 'none' } | { kind: 'error', message }; each with confirm (text | null).
  */
-export function actionCall(action, ctx = {}) {
+type ActionCallBase =
+  | { kind: 'service'; domain: string; service: string; data: Record<string, unknown>; target?: HassServiceTarget }
+  | { kind: 'more-info'; entityId: string }
+  | { kind: 'navigate'; path: string; replace: boolean }
+  | { kind: 'url'; url: string; newTab: boolean }
+  | { kind: 'assist'; action: ActionConfig }
+  | { kind: 'popup' }
+  | { kind: 'none' }
+  | { kind: 'error'; message: string };
+export type ActionCall = ActionCallBase & { confirm: string | null };
+
+export function actionCall(action: unknown, ctx: { entity?: string | null; userId?: string | null } = {}): ActionCall {
   const a = normAction(action);
-  let call;
+  let call: ActionCallBase;
   const missing = a && validateAction(a);
   if (!a) call = { kind: 'none' };
   else if (missing) call = { kind: 'error', message: missing };
   else {
-    const entity = a.entity || ctx.entity || null;
+    const entity = (typeof a.entity === 'string' && a.entity) || ctx.entity || null;
     switch (a.action) {
       case 'toggle': {
         if (!entity) { call = { kind: 'error', message: 'Nothing to toggle: no entity' }; break; }
@@ -131,9 +169,10 @@ export function actionCall(action, ctx = {}) {
         break;
       }
       case 'perform-action': {
-        const [domain, service] = a.perform_action.split('.');
-        call = { kind: 'service', domain, service, data: plain(a.data) ? { ...a.data } : {} };
-        if (plain(a.target)) call.target = { ...a.target };
+        const [domain, service] = String(a.perform_action).split('.'); // validateAction checked domain.action
+        const svc: ActionCallBase = { kind: 'service', domain, service, data: plain(a.data) ? { ...a.data } : {} };
+        if (plain(a.target)) svc.target = { ...a.target };
+        call = svc;
         break;
       }
       case 'assist': call = { kind: 'assist', action: a }; break;
@@ -141,11 +180,12 @@ export function actionCall(action, ctx = {}) {
       default: call = { kind: 'none' };
     }
   }
-  call.confirm = a ? confirmText(a, call, ctx.userId || null) : null;
-  return call;
+  return { ...call, confirm: a ? confirmText(a, call, ctx.userId || null) : null };
 }
 
-const ENTITY_LINKS = {
+export interface PopupLink { kind: 'link'; label: string; action: ActionConfig }
+
+const ENTITY_LINKS: Record<string, (e: string) => Omit<PopupLink, 'kind'>> = {
   history: (e) => ({ label: 'History', action: { action: 'navigate', navigation_path: `/history?entity_id=${encodeURIComponent(e)}` } }),
   logbook: (e) => ({ label: 'Logbook', action: { action: 'navigate', navigation_path: `/logbook?entity_id=${encodeURIComponent(e)}` } }),
   // HA's more-info dialog shows the history / statistics graph
@@ -153,8 +193,8 @@ const ENTITY_LINKS = {
 };
 
 /** Link rows of a popup list: history / logbook / statistics (need entity) and custom { label, navigate | url }. */
-export function popupLinks(list, entity) {
-  const rows = [];
+export function popupLinks(list: unknown, entity: string | null | undefined): PopupLink[] {
+  const rows: PopupLink[] = [];
   for (const k of Array.isArray(list) ? list : []) {
     if (typeof k === 'string' && ENTITY_LINKS[k]) {
       if (entity) rows.push({ kind: 'link', ...ENTITY_LINKS[k](entity) });
@@ -173,12 +213,15 @@ export function popupLinks(list, entity) {
  * with one it waits DOUBLE_TAP_MS for a second tap. Pending keys are independent.
  */
 export class TapSequencer {
+  ms: number;
+  pending: Map<string, ReturnType<typeof setTimeout>>;
+
   constructor(ms = DOUBLE_TAP_MS) {
     this.ms = ms;
     this.pending = new Map(); // key -> timer
   }
 
-  tap(key, hasDouble, onSingle, onDouble) {
+  tap(key: string, hasDouble: boolean, onSingle: () => void, onDouble: () => void): void {
     if (!hasDouble) { onSingle(); return; }
     const t = this.pending.get(key);
     if (t !== undefined) {
@@ -190,7 +233,7 @@ export class TapSequencer {
     this.pending.set(key, setTimeout(() => { this.pending.delete(key); onSingle(); }, this.ms));
   }
 
-  cancel() {
+  cancel(): void {
     for (const t of this.pending.values()) clearTimeout(t);
     this.pending.clear();
   }

@@ -3,18 +3,62 @@
 // with an area shows up on the plan without any extra work.
 
 import { SKIP_DOMAINS, domainPriority, sensorPriority } from './placement.js';
+import type { Hass, HassEntity } from './types/ha.js';
+import type { Layout } from './types/layout.js';
 
-export function registrySignature(hass) {
+/** One candidate entity of a marker, with its sort priority. */
+export interface MarkerEntity {
+  eid: string;
+  domain: string;
+  dc: string | undefined;
+  prio: number;
+}
+
+/** A device (or a single entity) shown on the plan; `id` is "device:<id>" or "entity:<entity_id>". */
+export interface Marker {
+  id: string;
+  areaId: string | null;
+  deviceId: string | null;
+  name: string;
+  entities: MarkerEntity[];
+  /** Primary entity (highest priority). */
+  entityId: string;
+  domain: string;
+  deviceClass: string | undefined;
+  /** A secondary sensor reading (e.g. temperature next to a switch), or null. */
+  secondaryId: string | null;
+}
+
+export interface HaFloorInfo {
+  id: string;
+  name: string;
+  level: number;
+}
+
+export type MarkerShape = 'square' | 'circle' | 'diamond';
+export type MarkerKind = 'info' | 'picture' | 'alert' | 'binary' | 'control' | 'value';
+export interface MarkerLook {
+  shape: MarkerShape;
+  kind: MarkerKind;
+  info: boolean;
+  alert: 'red' | 'yellow' | null;
+  picture: string | null;
+  pictureStamp?: string;
+  value: string;
+}
+
+export function registrySignature(hass: Hass): unknown[] {
   // Cheap identity check: HA replaces these objects when the registries change.
   return [hass.entities, hass.devices, hass.areas, hass.floors];
 }
 
-export function buildMarkers(hass, layout, opts = {}) {
+export function buildMarkers(hass: Hass, layout: Pick<Layout, 'hidden'>, opts: { group_by?: string } = {}): Marker[] {
   const groupBy = opts.group_by || 'device';
   const hidden = new Set(layout.hidden || []);
   const ents = hass.entities || {};
   const devs = hass.devices || {};
-  const byMarker = new Map();
+  type Draft = Omit<Marker, 'entityId' | 'domain' | 'deviceClass' | 'secondaryId'> & Partial<Marker>;
+  const byMarker = new Map<string, Draft>();
 
   for (const eid of Object.keys(ents)) {
     const e = ents[eid];
@@ -28,7 +72,7 @@ export function buildMarkers(hass, layout, opts = {}) {
     const id = groupBy === 'device' && e.device_id && !e.area_id ? 'device:' + e.device_id : 'entity:' + eid;
     if (hidden.has(id) || hidden.has(eid)) continue;
     const dc = st.attributes.device_class;
-    const cand = { eid, domain, dc, prio: domainPriority(domain) * 100 + (domain === 'sensor' ? sensorPriority(dc) : 0) };
+    const cand: MarkerEntity = { eid, domain, dc, prio: domainPriority(domain) * 100 + (domain === 'sensor' ? sensorPriority(dc) : 0) };
     const cur = byMarker.get(id);
     if (!cur) {
       byMarker.set(id, {
@@ -43,10 +87,10 @@ export function buildMarkers(hass, layout, opts = {}) {
     }
   }
 
-  const markers = [];
+  const markers: Marker[] = [];
   for (const m of byMarker.values()) {
     m.entities.sort((a, b) => a.prio - b.prio);
-    const p = m.entities[0];
+    const p = m.entities[0]; // a marker is only created with its first entity
     m.entityId = p.eid;
     m.domain = p.domain;
     m.deviceClass = p.dc;
@@ -56,31 +100,31 @@ export function buildMarkers(hass, layout, opts = {}) {
     if (m.entities.length === 1 && m.id.startsWith('entity:')) {
       m.name = hass.states[p.eid].attributes.friendly_name || m.name;
     }
-    markers.push(m);
+    markers.push(m as Marker); // the primary fields were just filled in
   }
   return markers;
 }
 
-export function areaName(hass, areaId) {
+export function areaName(hass: Hass, areaId: string): string {
   const a = hass.areas && hass.areas[areaId];
   return a ? a.name : areaId;
 }
 
-export function floorsFromHA(hass) {
+export function floorsFromHA(hass: Hass): HaFloorInfo[] {
   const f = hass.floors || {};
   return Object.values(f)
     .sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
     .map((x) => ({ id: x.floor_id, name: x.name, level: x.level ?? 0 }));
 }
 
-const ICONS = {
+const ICONS: Record<string, string> = {
   light: 'mdi:lightbulb', switch: 'mdi:toggle-switch-variant', fan: 'mdi:fan', cover: 'mdi:window-shutter',
   climate: 'mdi:thermostat', lock: 'mdi:lock', camera: 'mdi:cctv', media_player: 'mdi:speaker',
   vacuum: 'mdi:robot-vacuum', lawn_mower: 'mdi:robot-mower', water_heater: 'mdi:water-boiler',
   humidifier: 'mdi:air-humidifier', valve: 'mdi:valve', alarm_control_panel: 'mdi:shield-home',
   input_boolean: 'mdi:toggle-switch-variant',
 };
-const DC_ICONS = {
+const DC_ICONS: Record<string, string> = {
   temperature: 'mdi:thermometer', humidity: 'mdi:water-percent', carbon_dioxide: 'mdi:molecule-co2',
   illuminance: 'mdi:brightness-5', power: 'mdi:flash', energy: 'mdi:lightning-bolt', motion: 'mdi:motion-sensor',
   occupancy: 'mdi:account-eye', presence: 'mdi:account-eye', door: 'mdi:door', garage_door: 'mdi:garage',
@@ -89,7 +133,7 @@ const DC_ICONS = {
 };
 
 // binary_sensor icons by state (HA's): [on, off] per device class
-const BINARY_ICONS = {
+const BINARY_ICONS: Record<string, [string, string]> = {
   door: ['mdi:door-open', 'mdi:door-closed'], garage_door: ['mdi:garage-open', 'mdi:garage'], window: ['mdi:window-open', 'mdi:window-closed'],
   opening: ['mdi:square-outline', 'mdi:square'], motion: ['mdi:motion-sensor', 'mdi:motion-sensor-off'], occupancy: ['mdi:home', 'mdi:home-outline'],
   presence: ['mdi:home', 'mdi:home-outline'], moisture: ['mdi:water', 'mdi:water-off'], smoke: ['mdi:smoke-detector-variant-alert', 'mdi:smoke-detector-variant'],
@@ -99,7 +143,7 @@ const BINARY_ICONS = {
   battery: ['mdi:battery-outline', 'mdi:battery'], light: ['mdi:brightness-7', 'mdi:brightness-5'], vibration: ['mdi:vibrate', 'mdi:crop-portrait'],
 };
 
-export function iconFor(hass, eid) {
+export function iconFor(hass: Hass, eid: string): string {
   const st = hass.states[eid];
   const e = hass.entities && hass.entities[eid];
   if (st && st.attributes.icon) return st.attributes.icon;
@@ -107,18 +151,18 @@ export function iconFor(hass, eid) {
   const d = eid.split('.')[0];
   const dc = st && st.attributes.device_class;
   if (d === 'binary_sensor' && st) {
-    const pair = BINARY_ICONS[dc] || ['mdi:checkbox-marked-circle', 'mdi:radiobox-blank'];
+    const pair = (dc !== undefined && BINARY_ICONS[dc]) || ['mdi:checkbox-marked-circle', 'mdi:radiobox-blank'];
     return st.state === 'on' ? pair[0] : pair[1];
   }
   return (dc && DC_ICONS[dc]) || ICONS[d] || 'mdi:checkbox-blank-circle-outline';
 }
 
 const ACTIVE = new Set(['on', 'open', 'opening', 'unlocked', 'playing', 'heat', 'cool', 'heat_cool', 'auto', 'cleaning', 'mowing', 'home']);
-export function isActive(st) {
+export function isActive(st: Pick<HassEntity, 'state'> | null | undefined): boolean {
   return !!st && ACTIVE.has(st.state);
 }
 
-export function displayValue(hass, eid) {
+export function displayValue(hass: Hass, eid: string): string {
   const st = hass.states[eid];
   if (!st) return '';
   const d = eid.split('.')[0];
@@ -130,7 +174,7 @@ export function displayValue(hass, eid) {
   }
   if (d === 'climate') {
     const t = st.attributes.current_temperature;
-    return t !== undefined && t !== null ? t + '°' : '';
+    return t !== undefined && t !== null ? String(t) + '°' : '';
   }
   return '';
 }
@@ -144,12 +188,12 @@ export const TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean'
 const CONTROL_DOMAINS = new Set(['light', 'switch', 'input_boolean', 'fan', 'cover', 'lock', 'climate', 'media_player', 'valve', 'vacuum',
   'lawn_mower', 'humidifier', 'water_heater', 'siren', 'button', 'input_button', 'scene', 'script', 'alarm_control_panel', 'number', 'select', 'input_number', 'input_select']);
 const PICTURE_DOMAINS = new Set(['person', 'media_player', 'image', 'lawn_mower']);
-const ALERT_RED = new Set(['smoke', 'gas', 'safety', 'moisture', 'carbon_monoxide']);
-const ALERT_YELLOW = new Set(['problem', 'tamper']);
+const ALERT_RED = new Set<string | undefined>(['smoke', 'gas', 'safety', 'moisture', 'carbon_monoxide']);
+const ALERT_YELLOW = new Set<string | undefined>(['problem', 'tamper']);
 
 // Reload key of an entity picture: path + the cache query parameter (+ a stamp such as image_last_updated),
 // never the rotating access token. data: / blob: URLs are shown once.
-export function pictureKey(url, stamp = '') {
+export function pictureKey(url: string | null | undefined, stamp: string | null = ''): string {
   if (!url) return '';
   if (/^(data|blob):/.test(url)) return 'data';
   const [path, query = ''] = url.split('#')[0].split('?');
@@ -157,12 +201,12 @@ export function pictureKey(url, stamp = '') {
   return `${path}|${cache}|${stamp || ''}`;
 }
 
-export function markerLook(hass, m) {
+export function markerLook(hass: Hass, m: Pick<Marker, 'entityId'> & { domain?: string }): MarkerLook {
   const st = hass.states[m.entityId];
-  const out = { shape: 'square', kind: 'info', info: true, alert: null, picture: null, value: '' };
+  const out: MarkerLook = { shape: 'square', kind: 'info', info: true, alert: null, picture: null, value: '' };
   if (!st) return out;
   const d = m.domain || m.entityId.split('.')[0];
-  const a = st.attributes || {};
+  const a: HassEntity['attributes'] = st.attributes || {};
   const pic = PICTURE_DOMAINS.has(d) && typeof a.entity_picture === 'string' && a.entity_picture;
   if (pic) {
     const url = /^(data|blob):/.test(pic) || !hass.hassUrl ? pic : hass.hassUrl(pic);

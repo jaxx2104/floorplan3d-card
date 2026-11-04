@@ -5,6 +5,38 @@
 // transform and the quad's vertex colours change, so toggling lamps never recompiles a shader.
 import * as THREE from 'three';
 import { HORIZONTAL_DIRS } from '../surface.js';
+import type { WashDir } from '../types/layout.js';
+
+type V3 = readonly number[] | { x: number; y: number; z: number };
+/** A model surface hit (card world): point, normal, distance along the ray and the ray direction. */
+export interface SurfaceHit {
+  point: V3;
+  normal: V3;
+  distance?: number;
+  dir?: V3 | null;
+}
+/** What WashLayer needs from the view: rays against the model's surfaces. */
+export interface SurfaceRaySource {
+  surfaceRays(worldPoint: number[], dirs: readonly (readonly number[])[], maxDist: number): { point: number[]; normal: number[]; distance: number; dir?: number[] }[];
+}
+export type WashKind = 'down' | 'up' | 'both' | 'point' | 'spot' | 'none';
+export type WashVariant = 'down' | 'up' | 'oval' | 'pool';
+export interface WashSize { width: number; height: number; pool: number }
+export interface WashSurfaces {
+  wall?: SurfaceHit | null;
+  floor?: SurfaceHit | null;
+  ceiling?: SurfaceHit | null;
+  aim?: SurfaceHit | null;
+}
+export interface WashPlacement {
+  surface: 'wall' | 'floor' | 'ceiling' | 'aim';
+  variant: WashVariant;
+  center: number[];
+  normal: number[];
+  width: number;
+  height: number;
+}
+type WashHints = { beam?: unknown; max?: unknown; distance?: unknown } | null | undefined;
 
 export const WALL_REACH = 0.6; // a wall within this distance (m) of the lamp gets the wash
 const WALL_NY = 0.3; // |n.y| below: a wall
@@ -12,13 +44,13 @@ const FLAT_NY = 0.7; // |n.y| above: a floor / ceiling
 const OFFSET = 0.01; // decal 1 cm off the surface
 const DOWN_RANGE = 6, UP_RANGE = 3, AIM_RANGE = 8;
 
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 // 'down' (default), 'up', 'both' (updown), 'point' (an oval around the lamp), 'spot' (a pool where it aims)
 // or 'none' (no wash: a broad fixture such as a ceiling panel, whose real light already covers the floor),
 // from the model's hints.beam
-export function washKind(hints) {
+export function washKind(hints: WashHints): WashKind {
   const b = hints && hints.beam;
   if (b === 'none') return 'none';
   if (b === 'updown' || b === 'both') return 'both';
@@ -26,11 +58,16 @@ export function washKind(hints) {
 }
 
 // "Light on wall" settings (layout.objects[id].wash, layout.tags[name].wash).
-export const WASH_DIRS = ['down', 'up', 'both', 'none'];
-export const washSetting = (v) => (WASH_DIRS.includes(v) ? v : null);
+export const WASH_DIRS: readonly WashDir[] = ['down', 'up', 'both', 'none'];
+export const washSetting = (v: unknown): WashDir | null => ((WASH_DIRS as readonly unknown[]).includes(v) ? (v as WashDir) : null);
 
 // The wash kind of a lamp: its own setting, else the first of its tags with a setting, else the model's beam.
-export function resolveWash(hints, own, tagNames, tagSettings) {
+export function resolveWash(
+  hints: WashHints,
+  own: unknown,
+  tagNames: readonly string[] | null | undefined,
+  tagSettings: Record<string, { wash?: unknown } | null | undefined> | null | undefined,
+): WashKind {
   const o = washSetting(own);
   if (o) return o;
   for (const t of Array.isArray(tagNames) ? tagNames : []) {
@@ -42,7 +79,7 @@ export function resolveWash(hints, own, tagNames, tagSettings) {
 
 // The real point light kept at least `min` m off the wall it faces (no hot spot on the wall / door right behind it).
 // wall: { point, normal (towards the lamp) } or null; returns a new [x, y, z].
-export function clearOfWall(pos, wall, min = 0.15) {
+export function clearOfWall(pos: V3, wall: SurfaceHit | null | undefined, min = 0.15): number[] {
   const p = toArr(pos).slice();
   if (!wall) return p;
   const w = toArr(wall.point), n = toArr(wall.normal);
@@ -53,7 +90,7 @@ export function clearOfWall(pos, wall, min = 0.15) {
 }
 
 // Decal size (m) from hints.max (strength) and hints.distance (reach).
-export function washSize(h) {
+export function washSize(h: WashHints): WashSize {
   const max = h && fin(h.max) && h.max >= 0 ? h.max : 5;
   let width = clamp(0.4 + 0.3 * max, 0.8, 2.5), height = clamp(0.6 + 0.4 * max, 1, 3);
   const pool = clamp(0.5 + 0.3 * max, 0.8, 2.5);
@@ -64,22 +101,23 @@ export function washSize(h) {
   return { width, height, pool };
 }
 
-export const washOpacity = (level, real) => (level > 0 ? level * 0.6 * (real ? 0.5 : 1) : 0);
+export const washOpacity = (level: number, real: boolean): number => (level > 0 ? level * 0.6 * (real ? 0.5 : 1) : 0);
 
-const toArr = (v) => (Array.isArray(v) ? v : [v.x, v.y, v.z]);
-const facing = (hit) => {
+const isArr = (v: V3): v is readonly number[] => Array.isArray(v);
+const toArr = (v: V3): readonly number[] => (isArr(v) ? v : [v.x, v.y, v.z]);
+const facing = (hit: SurfaceHit): number[] => {
   const n = toArr(hit.normal), d = hit.dir ? toArr(hit.dir) : null;
   return d && n[0] * d[0] + n[1] * d[1] + n[2] * d[2] > 0 ? n.map((v) => -v || 0) : n.slice();
 };
 
 // The nearest wall among horizontal ray hits ({ point, normal, distance, dir }): { point, normal (towards the lamp) } or null.
-export function chooseWall(hits, reach = WALL_REACH) {
-  let best = null;
+export function chooseWall(hits: readonly (SurfaceHit | null | undefined)[] | null | undefined, reach = WALL_REACH): { point: number[]; normal: number[] } | null {
+  let best: SurfaceHit | null = null;
   for (const h of hits || []) {
     if (!h || !fin(h.distance) || h.distance > reach) continue;
     const n = toArr(h.normal);
     if (Math.abs(n[1]) >= WALL_NY) continue;
-    if (!best || h.distance < best.distance) best = h;
+    if (!best || h.distance < best.distance!) best = h; // best passed the distance check
   }
   return best ? { point: toArr(best.point).slice(), normal: facing(best) } : null;
 }
@@ -90,9 +128,9 @@ export function chooseWall(hits, reach = WALL_REACH) {
  * Walls: down beams hang below the lamp (cut at the floor), up beams rise above it, point lamps centre on it.
  * No wall: a pool on the floor (down / point) or the ceiling (up); spots: a pool where they aim.
  */
-export function placeWash(kind, anchor, size, { wall = null, floor = null, ceiling = null, aim = null } = {}) {
-  const off = (hit) => { const p = toArr(hit.point), n = facing(hit); return { c: p.map((v, i) => v + n[i] * OFFSET), n }; };
-  const pool = (hit, surface) => {
+export function placeWash(kind: WashKind, anchor: readonly number[], size: WashSize, { wall = null, floor = null, ceiling = null, aim = null }: WashSurfaces = {}): WashPlacement | null {
+  const off = (hit: SurfaceHit): { c: number[]; n: number[] } => { const p = toArr(hit.point), n = facing(hit); return { c: p.map((v, i) => v + n[i] * OFFSET), n }; };
+  const pool = (hit: SurfaceHit, surface: WashPlacement['surface']): WashPlacement => {
     const { c, n } = off(hit);
     return { surface, variant: 'pool', center: c, normal: n, width: size.pool, height: size.pool };
   };
@@ -103,7 +141,7 @@ export function placeWash(kind, anchor, size, { wall = null, floor = null, ceili
   if (wall) {
     const { c, n } = off(wall);
     const y = anchor[1];
-    let height = size.height, cy;
+    let height = size.height, cy: number;
     if (kind === 'up') cy = y - 0.15 + height / 2;
     else if (kind === 'point') cy = y;
     else {
@@ -119,23 +157,23 @@ export function placeWash(kind, anchor, size, { wall = null, floor = null, ceili
 }
 
 // Every wash quad of a lamp: 'both' = a down and an up wash (two quads, each with its own cone), 'none' = none.
-export function placeWashes(kind, anchor, size, surfaces = {}) {
+export function placeWashes(kind: WashKind, anchor: readonly number[], size: WashSize, surfaces: WashSurfaces = {}): WashPlacement[] {
   if (kind === 'none') return [];
-  const kinds = kind === 'both' ? ['down', 'up'] : [kind];
-  return kinds.map((k) => placeWash(k, anchor, size, surfaces)).filter(Boolean);
+  const kinds: WashKind[] = kind === 'both' ? ['down', 'up'] : [kind];
+  return kinds.map((k) => placeWash(k, anchor, size, surfaces)).filter((p): p is WashPlacement => !!p);
 }
 
-const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const smooth = (e0: number, e1: number, x: number): number => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 
 // RGBA texels (white, alpha = strength) of a wash texture, row 0 = the bottom (v = 0).
 // down: a cone from the top centre widening downwards; up: mirrored; oval: soft ellipse; pool: soft disc.
-export function washTexels(variant, w, h) {
+export function washTexels(variant: string, w: number, h: number): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const u = (x + 0.5) / w * 2 - 1; // -1..1
       const v = (y + 0.5) / h; // 0 bottom .. 1 top
-      let a;
+      let a: number;
       if (variant === 'pool' || variant === 'oval') {
         const r = Math.hypot(u, v * 2 - 1);
         a = r >= 1 ? 0 : Math.pow(1 - smooth(0, 1, r), 1.6);
@@ -154,18 +192,26 @@ export function washTexels(variant, w, h) {
   return out;
 }
 
-const VARIANTS = { down: [32, 64], up: [32, 64], oval: [32, 32], pool: [32, 32] };
+const VARIANTS: Record<WashVariant, [number, number]> = { down: [32, 64], up: [32, 64], oval: [32, 32], pool: [32, 32] };
 const UP_DIR = [[0, 1, 0]], DOWN_DIR = [[0, -1, 0]];
 
+export type WashMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+
 export class WashLayer {
-  constructor(parent, clipPlanes = null) {
+  group: THREE.Group;
+  materials: Record<WashVariant, THREE.MeshBasicMaterial>;
+  textures: THREE.DataTexture[];
+  meshes: Set<WashMesh>;
+  stats: { created: number; placed: number };
+
+  constructor(parent: THREE.Object3D, clipPlanes: THREE.Plane[] | null = null) {
     this.group = new THREE.Group();
     this.group.name = 'fp-washes';
     this.group.userData.helper = true;
     parent.add(this.group);
-    this.materials = {};
+    const materials: Partial<Record<WashVariant, THREE.MeshBasicMaterial>> = {};
     this.textures = [];
-    for (const [variant, [w, h]] of Object.entries(VARIANTS)) {
+    for (const [variant, [w, h]] of Object.entries(VARIANTS) as [WashVariant, [number, number]][]) {
       const tex = new THREE.DataTexture(washTexels(variant, w, h), w, h, THREE.RGBAFormat);
       tex.magFilter = tex.minFilter = THREE.LinearFilter;
       tex.needsUpdate = true;
@@ -175,7 +221,7 @@ export class WashLayer {
         side: THREE.DoubleSide, toneMapped: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
       });
       if (clipPlanes) m.clippingPlanes = clipPlanes; // the model cut-away (same planes as the model's materials)
-      this.materials[variant] = m;
+      materials[variant] = m;
       // warm-up: a zero-area quad, never culled, so the program is compiled on the first frame, not on the first toggle
       const warm = new THREE.Mesh(this._quad(), m);
       warm.scale.set(0, 0, 0);
@@ -185,11 +231,12 @@ export class WashLayer {
       warm.renderOrder = 2;
       this.group.add(warm);
     }
+    this.materials = materials as Record<WashVariant, THREE.MeshBasicMaterial>; // every variant made in the loop
     this.meshes = new Set();
     this.stats = { created: 0, placed: 0 };
   }
 
-  _quad() {
+  _quad(): THREE.PlaneGeometry {
     const g = new THREE.PlaneGeometry(1, 1);
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
     return g;
@@ -197,15 +244,21 @@ export class WashLayer {
 
   // The wash surfaces around a lamp at world point a: rays through the view's model surfaces.
   // The nearest wall around world point a (horizontal rays within WALL_REACH) or null.
-  static wall(view, a) {
+  static wall(view: SurfaceRaySource, a: { x: number; y: number; z: number }): { point: number[]; normal: number[] } | null {
     return chooseWall(view.surfaceRays([a.x, a.y, a.z], HORIZONTAL_DIRS, WALL_REACH));
   }
 
   // aimDir: a spot's direction (world, unit) or null. wall: a cached wall hit (undefined: cast the rays).
-  static surfaces(view, a, kind, aimDir = null, wall = undefined) {
+  static surfaces(
+    view: SurfaceRaySource,
+    a: { x: number; y: number; z: number },
+    kind: WashKind,
+    aimDir: readonly number[] | null = null,
+    wall: SurfaceHit | null | undefined = undefined,
+  ): Required<WashSurfaces> {
     const p = [a.x, a.y, a.z];
-    const flat = (hits) => { const h = hits[0]; return h && Math.abs(h.normal[1]) > FLAT_NY ? h : null; };
-    const out = { wall: null, floor: null, ceiling: null, aim: null };
+    const flat = (hits: ReturnType<SurfaceRaySource['surfaceRays']>): SurfaceHit | null => { const h = hits[0]; return h && Math.abs(h.normal[1]) > FLAT_NY ? h : null; };
+    const out: Required<WashSurfaces> = { wall: null, floor: null, ceiling: null, aim: null };
     if (kind === 'spot') {
       if (aimDir) out.aim = view.surfaceRays(p, [aimDir], AIM_RANGE)[0] || null;
       if (!out.aim) out.floor = flat(view.surfaceRays(p, DOWN_DIR, DOWN_RANGE));
@@ -218,7 +271,7 @@ export class WashLayer {
   }
 
   // A mesh for a placement (made once per lamp, moved when the placement changes).
-  place(mesh, placement) {
+  place(mesh: WashMesh | null | undefined, placement: WashPlacement | null | undefined): WashMesh {
     const variant = placement ? placement.variant : 'pool';
     if (!mesh) {
       mesh = new THREE.Mesh(this._quad(), this.materials[variant]);
@@ -233,13 +286,13 @@ export class WashLayer {
     }
     if (!placement) { mesh.visible = false; return mesh; }
     mesh.material = this.materials[variant];
-    const n = new THREE.Vector3(...placement.normal).normalize();
+    const n = new THREE.Vector3(placement.normal[0], placement.normal[1], placement.normal[2]).normalize();
     // the quad's +Z is the normal; its +Y is up along the wall (or any direction on a flat pool)
     const ref = Math.abs(n.y) > 0.9 ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0);
     const x = new THREE.Vector3().crossVectors(ref, n).normalize();
     const y = new THREE.Vector3().crossVectors(n, x).normalize();
     mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, n));
-    mesh.position.set(...placement.center);
+    mesh.position.set(placement.center[0], placement.center[1], placement.center[2]);
     mesh.scale.set(placement.width, placement.height, 1);
     mesh.updateMatrixWorld();
     this.stats.placed++;
@@ -247,31 +300,31 @@ export class WashLayer {
   }
 
   // Colour (sRGB 0-255) x opacity into the quad's vertex colours; hidden at 0.
-  paint(mesh, color, opacity) {
+  paint(mesh: WashMesh | null | undefined, color: readonly number[], opacity: number): void {
     if (!mesh) return;
     const show = opacity > 0.002;
     mesh.visible = show;
     if (!show) return;
     const c = new THREE.Color().setRGB(color[0] / 255, color[1] / 255, color[2] / 255, THREE.SRGBColorSpace);
-    const attr = mesh.geometry.attributes.color;
+    const attr = mesh.geometry.attributes.color as THREE.BufferAttribute;
     for (let i = 0; i < 4; i++) attr.setXYZ(i, c.r * opacity, c.g * opacity, c.b * opacity);
     attr.needsUpdate = true;
   }
 
-  remove(mesh) {
+  remove(mesh: WashMesh | null | undefined): void {
     if (!mesh) return;
     this.group.remove(mesh);
     mesh.geometry.dispose();
     this.meshes.delete(mesh);
   }
 
-  clear() {
+  clear(): void {
     for (const m of [...this.meshes]) this.remove(m);
   }
 
-  dispose() {
+  dispose(): void {
     this.clear();
-    for (const c of [...this.group.children]) { this.group.remove(c); if (c.geometry) c.geometry.dispose(); }
+    for (const c of [...this.group.children]) { this.group.remove(c); if (c instanceof THREE.Mesh) c.geometry.dispose(); }
     for (const m of Object.values(this.materials)) m.dispose();
     for (const t of this.textures) t.dispose();
     if (this.group.parent) this.group.parent.remove(this.group);

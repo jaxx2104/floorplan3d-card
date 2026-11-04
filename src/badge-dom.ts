@@ -1,28 +1,33 @@
 // Badge DOM shared by markers and the object popup: logo (lazy <img>), status dot, battery chip.
 import { brandUrl, integrationName } from './badges.js';
+import type { BadgeInfo, StatusKind } from './badges.js';
+
+/** An element carrying badges; remembers the last applied signature. */
+export type BadgeHost = HTMLElement & { _fpBadgeSig?: string };
 
 // platforms whose icon.png failed: never requested again (no broken image, no repeated 404s)
-const failed = new Set();
-const darkFailed = new Set();
+const failed = new Set<string>();
+const darkFailed = new Set<string>();
 
 
 // Shows the platform's logo as the box's first child (removed when none / failed). readable: title = integration name.
-export function setLogo(box, platform, dark, readable = false) {
-  let img = box.querySelector('img.fp-logo');
+export function setLogo(box: HTMLElement, platform: string | null | undefined, dark: boolean, readable = false): void {
+  let img = box.querySelector<HTMLImageElement>('img.fp-logo');
   if (!platform || failed.has(platform)) { if (img) img.remove(); return; }
   const useDark = dark && !darkFailed.has(platform);
   const src = brandUrl(platform, useDark);
   if (!img) {
-    img = document.createElement('img');
+    const el = document.createElement('img');
+    img = el;
     img.className = 'fp-logo';
     img.alt = '';
     img.decoding = 'async';
     img.referrerPolicy = 'no-referrer';
     img.addEventListener('error', () => {
-      const p = img.dataset.platform;
-      if (img.dataset.dark === '1') { darkFailed.add(p); img.dataset.dark = '0'; img.src = brandUrl(p, false); return; }
+      const p = el.dataset.platform ?? '';
+      if (el.dataset.dark === '1') { darkFailed.add(p); el.dataset.dark = '0'; el.src = brandUrl(p, false); return; }
       failed.add(p);
-      img.remove();
+      el.remove();
     });
     box.prepend(img);
   }
@@ -33,25 +38,25 @@ export function setLogo(box, platform, dark, readable = false) {
   img.src = src;
 }
 
-function setPart(box, cls, show, text) {
-  let el = box.querySelector('.' + cls);
+function setPart(box: HTMLElement, cls: string, show: boolean, text?: string): HTMLElement | null {
+  let el = box.querySelector<HTMLElement>('.' + cls);
   if (!show) { if (el) el.remove(); return null; }
   if (!el) { el = document.createElement('span'); el.className = cls; box.append(el); }
   if (text !== undefined && el.textContent !== text) el.textContent = text;
   return el;
 }
 
-const STATUS_TITLE = { green: 'On / has a value', grey: 'Off / idle', red: 'Unavailable', yellow: 'Low battery or a problem' };
+const STATUS_TITLE: Record<StatusKind, string> = { green: 'On / has a value', grey: 'Off / idle', red: 'Unavailable', yellow: 'Low battery or a problem' };
 
 // info: badgeInfo() result; host gets its badges (created on first use). Skips work when nothing changed.
-export function applyBadges(host, info, dark) {
+export function applyBadges(host: BadgeHost, info: BadgeInfo | null | undefined, dark: boolean): void {
   const sig = info ? `${info.sig}|${dark ? 1 : 0}` : '';
   if (host._fpBadgeSig === sig) return;
   host._fpBadgeSig = sig;
   setLogo(host, info && info.platform, dark);
   const dot = setPart(host, 'fp-status', !!(info && info.status));
-  if (dot) { dot.dataset.status = info.status; dot.title = STATUS_TITLE[info.status] || ''; }
+  if (dot && info && info.status) { dot.dataset.status = info.status; dot.title = STATUS_TITLE[info.status] || ''; }
   setPart(host, 'fp-batt', !!(info && info.battery !== null && info.battery !== undefined), info && info.battery !== null ? `${info.battery} %` : '');
 }
 
-export function resetBrandFailures() { failed.clear(); darkFailed.clear(); }
+export function resetBrandFailures(): void { failed.clear(); darkFailed.clear(); }

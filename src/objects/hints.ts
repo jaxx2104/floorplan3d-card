@@ -4,25 +4,46 @@
 // lamp's own mesh does not hide its dot while walls in front still do.
 import * as THREE from 'three';
 import { controllersOf } from './logic.js';
+import type { ChainState, Controller, ObjectBinding, ObjectLike } from './logic.js';
+import type { HassEntity } from '../types/ha.js';
+import type { Layout, LayoutTag } from '../types/layout.js';
+
+export type TapHintsMode = 'always' | 'off' | 'near';
+/** One dot: world position, reachable (filled) or not (hollow), colour [r, g, b] (0-255). */
+export interface HintItem {
+  id: string;
+  world: THREE.Vector3;
+  ok: boolean;
+  color?: readonly number[] | null;
+}
+type HintPoints = THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+type HintKind = 'filled' | 'hollow';
+type States = Record<string, HassEntity>;
 
 export const HINT_RADIUS = 120; // px: near-pointer mode shows dots within this distance
 export const HINT_PX = 6;
 export const HINT_OPACITY = 0.35;
 export const TOUCH_SHOW_MS = 3000;
 
-export function tapHintsMode(layout) {
+export function tapHintsMode(layout: Pick<Layout, 'tap_hints'> | null | undefined): TapHintsMode {
   const v = layout && layout.tap_hints;
   return v === 'always' || v === 'off' ? v : 'near';
 }
 
-const bad = (s) => !s || s.state === 'unavailable' || s.state === 'unknown';
-const nameOf = (states, e) => (states[e] && states[e].attributes && states[e].attributes.friendly_name) || e;
+const bad = (s: HassEntity | null | undefined): boolean => !s || s.state === 'unavailable' || s.state === 'unknown';
+const nameOf = (states: States, e: string): string => (states[e] && states[e].attributes && states[e].attributes.friendly_name) || e;
 
 // Can a tap act on the object? { ok, reason } with the toast text when not: a controller off ("Turn on
 // first: <label>", label = tag label, else the controller's name), else something offline.
-export function reachability(obj, binding, chain, states = {}, tags = {}) {
+export function reachability(
+  obj: Pick<ObjectLike, 'group'> | null | undefined,
+  binding: (Partial<ObjectBinding> & { hidden?: boolean }) | null | undefined,
+  chain: Pick<ChainState, 'controllers'> | null | undefined,
+  states: States = {},
+  tags: Record<string, LayoutTag | null | undefined> = {},
+): { ok: boolean; reason: string | null } {
   if (!binding || binding.hidden) return { ok: false, reason: 'Not reachable (offline)' };
-  const ctrls = chain && chain.controllers ? chain.controllers : controllersOf(obj, binding, tags);
+  const ctrls: Controller[] = chain && chain.controllers ? chain.controllers : controllersOf(obj, binding, tags);
   const off = ctrls.find((c) => !bad(states[c.entity]) && states[c.entity].state !== 'on');
   if (off) {
     const t = tags[off.tag];
@@ -34,12 +55,12 @@ export function reachability(obj, binding, chain, states = {}, tags = {}) {
 }
 
 // Near-pointer fade: 1 within half the radius, 0 from the radius on (smooth, in 0.1 steps).
-export function hintAlpha(d, radius = HINT_RADIUS) {
+export function hintAlpha(d: number, radius = HINT_RADIUS): number {
   const t = Math.min(1, Math.max(0, (radius - d) / (radius * 0.5)));
   return Math.round(t * t * (3 - 2 * t) * 10) / 10;
 }
 
-function dotTexels(hollow, n = 16) {
+function dotTexels(hollow: boolean, n = 16): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(n * n * 4);
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
@@ -56,15 +77,22 @@ function dotTexels(hollow, n = 16) {
 const MAX = 256;
 
 export class TapHints {
-  constructor(parent) {
+  group: THREE.Group;
+  layers: Record<HintKind, HintPoints>;
+  textures: THREE.DataTexture[];
+  items: HintItem[];
+  alpha: Map<string, number>;
+  sig: string | null;
+
+  constructor(parent: THREE.Object3D) {
     this.group = new THREE.Group();
     this.group.name = 'fp-tap-hints';
     this.group.userData.helper = true;
     this.group.renderOrder = 12;
     parent.add(this.group);
-    this.layers = {};
+    const layers: Partial<Record<HintKind, HintPoints>> = {};
     this.textures = [];
-    for (const kind of ['filled', 'hollow']) {
+    for (const kind of ['filled', 'hollow'] as const) {
       const tex = new THREE.DataTexture(dotTexels(kind === 'hollow'), 16, 16, THREE.RGBAFormat);
       tex.magFilter = tex.minFilter = THREE.LinearFilter;
       tex.needsUpdate = true;
@@ -85,19 +113,20 @@ export class TapHints {
       pts.userData.helper = true;
       pts.renderOrder = 12;
       this.group.add(pts);
-      this.layers[kind] = pts;
+      layers[kind] = pts;
     }
+    this.layers = layers as Record<HintKind, HintPoints>; // both kinds made in the loop
     this.items = []; // [{ id, world: Vector3, ok, color: [r,g,b] }]
     this.alpha = new Map(); // id -> 0..1 (near mode fade)
     this.sig = null;
   }
 
-  setPixelRatio(pr) {
+  setPixelRatio(pr: number | null | undefined): void {
     for (const p of Object.values(this.layers)) p.material.size = HINT_PX * (pr || 1);
   }
 
   // items: [{ id, world, ok, color }]; unchanged signature: nothing to do. True when the dots changed.
-  setItems(items) {
+  setItems(items: readonly HintItem[]): boolean {
     const sig = items.map((i) => `${i.id}:${i.ok ? 1 : 0}:${i.color ? i.color.join(',') : ''}:${i.world.x.toFixed(3)},${i.world.y.toFixed(3)},${i.world.z.toFixed(3)}`).join(';');
     if (sig === this.sig) return false;
     this.sig = sig;
@@ -107,7 +136,7 @@ export class TapHints {
   }
 
   // Per-dot fade (near mode): alpha(id) -> 0..1. True when anything changed.
-  setAlpha(alphaOf) {
+  setAlpha(alphaOf: (item: HintItem) => number): boolean {
     let changed = false;
     for (const it of this.items) {
       const a = alphaOf(it);
@@ -117,33 +146,33 @@ export class TapHints {
     return changed;
   }
 
-  _write() {
+  _write(): void {
     const fill = this.layers.filled, hollow = this.layers.hollow;
     let nf = 0, nh = 0;
     const c = new THREE.Color();
     for (const it of this.items) {
-      const a = (this.alpha.has(it.id) ? this.alpha.get(it.id) : 1) * HINT_OPACITY;
+      const a = (this.alpha.get(it.id) ?? 1) * HINT_OPACITY;
       const layer = it.ok ? fill : hollow;
       const k = it.ok ? nf++ : nh++;
-      layer.geometry.attributes.position.setXYZ(k, it.world.x, it.world.y, it.world.z);
+      (layer.geometry.attributes.position as THREE.BufferAttribute).setXYZ(k, it.world.x, it.world.y, it.world.z);
       const rgb = it.ok ? it.color || [255, 255, 255] : [158, 158, 158];
       c.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
-      layer.geometry.attributes.color.setXYZW(k, c.r, c.g, c.b, a);
+      (layer.geometry.attributes.color as THREE.BufferAttribute).setXYZW(k, c.r, c.g, c.b, a);
     }
-    for (const [layer, n] of [[fill, nf], [hollow, nh]]) {
+    for (const [layer, n] of [[fill, nf], [hollow, nh]] as const) {
       layer.geometry.setDrawRange(0, n);
       layer.geometry.attributes.position.needsUpdate = true;
       layer.geometry.attributes.color.needsUpdate = true;
     }
   }
 
-  setVisible(on) {
+  setVisible(on: boolean): boolean {
     if (this.group.visible === on) return false;
     this.group.visible = on;
     return true;
   }
 
-  dispose() {
+  dispose(): void {
     for (const p of Object.values(this.layers)) { p.geometry.dispose(); p.material.dispose(); }
     for (const t of this.textures) t.dispose();
     if (this.group.parent) this.group.parent.remove(this.group);

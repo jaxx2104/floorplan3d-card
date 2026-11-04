@@ -27,12 +27,77 @@ export interface LayoutPin {
   y: number;
   z?: number;
   floor_id?: string;
-  /** Placed while a model was loaded: follows the model's alignment. */
+  /** Placed on the model: follows its alignment. */
   on_model?: boolean;
-  /** Model object id the marker is attached to (follows its anchor + offset). */
+  /** Model object id the pin is attached to (offset from its anchor, world metres). */
   attach?: string;
-  /** World metres from the attached object's anchor. */
-  offset?: number[];
+  offset?: [number, number, number];
+  [key: string]: unknown;
+}
+
+/** World-space vector [x, y, z] (three.js frame, y up). */
+export type Vec3 = [number, number, number];
+
+/** "Light on wall" setting of a lamp or a tag. */
+export type WashDir = 'down' | 'up' | 'both' | 'none';
+
+/** HA-style action ({ action, ... }); the fields depend on the action (see actions.ts). */
+export interface ActionConfig {
+  action: string;
+  [key: string]: unknown;
+}
+
+/** Per-object UI overrides (layout.objects[id].ui, model fp.ui). Raw: normalised by actions.ts. */
+export interface ObjectUi {
+  tap_action?: unknown;
+  hold_action?: unknown;
+  double_tap_action?: unknown;
+  popup?: unknown[];
+  [key: string]: unknown;
+}
+
+/** A view visibility rule: exactly one of show / hide carries a selector ("level:ground", "node:a/b"...). */
+export interface ViewRule {
+  show?: string;
+  hide?: string;
+  keep_objects?: boolean;
+}
+
+export interface ViewCamera {
+  position: Vec3;
+  target: Vec3;
+}
+
+/** Top-view camera: centre in plan metres and zoom (1 = 10 m half height). */
+export interface TopCamera {
+  center: [number, number];
+  zoom: number;
+}
+
+/** Vertical clipping plane (three.js Plane: n·p + constant = 0, the >= 0 side is kept). */
+export interface SectionPlaneConfig {
+  normal: Vec3;
+  constant: number;
+}
+
+/** layout.badges: marker badge toggles. */
+export interface LayoutBadges {
+  integration?: boolean;
+  status?: boolean;
+  battery?: boolean;
+  [key: string]: unknown;
+}
+
+/** layout.model.levels[levelId]: which HA floor shows a model level (saved choice; see bindings.ts). */
+export interface SavedLevelBinding {
+  floor?: string | null;
+  show?: string;
+  [key: string]: unknown;
+}
+
+/** layout.model.rooms[roomId]: the HA area of a model room / zone (null = none). */
+export interface SavedRoomBinding {
+  area?: string | null;
   [key: string]: unknown;
 }
 
@@ -134,44 +199,44 @@ export interface LayoutModel {
   /** Level / room ids the user has been shown (the regeneration notice reports changes since). */
   known?: { levels: string[]; rooms: string[] };
   /** level id -> { floor } (bound) | { show } (older visibility rule). */
-  levels?: Record<string, { floor?: string | null; show?: string }>;
-  rooms?: Record<string, { area?: string | null }>;
+  levels?: Record<string, SavedLevelBinding>;
+  rooms?: Record<string, SavedRoomBinding>;
   pins_migrated?: boolean;
   [key: string]: unknown;
 }
 
-/** Saved settings of one view (`layout.views[id]`). */
+/** layout.views[id] (and card YAML views[id]): overrides of one view. Raw: validated by views.ts. */
 export interface LayoutView {
   label?: string;
-  hidden?: boolean;
   added?: boolean;
-  rules?: unknown[];
-  floors?: string[];
+  hidden?: boolean;
+  rules?: ViewRule[];
   camera?: unknown;
   camera_top?: unknown;
   section?: unknown;
-  cut?: boolean;
+  floors?: string[];
+  cut?: boolean | null;
   zoom_to?: string;
   [key: string]: unknown;
 }
 
-/** Per model object settings (`layout.objects[id]`). */
+/** layout.objects[id]: binding and display overrides of one model object. */
 export interface LayoutObject {
-  /** null: explicitly unbound; absent: automatic. */
+  /** Bound entity; null / '' = explicitly unbound; missing = automatic. */
   entity?: string | null;
   hidden?: boolean;
   label?: string;
-  ui?: Record<string, unknown>;
   tags?: string[];
-  wash?: string;
+  wash?: WashDir;
+  ui?: ObjectUi;
   [key: string]: unknown;
 }
 
-/** A tag's controller entity, label and wash (`layout.tags[name]`). */
+/** layout.tags[name] (and the pre-0.4.5 layout.groups[name]): controller entity, label, wash. */
 export interface LayoutTag {
   entity?: string;
   label?: string;
-  wash?: string;
+  wash?: WashDir;
   [key: string]: unknown;
 }
 
@@ -188,7 +253,7 @@ export interface Layout {
   tags?: Record<string, LayoutTag>;
   views?: Record<string, LayoutView>;
   view_order?: string[];
-  badges?: Record<string, unknown>;
+  badges?: LayoutBadges;
   room_labels?: unknown;
   tap_hints?: unknown;
   [key: string]: unknown;

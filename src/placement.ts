@@ -1,8 +1,10 @@
 // Type-based auto placement of devices inside room polygons.
 // Plan coordinates are metres: x = east, y = north. z = height above the floor.
 
+import type { PlanPoint } from './types/layout.js';
+
 // ---------- geometry ----------
-export function signedArea(poly) {
+export function signedArea(poly: readonly PlanPoint[]): number {
   let a = 0;
   for (let i = 0; i < poly.length; i++) {
     const [x1, y1] = poly[i];
@@ -12,7 +14,7 @@ export function signedArea(poly) {
   return a / 2;
 }
 
-export function centroid(poly) {
+export function centroid(poly: readonly PlanPoint[]): PlanPoint {
   const a = signedArea(poly);
   if (Math.abs(a) < 1e-9) {
     const n = poly.length || 1;
@@ -29,7 +31,7 @@ export function centroid(poly) {
   return [cx / (6 * a), cy / (6 * a)];
 }
 
-export function pointInPolygon([x, y], poly) {
+export function pointInPolygon([x, y]: readonly [number, number], poly: readonly PlanPoint[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i];
@@ -39,7 +41,7 @@ export function pointInPolygon([x, y], poly) {
   return inside;
 }
 
-function perimeter(poly) {
+function perimeter(poly: readonly PlanPoint[]): number {
   let p = 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -49,7 +51,7 @@ function perimeter(poly) {
 }
 
 // Point at distance d along the perimeter, pushed `inset` metres into the room.
-function pointOnPerimeter(poly, d, inset) {
+function pointOnPerimeter(poly: readonly PlanPoint[], d: number, inset: number): PlanPoint {
   const ccw = signedArea(poly) > 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -66,7 +68,7 @@ function pointOnPerimeter(poly, d, inset) {
   return poly[0];
 }
 
-function insetCorner(poly, i, inset) {
+function insetCorner(poly: readonly PlanPoint[], i: number, inset: number): PlanPoint {
   const c = centroid(poly);
   const p = poly[i];
   const dx = c[0] - p[0], dy = c[1] - p[1];
@@ -77,12 +79,20 @@ function insetCorner(poly, i, inset) {
 // ---------- type rules ----------
 // anchor: center (ceiling grid), wall (spread along walls), corner, door (near a room door)
 // z: metres above floor, or 'ceiling' (room height minus a bit)
-const RULES = [
+export type Anchor = 'center' | 'wall' | 'corner' | 'door';
+export interface PlacementRule {
+  anchor: Anchor;
+  z: number | 'ceiling';
+}
+type MatchRule = PlacementRule & { match: (domain: string, deviceClass: string | undefined) => boolean };
+const oneOf = (list: readonly string[], c: string | undefined): boolean => c !== undefined && list.includes(c);
+
+const RULES: MatchRule[] = [
   { match: (d) => d === 'light', anchor: 'center', z: 'ceiling' },
   { match: (d) => d === 'fan', anchor: 'center', z: 'ceiling' },
-  { match: (d, c) => d === 'binary_sensor' && ['smoke', 'gas', 'carbon_monoxide', 'heat'].includes(c), anchor: 'center', z: 'ceiling' },
-  { match: (d, c) => d === 'binary_sensor' && ['motion', 'occupancy', 'presence'].includes(c), anchor: 'corner', z: 'ceiling' },
-  { match: (d, c) => d === 'binary_sensor' && ['door', 'garage_door', 'opening'].includes(c), anchor: 'door', z: 1.0 },
+  { match: (d, c) => d === 'binary_sensor' && oneOf(['smoke', 'gas', 'carbon_monoxide', 'heat'], c), anchor: 'center', z: 'ceiling' },
+  { match: (d, c) => d === 'binary_sensor' && oneOf(['motion', 'occupancy', 'presence'], c), anchor: 'corner', z: 'ceiling' },
+  { match: (d, c) => d === 'binary_sensor' && oneOf(['door', 'garage_door', 'opening'], c), anchor: 'door', z: 1.0 },
   { match: (d, c) => d === 'binary_sensor' && c === 'window', anchor: 'wall', z: 1.2 },
   { match: (d) => d === 'lock', anchor: 'door', z: 1.0 },
   { match: (d) => d === 'cover', anchor: 'wall', z: 1.8 },
@@ -94,7 +104,7 @@ const RULES = [
   { match: (d) => d === 'vacuum' || d === 'lawn_mower', anchor: 'center', z: 0.1 },
 ];
 
-export function ruleFor(domain, deviceClass) {
+export function ruleFor(domain: string, deviceClass?: string): PlacementRule {
   return RULES.find((r) => r.match(domain, deviceClass)) || { anchor: 'wall', z: 1.2 };
 }
 
@@ -111,43 +121,51 @@ export const SKIP_DOMAINS = new Set([
 const PRIORITY = ['light', 'fan', 'cover', 'climate', 'lock', 'switch', 'media_player', 'camera',
   'vacuum', 'lawn_mower', 'water_heater', 'humidifier', 'valve', 'alarm_control_panel',
   'binary_sensor', 'sensor'];
-export function domainPriority(domain) {
+export function domainPriority(domain: string): number {
   const i = PRIORITY.indexOf(domain);
   return i === -1 ? 99 : i;
 }
 
 // Sensor classes worth choosing as a primary entity over others of the same device.
 const SENSOR_PRIORITY = ['temperature', 'humidity', 'carbon_dioxide', 'illuminance', 'power', 'energy'];
-export function sensorPriority(dc) {
-  const i = SENSOR_PRIORITY.indexOf(dc);
+export function sensorPriority(dc: string | undefined): number {
+  const i = dc === undefined ? -1 : SENSOR_PRIORITY.indexOf(dc);
   return i === -1 ? 50 : i;
 }
 
 // ---------- layout ----------
 // markers: [{id, domain, deviceClass}] belonging to one room.
 // Returns Map id -> {x, y, z, auto: true}
-export function autoPlace(room, markers, roomHeight = 2.7) {
-  const out = new Map();
+export interface PlaceInput { id: string; domain: string; deviceClass?: string }
+export interface AutoPosition { x: number; y: number; z: number; auto: true }
+type Placed = { m: PlaceInput; r: PlacementRule };
+
+export function autoPlace(
+  room: { polygon?: readonly PlanPoint[] | null; doors?: readonly PlanPoint[] | null },
+  markers: readonly PlaceInput[],
+  roomHeight = 2.7,
+): Map<string, AutoPosition> {
+  const out = new Map<string, AutoPosition>();
   const poly = room.polygon;
   if (!poly || poly.length < 3) return out;
   const inset = 0.25;
-  const groups = { center: [], wall: [], corner: [], door: [] };
+  const groups: Record<Anchor, Placed[]> = { center: [], wall: [], corner: [], door: [] };
   for (const m of [...markers].sort((a, b) => a.id.localeCompare(b.id))) {
     const r = ruleFor(m.domain, m.deviceClass);
     groups[r.anchor].push({ m, r });
   }
-  const zOf = (r) => (r.z === 'ceiling' ? Math.max(0.3, roomHeight - 0.08) : r.z);
+  const zOf = (r: PlacementRule): number => (r.z === 'ceiling' ? Math.max(0.3, roomHeight - 0.08) : r.z);
 
   // center: spiral grid around centroid, only points inside the room
   if (groups.center.length) {
     const c = centroid(poly);
     const step = 0.7;
-    const candidates = [];
+    const candidates: PlanPoint[] = [];
     for (let ring = 0; candidates.length < groups.center.length && ring < 40; ring++) {
       for (let i = -ring; i <= ring; i++) {
         for (let j = -ring; j <= ring; j++) {
           if (Math.max(Math.abs(i), Math.abs(j)) !== ring) continue;
-          const p = [c[0] + i * step, c[1] + j * step];
+          const p: PlanPoint = [c[0] + i * step, c[1] + j * step];
           if (pointInPolygon(p, poly)) candidates.push(p);
         }
       }
@@ -197,6 +215,6 @@ export function autoPlace(room, markers, roomHeight = 2.7) {
   return out;
 }
 
-export function snap(v, step = 0.05) {
+export function snap(v: number, step = 0.05): number {
   return Math.round(v / step) * step;
 }
