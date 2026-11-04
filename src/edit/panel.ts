@@ -3,7 +3,7 @@
 // focus, scroll, open <details> and a dragged slider survive re-renders. Renders are coalesced:
 // requestRender() renders once at the end of the current task (or once per frame for hass updates).
 
-import { html, nothing, render } from 'lit';
+import { html, nothing, render } from 'lit/html.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { closePicker } from './tools/map-tools.ts';
@@ -11,7 +11,7 @@ import { closeMenu } from './tools/view-menu.ts';
 import { objectsAvailable } from './tabs/objects.ts';
 import { TABS, TAB_BY_ID } from './tabs/index.ts';
 import { act } from './html.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { TabId } from './tabs/index.ts';
 import type { EditMode } from '../edit-mode.ts';
 

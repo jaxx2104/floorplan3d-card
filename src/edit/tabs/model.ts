@@ -3,12 +3,12 @@
 import * as E from '../../editor.ts';
 import { levelsFromFloorMap } from '../../bindings.ts';
 import { legacyShowRules } from '../../views.ts';
-import { html, nothing } from 'lit';
+import { html, nothing } from 'lit/html.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { act, copyText, field, options, slider } from '../html.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { TabDef } from './tab.ts';
 import type { ModelBindings } from '../../card/model-loader.ts';
 import type { EditMode } from '../../edit-mode.ts';

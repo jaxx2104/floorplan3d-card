@@ -2,9 +2,9 @@
 
 import * as E from '../../editor.ts';
 import { LEVEL_SPACING } from '../../layout.ts';
-import { html } from 'lit';
+import { html } from 'lit/html.js';
 import { act, field } from '../html.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { TabDef } from './tab.ts';
 import type { EditMode } from '../../edit-mode.ts';
 

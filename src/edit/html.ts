@@ -1,11 +1,11 @@
 // Template parts shared by the edit panel's tabs (lit-html): sliders, entity inputs with their
 // integration logo, datalists, select options, and the click wrapper every panel button goes through.
 
-import { html, nothing } from 'lit';
+import { html, nothing } from 'lit/html.js';
 import * as E from '../editor.ts';
 import { platformOf, entityOptionLabel, integrationName } from '../badges.ts';
 import { logoSrc, logoFailed } from '../badge-dom.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { EditMode } from '../edit-mode.ts';
 
 export type View = TemplateResult | typeof nothing;

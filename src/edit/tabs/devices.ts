@@ -3,11 +3,11 @@
 import * as E from '../../editor.ts';
 import { buildMarkers, areaName, type Marker } from '../../registry.ts';
 import { surfaceKind, surfaceSearch, stickSurface, nearestDistance, needsStick, worldOf, planOf } from '../../surface.ts';
-import { html, nothing } from 'lit';
+import { html, nothing } from 'lit/html.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { act, field, fmt, logoBox, options } from '../html.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { TabDef } from './tab.ts';
 import type { EditMode, StickMove } from '../../edit-mode.ts';
 import type { Layout, LayoutPin, Vec3 } from '../../types/layout.ts';

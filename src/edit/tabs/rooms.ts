@@ -2,7 +2,7 @@
 
 import * as E from '../../editor.ts';
 import { areaName } from '../../registry.ts';
-import { html, nothing } from 'lit';
+import { html, nothing } from 'lit/html.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
@@ -11,7 +11,7 @@ import { switchTab } from '../panel.ts';
 import { startDrawing, finishDrawing, cancelDrawing } from '../tools/draw.ts';
 import { startPicking, cancelPicking, usePickedOutline } from '../tools/pick-outline.ts';
 import { refreshOverlay } from '../tools/handles.ts';
-import type { TemplateResult } from 'lit';
+import type { TemplateResult } from 'lit/html.js';
 import type { TabDef } from './tab.ts';
 import type { View } from '../html.ts';
 import type { EditMode } from '../../edit-mode.ts';
