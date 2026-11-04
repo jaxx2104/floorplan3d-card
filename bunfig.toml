@@ -1,3 +1,8 @@
 [test]
 # the unit tests (tests/ holds the integration's pytest suite)
 root = "test"
+
+[fmt]
+# the defaults, except: leave html`` / css`` template literals as written (their whitespace is
+# rendered text: reformatting them changes what the edit panel shows)
+embeddedLanguageFormatting = "off"
