@@ -305,7 +305,7 @@ export const cityLightsOn = (night: unknown): number => {
 
 // --- card option render: recipe source, quality tier, tone mapping ---
 
-/** Quality tiers, cheapest first. 'standard' is the look before tiers existed. */
+/** Quality tiers, cheapest first. 'high' is the default; 'standard' is the look before tiers existed (the cheap tier). */
 export type Quality = 'standard' | 'high' | 'still';
 /** What a tier turns on. A new effect adds a field here, off in 'standard', so 'standard' stays as it was. */
 export interface QualityTier {
@@ -349,10 +349,10 @@ const TONE_NAMES = Object.keys(TONE_ALIASES).filter((a) => a !== 'acesfilmic');
 /** Card option render, normalised: which recipe, the quality tier, the tone mapping (null: tier / recipe), the
  * physical material rules (set only when given; they come after the model's). */
 export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; toneMapping: string | null; materials?: MaterialRule[] }
-export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'standard', toneMapping: null });
+export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'high', toneMapping: null });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'standard' | 'high' | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'high' (default) | 'standard' (cheaper, the look before tiers) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): { option: RenderOption; warnings: string[] } {

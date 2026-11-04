@@ -45,6 +45,11 @@ const camAndOcclusion = async (page, cam) => {
 };
 let allErrors = [];
 const sections = new Sections();
+// The sections check the card against the render recipe's own numbers (ACES, exposure, hemisphere, lamp
+// intensity = level x hints.max): they run at quality 'standard' unless their query sets one. The default tier
+// ('high') has its own section here (quality-default) and the tier checks in perf-check.
+const addSection = sections.add.bind(sections);
+sections.add = (name, opts, fn) => addSection(name, opts.query && !('quality' in opts.query) ? { ...opts, query: { quality: 'standard', ...opts.query } } : opts, fn);
 let s; // the optional runs at the end (own browsers)
 
 function rewriteGlbJson(buf, edit) {
@@ -1677,6 +1682,33 @@ sections.add('washes', { group: 'lamps', query: { model: '1', view: '3d' }, view
   allErrors.push(...s.errors);
 });
 
+// 1q. the default render quality is 'high' (no quality in the card YAML); in both tiers a lamp with a real light
+// draws no floor pool decal (the real light lights the floor under it; the pool on top blew it out)
+sections.add('quality-default', { group: 'lamps', query: { model: '1', view: '3d', quality: undefined }, viewport: { width: 1400, height: 560 } }, async (s) => {
+  const { page } = s;
+  await page.waitForFunction(`!!${card}._view.model && ${card}._objects.parts.size > 0`, { timeout: 30000 });
+  await page.evaluate('window.__setDemoSun(-25, 0)'); // night
+  await sleep(800);
+  await idle(page);
+  const look = () => page.evaluate(`(() => { const c = ${card}, v = c._view, l = c._objects;
+    const kitchen = l._slots.get('lamp_kitchen');
+    const pools = [...l.parts].filter(([, p]) => p.wash).flatMap(([id, p]) => p.wash.placements.map((pl, i) => ({ id, variant: pl.variant, real: l._slots.has(id), shown: p.wash.meshes[i].visible })));
+    return { quality: v.look.renderOpt.quality, tm: v.renderer.toneMapping, physical: l.physical, env: !!(v.look._env && v.look._env.enabled !== false),
+      kitchen: kitchen ? +kitchen.light.intensity.toFixed(2) : null, hemi: +v.hemi.intensity.toFixed(3),
+      realPools: pools.filter((x) => x.variant === 'pool' && x.real && x.shown).map((x) => x.id), walls: pools.filter((x) => x.variant !== 'pool' && x.shown).length }; })()`);
+  const hi = await look();
+  check('default quality is high: AgX, physical lamps (800 lm kitchen lamp = 15.92), hemisphere x 0.35',
+    hi.quality === 'high' && hi.tm === 6 && hi.physical && hi.kitchen === 15.92 && Math.abs(hi.hemi - 0.049) < 0.001, JSON.stringify(hi));
+  check('high: no floor pool under a lamp with a real light, wall washes stay', hi.realPools.length === 0 && hi.walls > 0, JSON.stringify(hi));
+  await page.evaluate(`${card}._view.setRenderOption({ quality: 'standard' })`);
+  await sleep(500);
+  await idle(page);
+  const std = await look();
+  check('quality standard: ACES, recipe lamps (max 20), no floor pool under a lamp with a real light',
+    std.quality === 'standard' && std.tm === 4 && !std.physical && std.kitchen === 20 && std.realPools.length === 0 && std.walls > 0, JSON.stringify(std));
+  allErrors.push(...s.errors);
+});
+
 // 2. missing model
 sections.add('missing-model', { group: 'upload', query: { model: '/demo/missing.glb' } }, async (s) => {
   await s.page.waitForFunction(`!${card}.shadowRoot.querySelector('.notice').hidden`, { timeout: 10000 });
@@ -3197,7 +3229,7 @@ sections.add('model-cache', { group: 'review', query: { model: '1', view: '3d' }
   const onReq = (r) => { if (r.url().includes('/demo/house.glb')) gets.push(r.method()); };
   page.on('request', onReq);
   try {
-    await page.evaluate((q) => window.__demoReset(q), { test: '1', model: '1', view: '3d' }); // loaded again, now watched
+    await page.evaluate((q) => window.__demoReset(q), { test: '1', model: '1', view: '3d', quality: 'standard' }); // loaded again, now watched
     await page.waitForFunction(`!!${card}._view.model && ${card}._loadUI.readyAt !== null`, { timeout: 20000 });
     let shown = null;
     let st = await page.evaluate(`(() => { const c = ${card}, ui = c._loadUI; return { log: ui.log, barHidden: ui.bar.hidden, cached: c._modelFromCache }; })()`);
@@ -3218,7 +3250,7 @@ sections.add('model-cache', { group: 'review', query: { model: '1', view: '3d' }
     };
     page.on('request', delay);
     try {
-      await page.evaluate((q) => window.__demoReset(q, { keepCaches: true }), { test: '1', model: '1', view: '3d' });
+      await page.evaluate((q) => window.__demoReset(q, { keepCaches: true }), { test: '1', model: '1', view: '3d', quality: 'standard' });
       await page.waitForFunction(`!!${card}.shadowRoot.querySelector('.fp-loadplan .draw')`, { timeout: 20000 });
       await page.evaluate(`(() => { // record how the camera moves once the model is there
         const v = ${card}._view, rec = window.__camRec = { moves: [], tween: false };

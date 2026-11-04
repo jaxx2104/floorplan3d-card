@@ -1,5 +1,5 @@
 // Headless benchmark of the mower map: a 1600 x 1600 live map (camera) refreshing every 2 s with a
-// moving mower for 30 s, then 16 s of refreshes where nothing changed.
+// moving mower for 30 s, then 16 s of refreshes where nothing changed, at the default render quality ('high').
 // - no main-thread task of the card's own > 50 ms (its own timing: map refresh sections and renders)
 // - renders while idle <= refresh-driven ones; no shadow-map updates from the mower moving
 // Prints the numbers (main-thread ms per refresh, long tasks) for the release notes.
@@ -29,7 +29,7 @@ const QUALITY_ONLY = process.argv.includes('--quality-only');
 // forced frames (the view's frame from its start to the label render, after a 1 px readPixels so the GPU work
 // of the scene, the bloom and the finish counts).
 async function qualityRun(quality) {
-  const q = await openDemo({ model: '1', view: '3d', cards: '1', ...(quality ? { quality } : {}) }, { width: 1200, height: 700 });
+  const q = await openDemo({ model: '1', view: '3d', cards: '1', quality }, { width: 1200, height: 700 });
   try {
     const { page } = q;
     const ev = (expr) => page.evaluate(expr);
@@ -147,7 +147,7 @@ async function qualityRun(quality) {
 }
 
 async function qualityChecks() {
-  const std = await qualityRun(null), high = await qualityRun('high');
+  const std = await qualityRun('standard'), high = await qualityRun('high');
   console.log(`     render ms per frame (40 forced frames, 1200 x 700, test mode): standard avg ${std.avg.toFixed(1)} p90 ${std.p90.toFixed(1)}; high avg ${high.avg.toFixed(1)} p90 ${high.p90.toFixed(1)}`);
   console.log(`     bloom: high ${high.bloomForced} passes in ${high.framesForced} forced frames; ${high.bloomAway} passes, ${high.skippedAway} skipped in ${high.framesAway} with no emissive in view (frame ${high.awayAvg.toFixed(1)} ms); standard ${std.bloomTotal} passes`);
   console.log(`     environment builds: standard ${std.builds}, high ${high.builds} (idle ${high.idleBuilds} over ${high.idleFrames} frames, sun +0.7 deg ${high.smallStep}, sun +16 deg ${high.bigStep}); one build ${high.buildMs?.toFixed(1)} ms`);
@@ -256,6 +256,7 @@ try {
   const ev = (expr) => page.evaluate(expr);
   const until = (expr, label, timeout = 20000) => page.waitForFunction(expr, { timeout }).then(() => true, () => { console.log(`     (timed out waiting for ${label})`); return false; });
   await until(`!!${card}._view.model`, 'the model', 60000);
+  check('the benchmark runs at the default render quality, high', (await ev(`${card}._view.look.renderOpt.quality`)) === 'high', await ev(`${card}._view.look.renderOpt.quality`));
   await ev('window.__demoMowerPaused = true');
   const n = await ev(`window.__robotFrames(${(MOVE_S * 1000) / REFRESH_MS + 2}, 0.3, 0.08)`);
   check('benchmark frames rendered ahead', n > 10, String(n));

@@ -35,7 +35,7 @@ export const SCHEMA: FormSchema[] = [
       { name: 'zoom_to', selector: { select: { mode: 'dropdown', options: [{ value: 'center', label: 'Centre of the view' }, { value: 'cursor', label: 'Mouse cursor' }] } } },
       { name: 'lights', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Real lights' }, { value: 'off', label: 'Glow only (weak devices)' }] } } },
       { name: 'render', selector: { select: { mode: 'dropdown', options: [{ value: 'model', label: 'From the model (render recipe)' }, { value: 'default', label: 'Card defaults' }] } } },
-      { name: 'render_quality', selector: { select: { mode: 'dropdown', options: [{ value: 'standard', label: 'Standard' }, { value: 'high', label: 'High (bloom, soft shadows, materials)' }, { value: 'still', label: 'Still (path tracing when idle, experimental)' }] } } },
+      { name: 'render_quality', selector: { select: { mode: 'dropdown', options: [{ value: 'high', label: 'High (default: bloom, soft shadows, materials)' }, { value: 'standard', label: 'Standard (lighter on the GPU)' }, { value: 'still', label: 'Still (path tracing when idle, experimental)' }] } } },
       { name: 'render_tone_mapping', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto (quality / model)' }, { value: 'agx', label: 'AgX' }, { value: 'aces', label: 'ACES filmic' }, { value: 'neutral', label: 'Neutral' }, { value: 'reinhard', label: 'Reinhard' }, { value: 'cineon', label: 'Cineon' }, { value: 'linear', label: 'Linear' }, { value: 'none', label: 'None' }] } } },
       { name: 'room_labels', selector: { select: { mode: 'dropdown', options: [{ value: 'size', label: 'Name and size' }, { value: 'name', label: 'Name only' }, { value: 'none', label: 'None' }] } } },
     ],
@@ -110,7 +110,7 @@ const HELPERS: Record<string, string> = {
   zoom_to: 'Centre: zoom and rotate around the view\'s rotation centre (Edit → Views)',
   lights: 'With a 3D model: lamps light the house (auto) or only glow (off)',
   render: 'With a 3D model: use its render recipe (exposure, camera, shadows, day / night light) or ignore it',
-  render_quality: 'High and still cost more GPU time; still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.',
+  render_quality: 'Standard costs the least GPU time (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.',
   render_tone_mapping: 'Auto: AgX in high / still, otherwise the model\'s recipe',
   layout_key: 'Cards with the same name share one plan. Letters, digits, - and _.',
   model: 'e.g. /local/house.glb. Leave empty to upload a model on the card (Edit → Model).',
@@ -119,7 +119,7 @@ const HELPERS: Record<string, string> = {
 // The card option render is a string (the recipe) or an object { recipe, quality, tone_mapping, materials }; the
 // form shows it as three flat fields. YAML-only keys (materials, unknown ones) pass through untouched.
 const RENDER_FIELDS = { render_quality: 'quality', render_tone_mapping: 'tone_mapping' } as const;
-const RENDER_FIELD_DEFAULTS = { render: 'model', render_quality: 'standard', render_tone_mapping: 'auto' } as const;
+const RENDER_FIELD_DEFAULTS = { render: 'model', render_quality: 'high', render_tone_mapping: 'auto' } as const;
 
 /** config.render -> the form's flat fields. */
 export function splitRender(render: unknown): Record<string, unknown> {

@@ -4,6 +4,7 @@
 /** Card option render, object form: recipe source, quality tier, tone mapping. */
 export interface RenderCardOptions {
   recipe?: 'model' | 'default';
+  /** Default 'high'. */
   quality?: 'standard' | 'high' | 'still';
   tone_mapping?: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none';
   /** Physical material rules (quality high): { '<selector>': 'glass' | 'floor' | 'fabric' | 'none' }. */

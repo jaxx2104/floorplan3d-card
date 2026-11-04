@@ -4,8 +4,9 @@ import { normRenderOption, renderTone, matchExposure, toneGrey, QUALITY_TIERS, Q
 import { envSky, envChanged, envIntensity, skyUniforms, EnvLight, ENV_ANGLE_DEG, ENV_THROTTLE_MS, ENV_DAY, ENV_NIGHT, ENV_DARK } from '../src/view/env-light.ts';
 
 describe('normRenderOption', () => {
-  it('defaults to the model recipe, standard quality, the recipe tone mapping', () => {
-    expect(normRenderOption(undefined)).toEqual({ option: { recipe: 'model', quality: 'standard', toneMapping: null }, warnings: [] });
+  it('defaults to the model recipe, high quality, the tier tone mapping', () => {
+    expect(normRenderOption(undefined)).toEqual({ option: { recipe: 'model', quality: 'high', toneMapping: null }, warnings: [] });
+    expect(normRenderOption({ quality: 'standard' }).option.quality).toBe('standard');
     expect(normRenderOption(null).option).toEqual(RENDER_OPTION_DEFAULTS);
   });
   it('keeps the string form (model | default)', () => {
@@ -53,14 +54,16 @@ describe('normRenderOption', () => {
 });
 
 describe('tone mapping and exposure', () => {
+  const STANDARD = { ...RENDER_OPTION_DEFAULTS, quality: 'standard' };
   it('standard keeps the recipe tone mapping and exposure exactly', () => {
     for (const toneMapping of TONE_MAPPINGS) {
-      expect(renderTone({ toneMapping, exposure: 1.1 }, RENDER_OPTION_DEFAULTS)).toEqual({ toneMapping, exposure: 1.1 });
+      expect(renderTone({ toneMapping, exposure: 1.1 }, STANDARD)).toEqual({ toneMapping, exposure: 1.1 });
     }
-    expect(renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS)).toEqual({ toneMapping: 'ACESFilmic', exposure: 1.25 });
+    expect(renderTone(RENDER_DEFAULTS, STANDARD)).toEqual({ toneMapping: 'ACESFilmic', exposure: 1.25 });
   });
   it('high defaults to AgX; the card tone_mapping wins over the tier', () => {
     expect(renderTone(RENDER_DEFAULTS, { ...RENDER_OPTION_DEFAULTS, quality: 'high' }).toneMapping).toBe('AgX');
+    expect(renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS).toneMapping).toBe('AgX'); // high is the default
     expect(renderTone(RENDER_DEFAULTS, { ...RENDER_OPTION_DEFAULTS, quality: 'high', toneMapping: 'ACESFilmic' })).toEqual({ toneMapping: 'ACESFilmic', exposure: 1.25 });
     expect(renderTone(RENDER_DEFAULTS, { ...RENDER_OPTION_DEFAULTS, toneMapping: 'Neutral' }).toneMapping).toBe('Neutral');
   });

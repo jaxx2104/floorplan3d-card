@@ -183,7 +183,7 @@ house.userData.fp = { render: {
 
 ### Physical materials (`render: { quality: high }`)
 
-With the card's `quality: high` the card turns three kinds of plain `MeshStandardMaterial` into
+With the card's `quality: high` (the default) the card turns three kinds of plain `MeshStandardMaterial` into
 `MeshPhysicalMaterial`, once when the model loads (and back when the quality changes):
 
 | class | look | found by |

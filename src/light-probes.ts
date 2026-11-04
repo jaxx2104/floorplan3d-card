@@ -463,7 +463,8 @@ export class LightProbes {
       if (this._queue && !this._queue.length) this._commit();
       this._onDue();
     }, (err) => {
-      if (gen !== this._gen || this._disposed) return;
+      // a lost context (the card's renderer dropped mid read-back) fails every pending read-back: nothing to report
+      if (gen !== this._gen || this._disposed || this.renderer.getContext().isContextLost()) return;
       console.warn('floorplan3d: light probe read-back failed; the rooms keep the sky light', err);
       this._abort();
       this._failed = true;
