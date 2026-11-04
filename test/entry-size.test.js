@@ -42,4 +42,11 @@ describe('entry size guard', () => {
     expect(inputsOf(staticClosure(impl))).not.toContain('src/edit-mode.ts');
     expect(outputs[impl].imports.some((i) => i.kind === 'dynamic-import' && i.path === edit)).toBe(true);
   });
+  it('lit (the edit panel) is in the edit chunk only', () => {
+    const isLit = (k) => /node_modules\/(lit|lit-html|lit-element|@lit\/[^/]+)\//.test(k);
+    const edit = chunkOf('src/edit-mode.ts');
+    const withLit = Object.keys(outputs).filter((f) => Object.keys(outputs[f].inputs).some(isLit));
+    expect(withLit).toEqual([edit]);
+    expect(Object.keys(outputs[edit].inputs).some((k) => k.includes('node_modules/lit-html/'))).toBe(true);
+  });
 });

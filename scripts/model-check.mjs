@@ -947,14 +947,14 @@ sections.add('objects-tap', { group: 'objects', query: { model: '1', view: '3d' 
   await page.mouse.click(p[0], p[1]);
   await idle(page);
   const rowInfo = () => page.evaluate(`(() => { const li = ${sr}.querySelector('li.obj[data-obj=lamp_hall]'); if (!li) return null;
-    const inp = li.querySelector('[data-field=obj-entity]'); return { sel: li.classList.contains('sel'), ph: inp.placeholder, val: inp.value, badge: (li.querySelector('.badge') || {}).textContent || '' }; })()`);
+    const inp = li.querySelector('[name=obj-entity]'); return { sel: li.classList.contains('sel'), ph: inp.placeholder, val: inp.value, badge: (li.querySelector('.badge') || {}).textContent || '' }; })()`);
   let ri = await rowInfo();
   check('tapping the lamp in 3D selects its row', !!ri && ri.sel, JSON.stringify(ri));
   check('the tap did not toggle it', (await calls()) === nObj && (await hall()) === hall0);
   check('row shows the auto entity', !!ri && ri.badge === 'auto' && ri.ph === 'light.demo_hall' && ri.val === '', JSON.stringify(ri));
   // rebind to another entity
   const other = await page.evaluate(`Object.keys(${card}._hass.states).find((e) => e.startsWith('light.') && e !== 'light.demo_hall')`);
-  const setEntity = (v) => page.evaluate(`(() => { const i = ${sr}.querySelector('[data-field=obj-entity][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const setEntity = (v) => page.evaluate(`(() => { const i = ${sr}.querySelector('[name=obj-entity][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await setEntity(other);
   await idle(page);
   const bound = () => page.evaluate(`(() => { const b = ${card}._bindings.get('lamp_hall'); const o = ${card}._objects.objectAt('lamp_hall'); return { cfg: ${card}._layout.objects && ${card}._layout.objects.lamp_hall, e: b.entity, layer: o.binding.entity }; })()`);
@@ -964,7 +964,7 @@ sections.add('objects-tap', { group: 'objects', query: { model: '1', view: '3d' 
   await idle(page);
   ri = await rowInfo();
   check('an unknown entity shows "entity not found"', !!ri && ri.badge === 'entity not found', JSON.stringify(ri));
-  const hasTest = () => page.evaluate(`!!${sr}.querySelector('li.obj[data-obj=lamp_hall] button[data-act=obj-test]')`);
+  const hasTest = () => page.evaluate(`!!${sr}.querySelector('li.obj[data-obj=lamp_hall] button[name=obj-test]')`);
   check('no Test button on an unbound row', !(await hasTest()));
   await setEntity('');
   await idle(page);
@@ -973,21 +973,21 @@ sections.add('objects-tap', { group: 'objects', query: { model: '1', view: '3d' 
   // Test toggles through callService
   const c0 = await calls();
   const h0 = await hall();
-  await page.evaluate(`${sr}.querySelector('li.obj[data-obj=lamp_hall] button[data-act=obj-test]').click()`);
+  await page.evaluate(`${sr}.querySelector('li.obj[data-obj=lamp_hall] button[name=obj-test]').click()`);
   await idle(page);
   check('Test toggles the bound light', (await calls()) === c0 + 1 && (await hall()) !== h0, `${c0} -> ${await calls()}`);
   // Hide
-  await page.evaluate(`(() => { const c = ${sr}.querySelector('[data-field=obj-hidden][data-id=lamp_hall]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const c = ${sr}.querySelector('[name=obj-hidden][data-id=lamp_hall]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   check('hide marks the object hidden', await page.evaluate(`!!${card}._bindings.get('lamp_hall').hidden && ${card}._layout.objects.lamp_hall.hidden === true`));
   check('no Test button on a hidden row', !(await hasTest()));
-  await page.evaluate(`(() => { const c = ${sr}.querySelector('[data-field=obj-hidden][data-id=lamp_hall]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const c = ${sr}.querySelector('[name=obj-hidden][data-id=lamp_hall]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   check('un-hide drops the entry', await page.evaluate(`!${card}._bindings.get('lamp_hall').hidden && !(${card}._layout.objects || {}).lamp_hall`));
   check('Test button back on the bound row', await hasTest());
   // label: rename the lamp -> the row and the popup title show it; clearing returns to the model label
-  const setLabel = (v) => page.evaluate(`(() => { const i = ${sr}.querySelector('[data-field=obj-label][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-  const lbl = () => page.evaluate(`(() => { const li = ${sr}.querySelector('li.obj[data-obj=lamp_hall]'); const i = li.querySelector('[data-field=obj-label]');
+  const setLabel = (v) => page.evaluate(`(() => { const i = ${sr}.querySelector('[name=obj-label][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const lbl = () => page.evaluate(`(() => { const li = ${sr}.querySelector('li.obj[data-obj=lamp_hall]'); const i = li.querySelector('[name=obj-label]');
     return { name: li.querySelector('.name').textContent, ph: i.placeholder, cfg: ((${card}._layout.objects || {}).lamp_hall || {}).label || null }; })()`);
   await setLabel('  Hall pendant ');
   await idle(page);
@@ -1080,7 +1080,7 @@ sections.add('light-popup', { group: 'objects', query: { model: '1', view: '3d' 
   await idle(page);
   await page.evaluate(`${card}._edit.selectObject('lamp_kitchen')`);
   await idle(page);
-  const popSel = `${sr}.querySelector('select[data-field=obj-popup][data-id=lamp_kitchen]')`;
+  const popSel = `${sr}.querySelector('select[name=obj-popup][data-id=lamp_kitchen]')`;
   const opts = await page.evaluate(`(() => { const s = ${popSel}; return s && [...s.options].map((o) => o.textContent).join('|'); })()`);
   check('Objects tab has a Popup select: Automatic / Only on / off', opts === 'Automatic|Only on / off', String(opts));
   await page.evaluate(`(() => { const s = ${popSel}; s.value = 'toggle'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
@@ -1484,16 +1484,16 @@ sections.add('demo-objects', { group: 'lamps', query: { model: '1', view: '3d' }
   await page.evaluate(`[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`);
   await idle(page);
   for (let i = 0; i < 20; i++) {
-    const opened = await page.evaluate(`(() => { const b = [...${sr}.querySelectorAll('[data-act=obj-expand]')].find((x) => x.textContent.trim() === '▸'); if (b) b.click(); return !!b; })()`);
+    const opened = await page.evaluate(`(() => { const b = [...${sr}.querySelectorAll('[name=obj-expand]')].find((x) => x.textContent.trim() === '▸'); if (b) b.click(); return !!b; })()`);
     if (!opened) break;
     await idle(page);
   }
-  const rows = await page.evaluate(`[...${sr}.querySelectorAll('li.obj')].map((li) => ({ id: li.dataset.obj, badge: (li.querySelector('.badge') || {}).textContent || '', test: !!li.querySelector('[data-act=obj-test]') }))`);
+  const rows = await page.evaluate(`[...${sr}.querySelectorAll('li.obj')].map((li) => ({ id: li.dataset.obj, badge: (li.querySelector('.badge') || {}).textContent || '', test: !!li.querySelector('[name=obj-test]') }))`);
   check('Objects tab: 14 rows, all "auto", none "entity not found"', rows.length === 14 && rows.every((r) => r.badge === 'auto'), JSON.stringify(rows));
   check('Objects tab: lamps have a Test button', ['lamp_living', 'facade_1', 'terrace_spot'].every((id) => (rows.find((r) => r.id === id) || {}).test));
   const grp = () => page.evaluate(`(() => { const g = ${sr}.querySelector('label.grp[data-grp=facade]'); return g && { warn: !!g.querySelector('.badge.warn'), val: g.querySelector('input').value,
     saved: JSON.stringify((${card}._layout.tags || {}).facade || null), eff: JSON.stringify(${card}._groups.facade || null) }; })()`);
-  const setGrp = async (v) => { await page.evaluate(`(() => { const i = ${sr}.querySelector('[data-field=grp-entity][data-id=facade]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`); await sleep(250); };
+  const setGrp = async (v) => { await page.evaluate(`(() => { const i = ${sr}.querySelector('[name=grp-entity][data-id=facade]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`); await sleep(250); };
   let g = await grp();
   check('Groups: facade controller switch.demo_facade, found', !!g && !g.warn && g.val === 'switch.demo_facade', JSON.stringify(g));
   await page.evaluate(`${card}._hass.callService('switch', 'turn_off', { entity_id: 'switch.demo_facade' })`);
@@ -1509,20 +1509,20 @@ sections.add('demo-objects', { group: 'lamps', query: { model: '1', view: '3d' }
   g = await grp();
   check('Groups: controller back, the switch is off -> facade dark', !!g && !g.warn && (await look()).facadeLit === 0, JSON.stringify(g));
   // tags: defaults = fp.group + HA labels; a tag added on the row; a second controller tag joins the chain
-  const chips = (id) => page.evaluate(`[...${sr}.querySelectorAll('li.obj[data-obj=${id}] .otag')].map((x) => x.firstChild.textContent)`);
+  const chips = (id) => page.evaluate(`[...${sr}.querySelectorAll('li.obj[data-obj=${id}] .otag')].map((x) => [...x.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim())`); // the tag text (lit adds comment markers)
   check('Tags: facade_1 shows its model group and HA label (facade, Outdoor)', JSON.stringify(await chips('facade_1')) === '["facade","Outdoor"]', JSON.stringify(await chips('facade_1')));
   await page.evaluate(`${card}._hass.callService('switch', 'turn_on', { entity_id: 'switch.demo_facade' })`);
-  await page.evaluate(`(() => { const i = ${sr}.querySelector('[data-field=tag-add][data-id=terrace_spot]'); i.value = 'night'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const i = ${sr}.querySelector('[name=tag-add][data-id=terrace_spot]'); i.value = 'night'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   const ts = await page.evaluate(`JSON.stringify(${card}._layout.objects.terrace_spot)`);
   check('Tags: + tag on a row saves the full list', ts.includes('"tags":["Outdoor","night"]'), ts);
-  await page.evaluate(`(() => { const i = ${sr}.querySelector('[data-field=grp-entity][data-id=night]'); i.value = 'switch.demo_facade'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const i = ${sr}.querySelector('[name=grp-entity][data-id=night]'); i.value = 'switch.demo_facade'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   await page.evaluate(`${card}._hass.callService('switch', 'turn_off', { entity_id: 'switch.demo_facade' })`);
   await idle(page);
   const spotChain = await page.evaluate(`JSON.stringify(${card}._objects.objectAt('terrace_spot').chain)`);
   check('Tags: a controller on the new tag gates the spot (switch off -> dark)', spotChain.includes('"lit":false') && spotChain.includes('switch.demo_facade'), spotChain.slice(0, 200));
-  await page.evaluate(`(() => { const b = ${sr}.querySelector('[data-act=tag-rm][data-id=terrace_spot][data-tag=night]'); b.click(); })()`);
+  await page.evaluate(`(() => { const b = ${sr}.querySelector('[name=tag-rm][data-id=terrace_spot][data-tag=night]'); b.click(); })()`);
   await idle(page);
   const ts2 = await page.evaluate(`JSON.stringify((${card}._layout.objects || {}).terrace_spot || null)`);
   check('Tags: x removes it; back to the defaults (nothing stored)', !ts2.includes('tags'), ts2);
@@ -1701,7 +1701,7 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   await idle(page);
   check('model tab offers upload', (await page.evaluate(`${panel('label.button')}?.textContent || ''`)).includes('Upload .glb'));
   const upload = async (file) => {
-    const input = await page.evaluateHandle(panel('[data-field=model-file]'));
+    const input = await page.evaluateHandle(panel('[name=model-file]'));
     await input.uploadFile(file);
   };
   const bad = path.join(root, 'screenshots', 'not-a-model.glb');
@@ -1722,21 +1722,21 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
     (await lv()) === JSON.stringify({ level0: 'with:ground', level1: 'with:first', exterior: 'always:ground', roof: 'all-only:null' }), await lv());
   check('rooms come from the model', await page.evaluate(`${card}._modelRooms.some((r) => r.id === 'm:kitchen' && r.floor_id === 'ground')`));
   check('model room replaces the drawn kitchen', await page.evaluate(`${card}._allRooms().filter((r) => r.area_id === 'kitchen').length === 1`));
-  await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = "90"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
-  await page.evaluate(`(() => { const s = ${panel('[data-field=md-opacity]')}; s.value = "0.5"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = "90"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${panel('[name=md-opacity]')}; s.value = "0.5"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
   await idle(page);
   check('rotation slider turns the model', Math.round(await page.evaluate(`${card}._view.modelGroup.rotation.y * 180 / Math.PI`)) === 90);
   check('opacity applied', await page.evaluate(`(() => { let o; ${card}._view.model.root.traverse((m) => { if (m.isMesh && o === undefined) o = m.material.opacity; }); return o === 0.5; })()`));
-  check('slider kept (no re-render)', await page.evaluate(`${panel('[data-field=md-rotation]')}.value === "90"`));
-  await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  check('slider kept (no re-render)', await page.evaluate(`${panel('[name=md-rotation]')}.value === "90"`));
+  await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
   await idle(page);
   await page.screenshot({ path: path.join(root, 'screenshots/model-upload.png') });
   // rotation moves the rooms with the model
   const k0 = await page.evaluate(`JSON.stringify(${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon[1])`);
-  await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = '90'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = '90'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await idle(page);
   check('rotation moves rooms', (await page.evaluate(`JSON.stringify(${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon[1])`)) !== k0);
-  await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = '0'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = '0'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await idle(page);
   // a marker dropped on the model follows the model's alignment
   {
@@ -1765,7 +1765,7 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
     check('pin dropped on the model has on_model', !!(pin0 && pin0.on_model), JSON.stringify(pin0));
     const align = () => page.evaluate(`(() => { const m = ${card}._layout.model; return { position: m.position || [0, 0, 0], rotation: m.rotation || 0, scale: m.scale || 1 }; })()`);
     const a0 = await align();
-    await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
     await idle(page);
     const a1 = await align();
     const pin1 = await page.evaluate(`${card}._layout.pins[${JSON.stringify(pick.id)}]`);
@@ -1783,14 +1783,14 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
         if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ins = !ins; } return ins; })()`);
     check('pin still inside the rotated model room', inside);
     // back to 0°: the pin returns; then drop it so the checks below see the original layout
-    await page.evaluate(`(() => { const s = ${panel('[data-field=md-rotation]')}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await page.evaluate(`(() => { const s = ${panel('[name=md-rotation]')}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
     await idle(page);
     const pin2 = await page.evaluate(`${card}._layout.pins[${JSON.stringify(pick.id)}]`);
     check('rotating back restores the pin', Math.hypot(pin2.x - pin0.x, pin2.y - pin0.y) <= 0.001, JSON.stringify(pin2));
     await page.evaluate(`(() => { const c = ${card}; const pins = { ...c._layout.pins }; delete pins[${JSON.stringify(pick.id)}]; c._commit({ ...c._layout, pins }); })()`);
   }
   // assign a room to no area
-  await page.evaluate(`(() => { const s = ${card}.shadowRoot.querySelector('[data-field=md-room][data-id=kitchen]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${card}.shadowRoot.querySelector('[name=md-room][data-id=kitchen]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   check('room binding saved', JSON.stringify(await page.evaluate(`${card}._layout.model.rooms`)) === '{"kitchen":{"area":null}}', JSON.stringify(await page.evaluate(`${card}._layout.model.rooms`)));
   // click to pick: the kitchen floor in top view
@@ -1824,13 +1824,13 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   check('ground shows its own storey only', JSON.stringify(await vis()) === '[true,false]');
   // legacy show modes (written before levels became "belongs to HA floor") stay readable
   const setLevel = (id, b) => page.evaluate(`${card}._edit.setModelProps({ levels: { ...(${card}._layout.model.levels || {}), ${JSON.stringify(id)}: ${JSON.stringify(b)} } })`);
-  const selectLevel = (id, value) => page.evaluate(`(() => { const s = ${card}.shadowRoot.querySelector('[data-field=md-level][data-id=${id}]'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const selectLevel = (id, value) => page.evaluate(`(() => { const s = ${card}.shadowRoot.querySelector('[name=md-level][data-id=${id}]'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await setLevel('exterior', { show: 'always', floor: 'ground' });
   await idle(page);
   check('exterior "always" keeps its zones', await page.evaluate(`${card}._modelRooms.some((r) => r.id === 'm:garden')`)
     && JSON.stringify(await page.evaluate(`${card}._layout.model.levels.exterior`)) === '{"show":"always","floor":"ground"}', JSON.stringify(await page.evaluate(`${card}._layout.model.levels.exterior`)));
   check('exterior "always" does not remap storeys', (await lv()) === JSON.stringify({ exterior: 'always:ground', lvl_a0: 'with:ground', lvl_a1: 'with:first', roof: 'all-only:null' }), await lv());
-  check('legacy show mode reads as its floor in the dropdown', await page.evaluate(`${card}.shadowRoot.querySelector('[data-field=md-level][data-id=exterior]').value === 'floor:ground'`));
+  check('legacy show mode reads as its floor in the dropdown', await page.evaluate(`${card}.shadowRoot.querySelector('[name=md-level][data-id=exterior]').value === 'floor:ground'`));
   await setLevel('exterior', { show: 'hidden', floor: 'ground' });
   await idle(page);
   check('exterior "hidden" does not remap storeys', (await lv()) === JSON.stringify({ exterior: 'hidden:ground', lvl_a0: 'with:ground', lvl_a1: 'with:first', roof: 'all-only:null' }), await lv());
@@ -1838,12 +1838,12 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   await idle(page);
   check('mapped level visible on its floor', JSON.stringify(await vis()) === '[true,false]');
   check('level rows marked auto', (await page.evaluate(`${panel('table.floors')}.textContent`)).includes('auto'));
-  check('level dropdown: auto, HA floors, no floor', (await page.evaluate(`[...${card}.shadowRoot.querySelectorAll('[data-field=md-level][data-id=exterior] option')].map((o) => o.value).join()`)) === 'auto,floor:ground,floor:first,none',
-    await page.evaluate(`[...${card}.shadowRoot.querySelectorAll('[data-field=md-level][data-id=exterior] option')].map((o) => o.value).join()`));
+  check('level dropdown: auto, HA floors, no floor', (await page.evaluate(`[...${card}.shadowRoot.querySelectorAll('[name=md-level][data-id=exterior] option')].map((o) => o.value).join()`)) === 'auto,floor:ground,floor:first,none',
+    await page.evaluate(`[...${card}.shadowRoot.querySelectorAll('[name=md-level][data-id=exterior] option')].map((o) => o.value).join()`));
   await selectLevel('exterior', 'none');
   await idle(page);
   check('"no floor" writes { floor: null }', JSON.stringify(await page.evaluate(`${card}._layout.model.levels.exterior`)) === '{"floor":null}'
-    && JSON.parse(await lv()).exterior === 'always:null' && await page.evaluate(`${card}.shadowRoot.querySelector('[data-field=md-level][data-id=exterior]').value === 'none'`), await lv());
+    && JSON.parse(await lv()).exterior === 'always:null' && await page.evaluate(`${card}.shadowRoot.querySelector('[name=md-level][data-id=exterior]').value === 'none'`), await lv());
   await selectLevel('exterior', 'floor:first');
   await idle(page);
   check('choosing a floor writes { floor }', JSON.stringify(await page.evaluate(`${card}._layout.model.levels.exterior`)) === '{"floor":"first"}');
@@ -1859,7 +1859,7 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   check('choose "auto" removes the saved binding, the legacy mode stays as view rules', !('lvl_a0' in (await page.evaluate(`${card}._layout.model.levels`)))
     && JSON.stringify(await vis()) === '[false,true]'
     && JSON.stringify(await page.evaluate(`${card}._layout.views.all.rules`)).includes('{"hide":"level:lvl_a0"}'), JSON.stringify(await page.evaluate(`${card}._layout.views`)))
-  check('dropdown shows auto again', await page.evaluate(`${card}.shadowRoot.querySelector('[data-field=md-level][data-id=lvl_a0]').value === 'auto'`));
+  check('dropdown shows auto again', await page.evaluate(`${card}.shadowRoot.querySelector('[name=md-level][data-id=lvl_a0]').value === 'auto'`));
 
   // untagged model: loads whole, no rooms
   const untagged = path.join(root, 'screenshots', 'untagged.glb');
@@ -1872,8 +1872,8 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   fs.unlinkSync(untagged);
   check('untagged model loads whole', await page.evaluate(`${card}._view.model.root.visible && ${card}._modelRooms.length === 0`));
   await idle(page);
-  check('stale bindings offered for forgetting', await page.evaluate(`!!${card}.shadowRoot.querySelector('[data-act=md-forget]')`));
-  await page.evaluate(`${card}.shadowRoot.querySelector('[data-act=md-forget]').click()`);
+  check('stale bindings offered for forgetting', await page.evaluate(`!!${card}.shadowRoot.querySelector('[name=md-forget]')`));
+  await page.evaluate(`${card}.shadowRoot.querySelector('[name=md-forget]').click()`);
   await idle(page);
   await upload(path.join(root, 'demo', 'house.glb'));
   await page.waitForFunction(`${card}._view.modelManifest()?.levels.length === 4`, { timeout: 30000 });
@@ -1930,7 +1930,7 @@ sections.add('upload', { group: 'upload', query: { view: '3d', height: '560px' }
   const plan = path.join(root, 'screenshots', 'plan-export.json');
   fs.writeFileSync(plan, JSON.stringify({ version: 1, floors: [{ id: 'level0', elevation: 0, height: 2.8 }],
     rooms: [{ id: 'x', area_id: 'kitchen', floor_id: 'level0', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] }] }));
-  const imp = await page.evaluateHandle(panel('[data-field=import]'));
+  const imp = await page.evaluateHandle(panel('[name=import]'));
   await imp.uploadFile(plan);
   await sleep(600);
   fs.unlinkSync(plan);
@@ -1969,7 +1969,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   };
   const upload = async (file) => {
     await clickText('Model');
-    const input = await page.evaluateHandle(`${sr}.querySelector('.panel [data-field=model-file]')`);
+    const input = await page.evaluateHandle(`${sr}.querySelector('.panel [name=model-file]')`);
     await input.uploadFile(file);
   };
   const chip = async (id) => { await page.evaluate(`${sr}.querySelector('.chip[data-view=${id}]').click()`); await idle(page); };
@@ -2064,7 +2064,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   // saved camera: save, move, switch away and back
   await page.evaluate(`${card}._view.setCamera({ position: [18, 22, 16], target: [6, 0, -4] }, { instant: true })`);
   await idle(page);
-  await page.evaluate(`${sr}.querySelector('.panel [data-act=vw-save-cam]').click()`);
+  await page.evaluate(`${sr}.querySelector('.panel [name=vw-save-cam]').click()`);
   await idle(page);
   const saved = await page.evaluate(`${card}._layout.views.ground.camera`);
   check('"Save current view as start" stores the camera', !!saved && Math.hypot(saved.position[0] - 18, saved.position[1] - 22, saved.position[2] - 16) < 0.01, JSON.stringify(saved));
@@ -2075,7 +2075,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   const back = await page.evaluate(`(() => { const c = ${card}._view.getCamera(); return c; })()`);
   const dp = Math.hypot(...back.position.map((x, i) => x - saved.position[i])), dt = Math.hypot(...back.target.map((x, i) => x - saved.target[i]));
   check('saved camera restored after switching away and back (within 0.1 m)', dp < 0.1 && dt < 0.1, `${dp.toFixed(3)} / ${dt.toFixed(3)}`);
-  await page.evaluate(`${sr}.querySelector('.panel [data-act=vw-reset-cam]').click()`);
+  await page.evaluate(`${sr}.querySelector('.panel [name=vw-reset-cam]').click()`);
   await idle(page);
   check('Reset camera clears it', !(await page.evaluate(`(${card}._layout.views.ground || {}).camera`)));
 
@@ -2085,7 +2085,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   await idle(page);
   let d = await devs();
   const roomless0 = d['outside:ground'] ? d['outside:ground'].shown : 0;
-  const setLink = (id, on) => page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [data-field=vw-floor][data-id=${id}]'); el.checked = ${on}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const setLink = (id, on) => page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [name=vw-floor][data-id=${id}]'); el.checked = ${on}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await setLink('ground', false);
   await idle(page);
   d = await devs();
@@ -2139,13 +2139,13 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   check('legacy copy is not tagged', !(await page.evaluate(`${card}._view.isTagged()`)));
   await chip('ground');
   await clickText('Views');
-  check('legacy copy: "Cut at storey height" present and on', await page.evaluate(`${sr}.querySelector('.panel [data-field=vw-cut]')?.checked === true`));
+  check('legacy copy: "Cut at storey height" present and on', await page.evaluate(`${sr}.querySelector('.panel [name=vw-cut]')?.checked === true`));
   const legacyTop = await page.evaluate(`(() => { const f = ${card}._floors.find((x) => x.id === 'ground'); return f.elevation + (f.height || 2.7); })()`);
   check('legacy copy: model cut at the top storey elevation + height (not + 1.0)', legacyTop > 2 && Math.abs((await page.evaluate(`${card}._view.modelClip.constant`)) - legacyTop) < 1e-6,
     `${await page.evaluate(`${card}._view.modelClip.constant`)} vs ${legacyTop}`);
   check('legacy copy: materials carry the model clipping plane', await page.evaluate(`(() => { let n = 0, c = 0; ${card}._view.model.root.traverse((o) => { if (o.isMesh) { n++; if ([].concat(o.material).every((m) => m.clippingPlanes && m.clippingPlanes.length === 1)) c++; } }); return n > 0 && n === c; })()`));
   await clickText('Rooms');
-  check('legacy copy: no elevation inputs in the Rooms tab', await page.evaluate(`!${sr}.querySelector('.panel [data-field=floor-elevation]')`));
+  check('legacy copy: no elevation inputs in the Rooms tab', await page.evaluate(`!${sr}.querySelector('.panel [name=floor-elevation]')`));
   // drop the drawn kitchen again (the model has no rooms), then pick its floor: traced outline
   await page.evaluate(`(() => { const c = ${card}; c._edit.commit({ ...c._layout, rooms: c._layout.rooms.filter((r) => r.area_id !== 'kitchen') }); })()`);
   await idle(page);
@@ -2201,8 +2201,8 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   // Views tab: side section position slider (live while dragging, saved on release)
   await clickText('Views');
   await idle(page);
-  const secPos = `${sr}.querySelector('.panel [data-field=vw-sec-pos]')`;
-  check('Views tab: side section direction + position', await page.evaluate(`!!${secPos} && !!${sr}.querySelector('.panel [data-field=vw-sec-dir]')`));
+  const secPos = `${sr}.querySelector('.panel [name=vw-sec-pos]')`;
+  check('Views tab: side section direction + position', await page.evaluate(`!!${secPos} && !!${sr}.querySelector('.panel [name=vw-sec-dir]')`));
   const live = await page.evaluate(`(() => { const el = ${secPos}, c = ${card}, v = c._view; const pos = Math.round((Number(el.min) + 1) * 100) / 100;
     el.value = String(pos); el.dispatchEvent(new Event('input', { bubbles: true }));
     return { pos, planes: v.renderer.clippingPlanes.length, c: v.sectionClip && v.sectionClip.constant, n: v.sectionClip && v.sectionClip.normal.toArray(),
@@ -2261,7 +2261,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   await settle(page, card);
   check('Reset view honours the saved rotation centre', near(await page.evaluate(`${card}._view.controls.target.toArray()`), piv.saved.target, 0.01));
   // per-view zoom pivot
-  await page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [data-field=vw-zoom-to]'); el.value = 'cursor'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [name=vw-zoom-to]'); el.value = 'cursor'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   check('per-view zoom_to cursor: saved and applied', await page.evaluate(`${card}._layout.views.ground.zoom_to === 'cursor' && ${card}._view.controls.zoomToCursor === true`));
   await page.evaluate(`${card}._setView('first')`);
@@ -2269,7 +2269,7 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   check('other view keeps the default centre pivot', await page.evaluate(`${card}._view.controls.zoomToCursor === false`));
   await page.evaluate(`${card}._setView('ground')`);
   await idle(page);
-  await page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [data-field=vw-zoom-to]'); el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const el = ${sr}.querySelector('.panel [name=vw-zoom-to]'); el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await idle(page);
   check('zoom_to back to the card default', await page.evaluate(`!${card}._layout.views.ground.zoom_to && ${card}._view.controls.zoomToCursor === false`));
   // top view: its own camera
@@ -2341,9 +2341,9 @@ sections.add('model-views', { group: 'views', query: { view: '3d', height: '560p
   check('untagged copy: a single generated "All" view (no chips)', JSON.stringify(await page.evaluate(`${card}._views.map((v) => v.id + ':' + v.source)`)) === '["all:generated"]'
     && (await chipIds()).length === 0, JSON.stringify(await page.evaluate(`${card}._views.map((v) => v.id)`)));
   await clickText('Views');
-  check('untagged copy: "Cut at storey height" present, off by default in "All"', await page.evaluate(`${sr}.querySelector('.panel [data-field=vw-cut]')?.checked === false`));
+  check('untagged copy: "Cut at storey height" present, off by default in "All"', await page.evaluate(`${sr}.querySelector('.panel [name=vw-cut]')?.checked === false`));
   await clickText('Rooms');
-  check('untagged copy: no elevation inputs in the Rooms tab', await page.evaluate(`!${sr}.querySelector('.panel [data-field=floor-elevation]')`));
+  check('untagged copy: no elevation inputs in the Rooms tab', await page.evaluate(`!${sr}.querySelector('.panel [name=floor-elevation]')`));
   const ov = await page.evaluate(`(() => { const c = ${card}; return { overview: c._viewState.overview, shown: [...c._view.markerObjects.values()].filter((m) => m.obj.visible).length, all: c._view.markerObjects.size }; })()`);
   check('untagged copy is an overview: every device shown', ov.overview === true && ov.shown === ov.all, JSON.stringify(ov));
   allErrors.push(...s.errors);
@@ -2366,7 +2366,7 @@ sections.add('magnetic', { group: 'views', query: { view: '3d', height: '560px' 
   await page.evaluate(`(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   await idle(page);
   await clickText('Model');
-  const input = await page.evaluateHandle(`${sr}.querySelector('.panel [data-field=model-file]')`);
+  const input = await page.evaluateHandle(`${sr}.querySelector('.panel [name=model-file]')`);
   await input.uploadFile(path.join(root, 'demo', 'house.glb'));
   await page.waitForFunction(`${card}._view.model && ${card}._view.modelManifest().levels.length === 4`, { timeout: 30000 });
   await idle(page);
@@ -2508,8 +2508,8 @@ sections.add('magnetic', { group: 'views', query: { view: '3d', height: '560px' 
     await page.evaluate(`${card}._edit.selectMarker(${JSON.stringify(b.id)})`);
     await idle(page);
     check('magnetic: selected attached marker shows "Attached to Living ceiling lamp" and Detach',
-      await page.evaluate(`${sr}.querySelector('.panel').textContent.includes('Attached to Living ceiling lamp') && !!${sr}.querySelector('.panel [data-act=detach]')`));
-    await page.evaluate(`${sr}.querySelector('.panel [data-act=detach]').click()`);
+      await page.evaluate(`${sr}.querySelector('.panel').textContent.includes('Attached to Living ceiling lamp') && !!${sr}.querySelector('.panel [name=detach]')`));
+    await page.evaluate(`${sr}.querySelector('.panel [name=detach]').click()`);
     await sleep(250);
     const pd = await pinOf(b.id);
     check('magnetic: Detach -> normal pin (on_model) at the same spot',
@@ -2611,7 +2611,7 @@ sections.add('surfaces', { group: 'mower', query: { model: '1', view: '3d', heig
   const txt = await page.evaluate(`${sr}.querySelector('.panel .stick')?.textContent || ''`);
   const nMoves = await page.evaluate(`${card}._edit.stick && ${card}._edit.stick.moves.length`);
   check('surface: Stick all previews the count with Apply / Cancel', /\d+ markers? will move/.test(txt) && nMoves >= 1
-    && await page.evaluate(`!!${sr}.querySelector('.panel [data-act=stick-apply]') && !!${sr}.querySelector('.panel [data-act=stick-cancel]')`), txt.trim());
+    && await page.evaluate(`!!${sr}.querySelector('.panel [name=stick-apply]') && !!${sr}.querySelector('.panel [name=stick-cancel]')`), txt.trim());
   check('surface: nothing saved before Apply', await page.evaluate(`JSON.stringify(${card}._layout.pins)`) === JSON.stringify(pinsBefore));
   await clickText('Apply');
   await idle(page);
@@ -2712,7 +2712,7 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
   check('Done keeps the fit', (await panelBtn('Done')) && await until(`!${card}._edit.aligning`, 'Done') && (await ev(`${card}._layout.mower.overlay.x`)) === fit.x);
 
   // edit-only: hidden in view mode (still loaded for detection), shown again in edit mode
-  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[data-field=ov-edit-only]'); el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[name=ov-edit-only]'); el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   check('edit-only stored, map shown while editing', await until(`${card}._layout.mower.overlay.edit_only === true && ${card}._view.mapPlane.visible`, 'edit-only while editing'));
   await ev(`(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`);
   check('edit-only: map hidden in view mode, image still loaded', await until(`(() => { const p = ${card}._view.mapPlane; return !${card}._editing && !!p && !p.visible && !!p.material.map && !!p.userData.loaded; })()`, 'the hidden map'));
@@ -2809,7 +2809,7 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
   check('Mower tab shows stripes and mowed share', /Stripes: \d+° \(.+\) · Mowed: \d+ %/.test(await ev(`${card}.shadowRoot.querySelector('.mower-live').textContent`)),
     await ev(`${card}.shadowRoot.querySelector('.mower-live').textContent`));
   check('Mower tab has the map picture controls', await ev(`(() => { const s = ${card}.shadowRoot; const t = [...s.querySelectorAll('.panel button')].map((b) => b.textContent.trim());
-    return ['Pick background colour', 'Pick mowed colour', 'Pick no-mow colour'].every((x) => t.includes(x)) && !!s.querySelector('[data-field=ov-hide-icon]') && !!s.querySelector('[data-field=ov-zone]'); })()`));
+    return ['Pick background colour', 'Pick mowed colour', 'Pick no-mow colour'].every((x) => t.includes(x)) && !!s.querySelector('[name=ov-hide-icon]') && !!s.querySelector('[name=ov-zone]'); })()`));
   const popRows = await ev(`(() => { const c = ${card}, o = c._objects.objectAt('mower'); if (!o) return null; c._popup.open(o.obj, null);
     const t = [...c.shadowRoot.querySelectorAll('.fp-popup .fp-pop-row')].map((r) => r.textContent.trim()); c._popup.close(); return t; })()`);
   check('mower popup shows Stripes and Mowed', !!popRows && popRows.some((t) => /^Stripes\s*\d+°/.test(t)) && popRows.some((t) => /^Mowed\s*\d+ %/.test(t)), JSON.stringify(popRows));
@@ -2923,10 +2923,10 @@ sections.add('mower-auto', { group: 'mower', query: { model: '1', view: '3d' }, 
   check('Mower tab: auto mode, entities and heading', /Auto \(static map \+ mower picture\)/.test(tab) && tab.includes('image.robo_map') && /Heading \d+° \(mower picture\)/.test(tab), tab.slice(0, 400));
   const rowsIds = await ev(`[...${card}.shadowRoot.querySelectorAll('.mower-setup .setup-row')].map((b) => b.textContent.replace(/\\s+/g, ' ').trim())`);
   check('checklist: static map and mower picture rows', rowsIds.some((t) => t.includes('Static map')) && rowsIds.some((t) => t.includes('Mower picture')) && !rowsIds.some((t) => t.includes('Mower colour')), JSON.stringify(rowsIds));
-  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[data-field=mower-auto-off]'); el.click(); })()`);
+  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[name=mower-auto-off]'); el.click(); })()`);
   check('"Use colour picks instead" turns auto mode off', await until(`${card}._layout.mower.auto === false && !${card}.mowerAuto()`, 'auto off'));
   await ev(`${card}._view.setCamera({ position: [16.5, 16, 6], target: [16.5, 0, -1.5] }, { instant: true })`);
-  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[data-field=mower-auto-off]'); el.click(); })()`);
+  await ev(`(() => { const el = ${card}.shadowRoot.querySelector('[name=mower-auto-off]'); el.click(); })()`);
   await sleep(2500);
   await page.screenshot({ path: path.join(root, 'screenshots', 'mower-auto.png') });
   await ev('window.__demoMowerPaused = false');
@@ -3006,7 +3006,7 @@ sections.add('panel-scroll', { group: 'upload', query: { view: '3d', height: '56
   await page.evaluate(`(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`);
   await idle(page);
   await page.evaluate(`[...${card}.shadowRoot.querySelectorAll(".panel button")].find((b) => b.textContent.trim() === "Model").click()`);
-  const inp = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[data-field=model-file]")`);
+  const inp = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[name=model-file]")`);
   await inp.uploadFile(path.join(root, 'demo/house.glb'));
   await page.waitForFunction(`!!${card}._view.model`, { timeout: 20000 });
   await sleep(800);
@@ -3019,15 +3019,15 @@ sections.add('panel-scroll', { group: 'upload', query: { view: '3d', height: '56
     const after = await page.evaluate(`${body}.scrollTop`);
     check(`panel scroll kept after ${label}`, before > 100 && Math.abs(after - before) < 2, `${before} -> ${after}`);
   };
-  await keeps('rotation slider', `(() => { const s = ${card}.shadowRoot.querySelector('[data-field=md-rotation]'); s.value = '10'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await keeps('opacity slider', `(() => { const s = ${card}.shadowRoot.querySelector('[data-field=md-opacity]'); s.value = '0.8'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await keeps('room select', `(() => { const s = ${card}.shadowRoot.querySelector('[data-field=md-room]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await keeps('rotation slider', `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-rotation]'); s.value = '10'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await keeps('opacity slider', `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-opacity]'); s.value = '0.8'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await keeps('room select', `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-room]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   // a slider being dragged must stay the same element (pointer down, several input ticks)
   const same = await page.evaluate(`(async () => {
-    const root = ${card}.shadowRoot; const s = root.querySelector('[data-field=md-rotation]');
+    const root = ${card}.shadowRoot; const s = root.querySelector('[name=md-rotation]');
     s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     for (const v of ['20', '30', '40']) { s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((r) => setTimeout(r, 150)); }
-    const stillThere = root.querySelector('[data-field=md-rotation]') === s;
+    const stillThere = root.querySelector('[name=md-rotation]') === s;
     s.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     s.dispatchEvent(new Event('change', { bubbles: true }));
     return stillThere;
@@ -3328,7 +3328,7 @@ if (optional && process.env.REAL_MODEL) {
       if (b) b.click();
     });
     await idle(page);
-    const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector('.panel [data-field=model-file]')`);
+    const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector('.panel [name=model-file]')`);
     await input.uploadFile(process.env.REAL_MODEL);
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
     await sleep(500);
@@ -3365,7 +3365,7 @@ if (optional && process.env.USER_MODEL) {
         if (b) b.click();
       });
       await idle(page);
-      const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector('.panel [data-field=model-file]')`);
+      const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector('.panel [name=model-file]')`);
       const t0 = Date.now();
       await input.uploadFile(process.env.USER_MODEL);
       await page.waitForFunction(`!!${card}._view.model && !!${card}._view.mergeStats`, { timeout: 120000 });

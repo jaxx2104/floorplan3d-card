@@ -114,7 +114,7 @@ try {
 
   // Rooms tab: room labels (Name and size / Name only / None) stored in the layout
   const labelTexts = () => ev(`[...${card}.shadowRoot.querySelectorAll('.fp-room-label')].map((e) => e.textContent).filter(Boolean)`);
-  const setLabels = (v) => ev(`(() => { const el = ${card}.shadowRoot.querySelector('[data-field=room-labels]'); el.value = '${v}'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const setLabels = (v) => ev(`(() => { const el = ${card}.shadowRoot.querySelector('[name=room-labels]'); el.value = '${v}'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   check('room labels: name and size by default', (await labelTexts()).some((t) => t.includes('×')), JSON.stringify((await labelTexts()).slice(0, 3)));
   await setLabels('name');
   await sleep(300);
@@ -170,7 +170,7 @@ try {
   await page.screenshot({ path: path.join(shots, 'edit-room.png') });
 
   // outdoor toggle
-  await ev(`(() => { const i = ${card}.shadowRoot.querySelector("[data-field=room-outdoor]"); i.checked = true; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await ev(`(() => { const i = ${card}.shadowRoot.querySelector("[name=room-outdoor]"); i.checked = true; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
   await sleep(150);
   check('outdoor toggle', (await layout()).rooms.find((r) => r.area_id === 'garage').outdoor === true);
 
@@ -189,7 +189,7 @@ try {
   check('devices tab shows selection', (await ev(`${card}._edit.tab`)) === 'devices' && (await ev(`${card}._edit.selectedMarker`)) === 'device:kettle_plug');
   check('kettle switch not toggled by drag', (await ev(`${card}.hass.states["switch.kettle"].state`)) === 'off');
 
-  await ev(`(() => { const i = ${card}.shadowRoot.querySelector("[data-field=marker-z]"); i.value = "0.4"; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await ev(`(() => { const i = ${card}.shadowRoot.querySelector("[name=marker-z]"); i.value = "0.4"; i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
   await sleep(150);
   check('height input updates pin', (await layout()).pins['device:kettle_plug'].z === 0.4);
   await page.screenshot({ path: path.join(shots, 'edit-devices.png') });
@@ -208,14 +208,14 @@ try {
   await panelClick('Data');
   const tmp = path.join(root, 'screenshots', 'import-test.json');
   fs.writeFileSync(tmp, JSON.stringify({ version: 1, rooms: [{ id: 'x', area_id: 'kitchen', polygon: [[0, 0], [3, 0], [3, 3], [0, 3]] }] }));
-  const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[data-field=import]")`);
+  const input = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[name=import]")`);
   await input.uploadFile(tmp);
   await sleep(400);
   l = await layout();
   check('import replaces layout', l.rooms.length === 1 && l.rooms[0].area_id === 'kitchen');
   check('import message', (await ev(`${card}.shadowRoot.querySelector(".panel .msg")?.textContent || ""`)).includes('Imported 1 rooms'));
   fs.writeFileSync(tmp, '{"rooms": [{"id": "bad", "polygon": [[0,0]]}]}');
-  const input2 = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[data-field=import]")`);
+  const input2 = await page.evaluateHandle(`${card}.shadowRoot.querySelector("[name=import]")`);
   await input2.uploadFile(tmp);
   await sleep(400);
   check('bad import rejected', (await layout()).rooms[0].id === 'x' && (await ev(`${card}.shadowRoot.querySelector(".panel .msg.error")?.textContent || ""`)).includes('Room bad'));
@@ -241,11 +241,11 @@ try {
   check('mower marker follows live position', await ev(`(() => { const c = ${card}; const p = c._positions.get(c._mowerMarkerId); return !!p && p.live && Math.hypot(p.x - 16.5, p.y - 1.5) < 4.5; })()`));
   check('map overlay loaded', await ev(`!!${card}._view.mapPlane && !!${card}._view.mapPlane.material.map`));
   // integration names and logos in the entity pickers
-  const logoOf = (field) => ev((f) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector(`.panel input[data-field="${f}"]`);
+  const logoOf = (field) => ev((f) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector(`.panel input[name="${f}"]`);
     const img = i && i.previousElementSibling && i.previousElementSibling.querySelector('img.fp-logo');
     return img ? { src: img.src, title: img.title, box: i.previousElementSibling.getBoundingClientRect().width } : null; }, field);
   check('datalist option labelled with the integration', await ev(`[...${card}.shadowRoot.querySelectorAll('#fp-err-ents option')].some((o) => o.value === 'sensor.kettle_power' && o.label.endsWith(' \u00b7 Sonoff'))`));
-  const setEnt = (v) => ev((x) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector('.panel input[data-field="mower-error-entity"]'); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const setEnt = (v) => ev((x) => { const i = document.querySelector('floorplan3d-card-impl').shadowRoot.querySelector('.panel input[name="mower-error-entity"]'); i.value = x; i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
   await setEnt('sensor.kettle_power');
   let lg = await logoOf('mower-error-entity');
   check('entity input shows the integration logo', !!lg && lg.src.includes('/sonoff/') && lg.title === 'Sonoff' && lg.box === 16, JSON.stringify(lg));
@@ -255,9 +255,9 @@ try {
   await setEnt('sensor.living_humidity');
   check('no platform: no logo', (await logoOf('mower-error-entity')) === null);
   await setEnt('sensor.kettle_power');
-  await ev(`${card}.shadowRoot.querySelector('.panel input[data-field="mower-error-entity"]').previousElementSibling.querySelector('img').dispatchEvent(new Event('error'))`);
+  await ev(`${card}.shadowRoot.querySelector('.panel input[name="mower-error-entity"]').previousElementSibling.querySelector('img').dispatchEvent(new Event('error'))`);
   check('logo load error removes the image, input intact', (await logoOf('mower-error-entity')) === null
-    && await ev(`!!${card}.shadowRoot.querySelector('.panel input[data-field="mower-error-entity"]')`));
+    && await ev(`!!${card}.shadowRoot.querySelector('.panel input[name="mower-error-entity"]')`));
   await panelClick('Devices');
   check('devices list rows have a logo box', await ev(`${card}.shadowRoot.querySelectorAll('.panel ul.list li .lg').length === ${card}.shadowRoot.querySelectorAll('.panel ul.list li').length`));
   await panelClick('Mower');
@@ -267,19 +267,19 @@ try {
   await click(17.0, 2.0);
   l = await layout();
   check('calibration point stored', l.mower.calibration.length === cal0 + 1 && JSON.stringify(l.mower.calibration[cal0].plan) === '[17,2]', JSON.stringify(l.mower.calibration[cal0]));
-  await ev(`(() => { const s = ${card}.shadowRoot.querySelector("[data-field=ov-rotation]"); s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  await ev(`(() => { const s = ${card}.shadowRoot.querySelector("[name=ov-rotation]"); s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
   await sleep(150);
   check('overlay slider updates live', (await layout()).mower.overlay.rotation === 30 && (await ev(`Math.round(${card}._view.mapPlane.rotation.y * 180 / Math.PI)`)) === 30);
-  check('slider kept in DOM (no re-render)', await ev(`${card}.shadowRoot.querySelector("[data-field=ov-rotation]").value === "30"`));
+  check('slider kept in DOM (no re-render)', await ev(`${card}.shadowRoot.querySelector("[name=ov-rotation]").value === "30"`));
   // number inputs next to the sliders: follow the slider, typed values commit on Enter (clamped / rounded), arrows step
-  const num = (f) => `${card}.shadowRoot.querySelector("input.slnum[data-num-for=${f}]")`;
+  const num = (f) => `${card}.shadowRoot.querySelector("input.slnum[data-for=${f}]")`;
   check('number next to the slider follows it', await ev(`${num('ov-rotation')}.value === "30"`));
   const w0 = (await layout()).mower.overlay.width;
   await ev(`(() => { const n = ${num('ov-width')}; n.focus(); n.select(); })()`);
   await page.keyboard.type('37.26');
   await page.keyboard.press('Enter');
   await sleep(200);
-  let sl = await ev(`({ w: ${card}._layout.mower.overlay.width, range: ${card}.shadowRoot.querySelector("[data-field=ov-width]").value, num: ${num('ov-width')}.value, plane: ${card}._view.mapPlane.scale.x })`);
+  let sl = await ev(`({ w: ${card}._layout.mower.overlay.width, range: ${card}.shadowRoot.querySelector("[name=ov-width]").value, num: ${num('ov-width')}.value, plane: ${card}._view.mapPlane.scale.x })`);
   check('typed overlay width commits on Enter (rounded to the step), slider follows', sl.w === 37.3 && sl.range === '37.3' && sl.num === '37.3', JSON.stringify(sl));
   await ev(`(() => { const n = ${num('ov-width')}; n.value = '999'; n.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await sleep(150);
@@ -297,7 +297,7 @@ try {
   await sleep(100);
   check('arrow key: not saved before 400 ms', (await layout()).mower.overlay.rotation === 30);
   await sleep(500);
-  check('arrow key steps the value (and the slider)', (await layout()).mower.overlay.rotation === 30.5 && (await ev(`${card}.shadowRoot.querySelector("[data-field=ov-rotation]").value`)) === '30.5'
+  check('arrow key steps the value (and the slider)', (await layout()).mower.overlay.rotation === 30.5 && (await ev(`${card}.shadowRoot.querySelector("[name=ov-rotation]").value`)) === '30.5'
     && (await ev(`${card}.shadowRoot.activeElement === ${num('ov-rotation')}`)), String((await layout()).mower.overlay.rotation));
   await ev(`(() => { const n = ${num('ov-width')}; n.value = '${w0}'; n.dispatchEvent(new Event('change', { bubbles: true })); n.blur(); })()`);
   await sleep(150);
@@ -382,8 +382,8 @@ try {
     const cv = t.image, g = cv.getContext('2d'), a = (p) => g.getImageData(Math.floor(p[0] * cv.width / 450), Math.floor(p[1] * cv.height / 850), 1, 1).data[3];
     return a(${JSON.stringify(lawnPx)}) === 0 && a(${JSON.stringify(marginPx)}) === 0; })()`, { timeout: 10000 }).then(() => true, () => false);
   check('both background shades transparent', keyed, JSON.stringify({ lawnPx, marginPx }));
-  check('colour chips in the panel with remove buttons', await ev(`${card}.shadowRoot.querySelectorAll('.panel [data-act=color-del][data-kind=bg]').length === 2`));
-  await ev(`${card}.shadowRoot.querySelector('.panel [data-act=color-del][data-kind=bg][data-i="1"]').click()`);
+  check('colour chips in the panel with remove buttons', await ev(`${card}.shadowRoot.querySelectorAll('.panel [name=color-del][data-kind=bg]').length === 2`));
+  await ev(`${card}.shadowRoot.querySelector('.panel [name=color-del][data-kind=bg][data-i="1"]').click()`);
   await sleep(150);
   check('× removes a colour', ((await layout()).mower.overlay.bg_colors || []).length === 1);
 
@@ -398,8 +398,8 @@ try {
   await ev(`(() => { const d = ${card}.shadowRoot.querySelector('details.mower-setup'); d.open = true;
     [...d.querySelectorAll('.setup-row')].find((b) => b.textContent.includes('Mowed colour')).click(); })()`);
   await sleep(100);
-  check('setup row flashes its control', await ev(`!!${card}.shadowRoot.querySelector('[data-act="map-pick"][data-kind="mowed"].setup-flash')`));
-  await ev(`(() => { const i = ${card}.shadowRoot.querySelector('[data-field=mower-ok-values]'); i.value = 'Rain delay, wait'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  check('setup row flashes its control', await ev(`!!${card}.shadowRoot.querySelector('[name="map-pick"][data-kind="mowed"].setup-flash')`));
+  await ev(`(() => { const i = ${card}.shadowRoot.querySelector('[name=mower-ok-values]'); i.value = 'Rain delay, wait'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await sleep(150);
   check('OK values stored', JSON.stringify((await layout()).mower.ok_values) === '["Rain delay","wait"]', JSON.stringify((await layout()).mower.ok_values));
   await ev(`${card}._edit.commit({ ...${card}._edit.layout, mower: { ...${card}._edit.layout.mower, image: {} } })`);
@@ -423,12 +423,12 @@ try {
       batt: s.querySelectorAll('.fp-marker > .fp-batt').length,
       smoke: (q('device:smoke_hall', '.fp-status') || {}).dataset?.status, lock: (q('device:front_lock', '.fp-status') || {}).dataset?.status,
       chip: (q('device:front_lock', '.fp-batt') || {}).textContent, lockLogo: !!img && img.complete && img.naturalWidth > 0,
-      cover: !!q('device:living_blinds', '.fp-logo'), checks: [...s.querySelectorAll('[data-field=badge]')].map((c) => c.dataset.key + ':' + c.checked) }; })()`);
+      cover: !!q('device:living_blinds', '.fp-logo'), checks: [...s.querySelectorAll('[name=badge]')].map((c) => c.dataset.key + ':' + c.checked) }; })()`);
   let bs = await badgeState();
   check('badges: status dots and low battery chip by default, no logos', bs.logos === 0 && bs.dots > 10 && bs.batt === 1 && bs.chip === '12 %'
     && bs.checks.join() === 'integration:false,status:true,battery:true', JSON.stringify(bs));
   check('badges: unavailable is red, low battery is yellow', bs.smoke === 'red' && bs.lock === 'yellow', JSON.stringify(bs));
-  const toggle = async (key) => { await ev(`(() => { const c = ${card}.shadowRoot.querySelector('[data-field=badge][data-key=${key}]'); c.click(); })()`); await sleep(300); };
+  const toggle = async (key) => { await ev(`(() => { const c = ${card}.shadowRoot.querySelector('[name=badge][data-key=${key}]'); c.click(); })()`); await sleep(300); };
   await toggle('integration');
   await page.waitForFunction(`(() => { const e = ${card}._markerEls.get('device:front_lock'); const i = e && e.querySelector('.fp-logo'); return !!i && i.complete && i.naturalWidth > 0; })()`, { timeout: 5000 }).catch(() => {});
   bs = await badgeState();

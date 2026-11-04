@@ -2,7 +2,11 @@
 
 import { setRuleState, pickSelector } from '../../views.ts';
 import { layoutRules, setRule, treeRows, nodePos } from '../tabs/views.ts';
-import { esc } from '../html.ts';
+import { flash } from '../html.ts';
+
+// the menu is built as markup (not part of the lit-rendered panel)
+const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (s: unknown): string => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 import type { EditMode } from '../../edit-mode.ts';
 
 // Click on the model (Views tab): highlight the part and offer hide/show.
@@ -94,7 +98,7 @@ export function reveal(ed: EditMode, pick: { sel: string; idx: number }) {
   const tree = treeRows(ed);
   const r = tree && tree.tree.find((x) => x.sel === pick.sel);
   if (r && r.parent && !r.parent.startsWith('level:')) ed.vwExpanded.add(r.parent);
-  ed.render();
+  ed.renderNow();
   const idx = ed.card.viewIndex();
   let sel = pick.sel;
   const rows = () => [...ed.panel.querySelectorAll<HTMLElement>('ul.vtree li[data-sel]')];
@@ -109,8 +113,5 @@ export function reveal(ed: EditMode, pick: { sel: string; idx: number }) {
   const li = rows().find((x) => x.dataset.sel === sel);
   if (!li) return;
   li.scrollIntoView({ block: 'nearest' });
-  li.classList.remove('flash');
-  void li.offsetWidth; // restart the animation
-  li.classList.add('flash');
-  setTimeout(() => li.classList.remove('flash'), 1300);
+  flash(li, 1300);
 }

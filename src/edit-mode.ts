@@ -3,13 +3,13 @@
 // parts per view).
 //
 // EditMode holds the edit state and is the facade the card (and the headless checks) talk to; the work
-// lives in src/edit/: panel.js (panel element, rendering, dispatch), router.js (plan clicks and keys),
+// lives in src/edit/: panel.ts (panel element, lit-html rendering), router.js (plan clicks and keys),
 // tools/* (drawing, outline picking, drags, handles, map pickers, rotation centre, the Views pick menu)
-// and tabs/* (each tab's markup and its act / field handlers). Those take the EditMode as `ed`.
+// and tabs/* (each tab's template with its event handlers). Those take the EditMode as `ed`.
 
 import * as E from './editor.ts';
 import { roomFloorId } from './layout.ts';
-import { createPanel, render, setSaveState, onStates } from './edit/panel.ts';
+import { createPanel, requestRender, renderNow, setSaveState, onStates } from './edit/panel.ts';
 import { canvasDown, canvasMove, canvasUp, canvasDownCapture, onKeyDown, syncStageClasses } from './edit/router.ts';
 import { traceOutline } from './edit/tools/pick-outline.ts';
 import { markerDown, dragMove, dragEnd, endWindowDrag } from './edit/tools/drag.ts';
@@ -32,9 +32,6 @@ import type { MapPicker, PickerPoint } from './map-picker.ts';
 import type { PinInput, SnapResult } from './editor.ts';
 import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, MapColorKind, PlanPoint } from './types/layout.ts';
 import type { OutlineGrid } from './outline.ts';
-
-
-export { sliderHtml } from './edit/html.ts';
 
 // ---------- edit state ----------
 export interface Drawing { areaId: string; floorId: string; points: PlanPoint[]; cursor: SnapResult | null }
@@ -115,14 +112,13 @@ export class EditMode {
   _freshModel: boolean;
   _snapPending: boolean;
   _down: [number, number] | null;
-  _sliding: boolean;
-  _renderHeld: boolean;
   _numTimer: ReturnType<typeof setTimeout> | undefined;
-  _renderedTab: TabId | null;
+  /** a render is queued: at the end of the task ('soon') or on the next frame (hass updates) */
+  _renderQueued: 'soon' | 'frame' | null;
+  /** panel values being edited that are not saved yet (a dragged slider, a typed entity id) */
+  drafts: Map<string, string>;
   _reportOpen: boolean;
   _advancedOpen: boolean;
-  _setupOpen: boolean;
-  _setupLast: string | null;
   _treeCache: { idx: ModelIndex; objs: unknown; tree: TreeRows } | null;
   _posCache: { idx: ModelIndex; map: Map<Object3D, number> } | null;
   panel: HTMLDivElement;
@@ -169,17 +165,14 @@ export class EditMode {
     this._freshModel = false; // a model was just uploaded: its parts count as seen once loaded
     this._snapPending = false;
     this._down = null; // [x, y] of a left button press on the plan
-    this._sliding = false; // a slider dragged / its number edited: renders are held
-    this._renderHeld = false;
-    this._numTimer = undefined;
-    this._renderedTab = null;
+    this._numTimer = undefined; // a slider number stepped with the arrow keys: saved when it fires
+    this._renderQueued = null;
+    this.drafts = new Map<string, string>();
     this._reportOpen = false;
     this._advancedOpen = false;
-    this._setupOpen = false;
-    this._setupLast = null; // Mower tab checklist markup as last rendered
     this._treeCache = null;
     this._posCache = null;
-    this.panel = createPanel(this);
+    this.panel = createPanel();
     this._onKey = (e: KeyboardEvent) => onKeyDown(this, e);
     this._onWinMove = (e: PointerEvent) => dragMove(this, e);
     this._onWinUp = () => dragEnd(this);
@@ -276,8 +269,7 @@ export class EditMode {
     if (this.selectedRoom && !this.room(this.selectedRoom)) this.selectedRoom = null;
     this.card._applyMarkerSelection(this.selectedMarker);
     refreshOverlay(this);
-    if (this._sliding) this._renderHeld = true;
-    else this.render();
+    this.render();
   }
 
   commit(layout: Layout) {
@@ -307,7 +299,10 @@ export class EditMode {
 
   // ---------- facade: the card's listeners and hooks, and the headless checks ----------
   setSaveState(s: string) { setSaveState(this, s); }
-  render() { render(this); }
+  /** queues a panel render (coalesced) */
+  render() { requestRender(this); }
+  /** renders the panel now (to scroll to a row it just showed) */
+  renderNow() { renderNow(this); }
   onStates() { onStates(this); }
   onModelLoaded(changed = true) { onModelLoaded(this, changed); }
   onViewChanged() { onViewChanged(this); }

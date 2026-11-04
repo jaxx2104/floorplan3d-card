@@ -38,6 +38,18 @@ export function setLogo(box: Element, platform: string | null | undefined, dark:
   img.src = src;
 }
 
+// The logo URL of a platform for a template (null: no platform, or its logo failed before).
+export function logoSrc(platform: string | null | undefined, dark: boolean): string | null {
+  if (!platform || failed.has(platform)) return null;
+  return brandUrl(platform, dark && !darkFailed.has(platform));
+}
+
+// A template's logo (src from logoSrc) failed to load: a dark logo falls back to the light one, a light one is not asked for again.
+export function logoFailed(platform: string, src: string): void {
+  if (src === brandUrl(platform, true)) darkFailed.add(platform);
+  else failed.add(platform);
+}
+
 function setPart(box: HTMLElement, cls: string, show: boolean, text?: string): HTMLElement | null {
   let el = box.querySelector<HTMLElement>('.' + cls);
   if (!show) { if (el) el.remove(); return null; }

@@ -323,7 +323,7 @@ export const STYLE: string = `
   .panel ul.otree li.obj .oacts { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
   .panel ul.otree li.obj .oacts label.act { display: flex; flex-direction: column; margin: 0; font-size: 11px; color: var(--secondary-text-color); flex: 1; min-width: 80px; }
   .panel ul.otree li.obj .oacts select { font-size: 12px; }
-  .panel ul.otree li.obj > input[data-field=obj-act-field] { margin-top: 3px; }
+  .panel ul.otree li.obj > input[name=obj-act-field] { margin-top: 3px; }
   .panel .otagbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 4px 0 6px; font-size: 12px; }
   .panel .otagbar label { margin: 0; font-size: 12px; }
   .panel .otagbar input.tagadd { width: 90px; }

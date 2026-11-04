@@ -97,7 +97,7 @@ export function click(ed: EditMode, e: PointerEvent) {
       const owner = ed.view.pickModel(e.clientX, e.clientY);
       ed.modelPick = owner ? (owner.kind === 'untagged' ? { kind: 'untagged', path: owner.path } : { kind: owner.kind, id: owner.id }) : null;
       ed.view.highlightModelNode(owner ? owner.node : null);
-      ed.render();
+      ed.renderNow();
       const row = ed.panel.querySelector('tr.sel');
       if (row) row.scrollIntoView({ block: 'nearest' });
       return;

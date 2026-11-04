@@ -39,18 +39,18 @@ export function setupChecklist(
   const o = m.overlay || null;
   const image = m.source === 'image';
   const rows: SetupRow[] = [
-    { id: 'entity', label: 'Entity', ok: !!(m.entity && states[m.entity]), target: '[data-field="mower-entity"]' },
-    { id: 'map', label: 'Map image', ok: !!(o && o.entity && states[o.entity]), target: '[data-field="ov-entity"]' },
-    { id: 'aligned', label: 'Aligned', ok: overlayAligned(o), target: o && o.entity ? '[data-act="ov-align"]' : '[data-field="ov-entity"]' },
+    { id: 'entity', label: 'Entity', ok: !!(m.entity && states[m.entity]), target: '[name="mower-entity"]' },
+    { id: 'map', label: 'Map image', ok: !!(o && o.entity && states[o.entity]), target: '[name="ov-entity"]' },
+    { id: 'aligned', label: 'Aligned', ok: overlayAligned(o), target: o && o.entity ? '[name="ov-align"]' : '[name="ov-entity"]' },
   ];
   if (auto) {
-    rows.push({ id: 'static', label: auto.mismatch ? "Static map doesn't match the live map" : 'Static map', ok: !!auto.static && !auto.mismatch, target: '[data-field="mower-static"]' });
-    rows.push({ id: 'picture', label: 'Mower picture', ok: !!auto.picture, optional: true, target: '[data-field="mower-picture"]' });
-  } else if (image) rows.push({ id: 'color', label: 'Mower colour', ok: colorList(m.image).length > 0, target: '[data-act="img-pick"]' });
+    rows.push({ id: 'static', label: auto.mismatch ? "Static map doesn't match the live map" : 'Static map', ok: !!auto.static && !auto.mismatch, target: '[name="mower-static"]' });
+    rows.push({ id: 'picture', label: 'Mower picture', ok: !!auto.picture, optional: true, target: '[name="mower-picture"]' });
+  } else if (image) rows.push({ id: 'color', label: 'Mower colour', ok: colorList(m.image).length > 0, target: '[name="img-pick"]' });
   rows.push({ id: 'found', label: 'Found', ok: !!found, target: '.mower-live' });
   if (!auto) {
     rows.push({ id: 'mowed', label: 'Mowed colour', ok: colorList(o, 'mowed').length > 0, optional: true,
-      target: o && o.entity ? '[data-act="map-pick"][data-kind="mowed"]' : '[data-field="ov-entity"]' });
+      target: o && o.entity ? '[name="map-pick"][data-kind="mowed"]' : '[name="ov-entity"]' });
   }
   return { rows, complete: rows.every((r) => r.optional || r.ok) };
 }

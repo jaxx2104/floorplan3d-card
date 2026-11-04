@@ -2,12 +2,13 @@
 
 import * as E from '../../editor.ts';
 import { LEVEL_SPACING } from '../../layout.ts';
-import { esc } from '../html.ts';
-import { defineTab } from './tab.ts';
-import type { ActHandler, FieldHandler } from './tab.ts';
+import { html } from 'lit';
+import { act, field } from '../html.ts';
+import type { TemplateResult } from 'lit';
+import type { TabDef } from './tab.ts';
 import type { EditMode } from '../../edit-mode.ts';
 
-export function dataTab(ed: EditMode): string {
+export function dataTab(ed: EditMode): TemplateResult {
   const b = ed.card._store.backend;
   const infos: Record<string, [string, string]> = {
     shared: ['ok', 'Shared: stored by the floorplan3d integration, every user and device sees the same layout.'],
@@ -15,11 +16,17 @@ export function dataTab(ed: EditMode): string {
     browser: ['warn', 'This browser only: other browsers and devices will not see this layout. Install the floorplan3d integration to share it.'],
   };
   const info = (b && infos[b]) || ['warn', 'Storage not loaded yet.'];
-  return `<div class="sub">Storage</div><p class="note ${info[0]}">${esc(info[1])}</p>
+  return html`<div class="sub">Storage</div><p class="note ${info[0]}">${info[1]}</p>
       <div class="sub">Export / import</div>
       <p class="hint">The layout is plain JSON (rooms in metres, x east, y north). Importing replaces the current layout.</p>
-      <div class="row"><button data-act="export">Export JSON</button>
-      <label class="button">Import JSON<input type="file" accept="application/json,.json" data-field="import" hidden></label></div>`;
+      <div class="row"><button @click=${act(ed, () => exportLayout(ed))}>Export JSON</button>
+      <label class="button">Import JSON<input type="file" accept="application/json,.json" name="import" hidden @change=${(e: Event) => importFile(ed, field(e))}></label></div>`;
+}
+
+export function importFile(ed: EditMode, el: HTMLInputElement) {
+  const file = el.files && el.files[0];
+  el.value = ''; // picking the same file again must fire change again
+  if (file) file.text().then((text) => importLayout(ed, text));
 }
 
 export function importLayout(ed: EditMode, text: string) {
@@ -61,17 +68,4 @@ export function exportLayout(ed: EditMode) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-const acts: Record<string, ActHandler> = {
-  export: (ed) => { exportLayout(ed); },
-};
-
-const fields: Record<string, FieldHandler> = {
-  import: (ed, el) => {
-    const file = el.files && el.files[0];
-    el.value = ''; // picking the same file again must fire change again
-    if (file) file.text().then((text) => importLayout(ed, text));
-  },
-};
-
-export const dataTabDef = defineTab({ id: 'data', html: dataTab, acts, fields });
-
+export const dataTabDef: TabDef = { id: 'data', label: 'Data', view: dataTab };
