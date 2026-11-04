@@ -310,10 +310,14 @@ export interface QualityTier {
   physicalLights: boolean;
   /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts). */
   bloom: boolean;
+  /** Sun shadow penumbra that widens with the blocker distance (PCSS, soft-shadow.ts). */
+  softShadows: boolean;
+  /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
+  contactShadows: boolean;
 }
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
-  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false }),
-  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true }),
+  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false }),
+  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true }),
 });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
 

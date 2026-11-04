@@ -15,6 +15,10 @@ import { normSway, swayLean } from '../cloud-shadow.ts';
 import { shadowInfo, sunDirection } from '../render-rules.ts';
 import { EnvLight, envSky, envIntensity } from './env-light.ts';
 import { SelectiveBloom } from '../bloom.ts';
+import { ContactShadows, type ContactFloor } from '../contact-shadow.ts';
+import { setTierVariant } from '../cloud-shadow.ts';
+import { pcssFrame } from '../soft-shadow.ts';
+import { measuredElevations } from '../bindings.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
 import type { ModelManifest } from './model.ts';
@@ -48,6 +52,7 @@ export class RenderLook {
   _renderWarned: string;
   _env: EnvLight | null;
   _bloom: SelectiveBloom | null;
+  _contact: ContactShadows | null;
   renderFrom: { keys: number } | null;
   background: DayNight;
   furniture: 'color' | 'white';
@@ -80,6 +85,7 @@ export class RenderLook {
     this._renderWarned = ''; // the warnings last logged for the option
     this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
     this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
+    this._contact = null; // ContactShadows while the tier grounds things on the floors (made on first use)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
     this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
@@ -228,12 +234,22 @@ export class RenderLook {
     this._skyEnv();
   }
 
-  // The tier's selective bloom and physical lamp light: on with a model when the tier asks for them. A change
-  // of the lamp model re-evaluates the lamps (the card's object update).
+  // The tier's selective bloom, physical lamp light, soft sun shadows and contact shadows: on with a model when
+  // the tier asks for them. A change of the lamp model re-evaluates the lamps (the card's object update); the
+  // shadow variants recompile the model materials whose variant changed (the callers flag every material anyway).
   _syncTierLook(): void {
-    const t = this.tier(), model = !!this.view.model;
+    const t = this.tier(), model = this.view.model;
     if (model && t.bloom && !this._bloom) this._bloom = new SelectiveBloom(this.view.renderer);
     if (!(model && t.bloom) && this._bloom) { this._bloom.dispose(); this._bloom = null; }
+    if (model && t.contactShadows && !this._contact) this._contact = new ContactShadows(this.view.renderer, this.view.skyLayer._cloudU);
+    if (!(model && t.contactShadows) && this._contact) { this._contact.dispose(); this._contact = null; }
+    if (model) {
+      const variant = { pcss: t.softShadows, contact: t.contactShadows };
+      model.root.traverse((o) => {
+        if (!isMesh(o)) return;
+        for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) if (m) setTierVariant(m, variant);
+      });
+    }
     const layer = this.view.objectLayer;
     if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
   }
@@ -504,6 +520,7 @@ export class RenderLook {
     cam.near = 0.5;
     cam.far = radius * 5;
     cam.updateProjectionMatrix();
+    this.view.skyLayer._cloudU.fpPcss.value.set(...pcssFrame(cam)); // soft shadows (quality high): metres per depth / uv
     sun.target.updateMatrixWorld();
     if (redraw) this._sunShadow();
     else this._sunStale = true; // redrawn once the time scrubber settles
@@ -514,6 +531,7 @@ export class RenderLook {
   // The shadow casters changed (model, visibility, cut, section): the sun's map (while it is up) and
   // every lit pool shadow map. Dark lights are redrawn when they light up.
   _shadowDirty(): void {
+    if (this._contact) this._contact.stale = true; // rebuilt before the next frame (view loop)
     this._sunShadow();
     if (this.view.objectLayer) this.view._flagShadows(this.view.objectLayer.shadowsStale());
     this.view.stats.shadow++;
@@ -536,12 +554,41 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
+  // The storeys to ground (contact shadows): each storey / basement level's floor height (its elevation, else
+  // measured from its geometry, model space -> world) and footprint (world x / z).
+  _contactFloors(): ContactFloor[] {
+    const model = this.view.model;
+    if (!model) return [];
+    this.view.modelGroup.updateMatrixWorld(true);
+    const levels = model.manifest.levels, meas = measuredElevations(levels), out: ContactFloor[] = [];
+    for (const l of levels) {
+      if (l.role !== 'storey' && l.role !== 'basement') continue;
+      const e = l.elevation !== null && l.elevation !== undefined && Number.isFinite(l.elevation) ? l.elevation : meas[l.id]?.elevation;
+      if (e === undefined || !Number.isFinite(e)) continue;
+      const box = new THREE.Box3().setFromObject(l.node);
+      if (box.isEmpty()) continue;
+      const y = model.root.localToWorld(new THREE.Vector3(0, e, 0)).y;
+      out.push({ y, minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+    }
+    return out;
+  }
+
+  // Contact shadows due (the casters changed): rebuild them now, before the frame. -> true when rebuilt.
+  _updateContact(): boolean {
+    const c = this._contact;
+    if (!c || !c.stale || !this.view.model) return false;
+    c.update(this.view.scene, this._contactFloors());
+    return true;
+  }
+
   // Ambient occlusion, the finish and the depth pass (view.dispose).
   dispose(): void {
     if (this._env) this._env.dispose();
     this._env = null;
     if (this._bloom) this._bloom.dispose();
     this._bloom = null;
+    if (this._contact) this._contact.dispose();
+    this._contact = null;
     this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();

@@ -3,10 +3,12 @@
 // - no main-thread task of the card's own > 50 ms (its own timing: map refresh sections and renders)
 // - renders while idle <= refresh-driven ones; no shadow-map updates from the mower moving
 // Prints the numbers (main-thread ms per refresh, long tasks) for the release notes.
-// Then render quality 'high' (sky environment light, physical lamps, selective bloom) against 'standard': no
-// environment rebuild while idle or for a sun step under ENV_ANGLE_DEG, one (throttled) for a larger step;
-// bloom never in 'standard', in 'high' only on frames with an emissive surface in view, nothing while idle;
-// frame time (render + bloom + finish, GPU included) in bounds.
+// Then render quality 'high' (sky environment light, physical lamps, selective bloom, soft sun shadows, contact
+// shadows) against 'standard': no environment rebuild while idle or for a sun step under ENV_ANGLE_DEG, one
+// (throttled) for a larger step; bloom never in 'standard', in 'high' only on frames with an emissive surface in
+// view, nothing while idle; soft / contact shadow variants only in 'high', contact shadows rebuilt only when the
+// casters change (not while idle, not per frame), shadow requests as in 'standard'; frame time (render + bloom +
+// finish, GPU included) in bounds.
 //   node scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
@@ -34,16 +36,22 @@ async function qualityRun(quality) {
     await sleep(3000); // the throttle (2 s) and the first build
     const builds = () => ev(`${card}._view.stats.envBuilds`);
     const bloomPasses = () => ev(`${card}._view.stats.bloomPasses`);
-    const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`), bp0 = await bloomPasses();
+    const contactBuilds = () => ev(`${card}._view.stats.contactBuilds`);
+    const shadows = () => ev(`(() => { const s = ${card}._view.stats; return { shadow: s.shadow, lights: s.shadowLights }; })()`);
+    const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`), bp0 = await bloomPasses(), cb0 = await contactBuilds(), sh0 = await shadows();
     await sleep(8000);
-    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses();
+    const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses(), cb1 = await contactBuilds();
     await ev('window.__setDemoSun(40.5, 200.5)'); // < 2 degrees: light moves, environment kept
     await sleep(3000);
     const b2 = await builds();
     await ev('window.__setDemoSun(46, 215)'); // > 2 degrees: one rebuild
     await sleep(3000);
     const b3 = await builds();
-    const env = await ev(`(() => { const v = ${card}._view; return { env: !!v.scene.environment, tm: v.renderer.toneMapping, hemi: v.hemi.intensity, bloom: !!v.look._bloom, physical: !!(v.objectLayer && v.objectLayer.physical) }; })()`);
+    const sh1 = await shadows(); // the two sun steps: shadow requests as in standard (the scheduling is the tier's same)
+    const env = await ev(`(() => { const v = ${card}._view; let pcss = 0, contact = 0;
+      v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (m.userData.fpPcss) pcss++; if (m.userData.fpContact) contact++; } });
+      return { env: !!v.scene.environment, tm: v.renderer.toneMapping, hemi: v.hemi.intensity, bloom: !!v.look._bloom, physical: !!(v.objectLayer && v.objectLayer.physical),
+        pcss, contact, contactTiles: v.look._contact ? v.look._contact.tiles : 0 }; })()`);
     const forced = (n) => ev(`new Promise((done) => {
       const v = ${card}._view, gl = v.renderer.getContext(), lr = v.labelRenderer, orig = lr.render, out = [], px = new Uint8Array(4);
       lr.render = function (scene, camera) { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return orig.call(this, scene, camera); };
@@ -67,8 +75,17 @@ async function qualityRun(quality) {
     // one environment build, timed the same way (what a sun step costs once)
     const buildMs = await ev(`(() => { const v = ${card}._view, e = v.look._env, gl = v.renderer.getContext(); if (!e || !e.built) return null;
       const t = performance.now(); e._build(e.built); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
+    const cbForced = (await contactBuilds()) - cb1; // forced and moved-camera frames rebuild nothing
+    // a change of the shadow casters (the floor chips: another storey shown) rebuilds the contact shadows once
+    const cb2 = await contactBuilds();
+    await ev(`${card}.shadowRoot.querySelectorAll('.chips button.chip')[2].click()`);
+    await sleep(2500);
+    const cbChange = (await contactBuilds()) - cb2;
+    const contactMs = await ev(`(() => { const v = ${card}._view, c = v.look._contact, gl = v.renderer.getContext(); if (!c) return null;
+      const t = performance.now(); c.update(v.scene, v.look._contactFloors()); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
     const sorted = [...times].sort((a, b) => a - b);
     return { buildMs, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+      idleContact: cb1 - cb0, contactForced: cbForced, contactChange: cbChange, contactMs, contactTotal: await contactBuilds(), shadowSteps: sh1.shadow - sh0.shadow, shadowLightSteps: sh1.lights - sh0.lights,
       idleBloom: bp1 - bp0, bloomForced: bp3 - bp2, framesForced: fr3 - fr2, bloomAway: bp4 - bp3, skippedAway: skip1 - skip0, framesAway: fr5 - fr4, bloomTotal: bp4,
       awayAvg: awayTimes.reduce((a, b) => a + b, 0) / Math.max(1, awayTimes.length),
       avg: times.reduce((a, b) => a + b, 0) / Math.max(1, times.length), p90: sorted[Math.floor(sorted.length * 0.9)] || 0, errors: q.errors };
@@ -91,7 +108,13 @@ async function qualityChecks() {
   check('high: no bloom pass while idle', high.idleBloom === 0 && high.idleFrames === 0, `${high.idleBloom} passes over ${high.idleFrames} frames`);
   check('high: no rebuild for a sun step under 2 degrees, one for a larger step', high.smallStep === 0 && high.bigStep === 1, `${high.smallStep}, ${high.bigStep}`);
   // shared CI runners: the same bound, the ratio is what counts
-  check('high (bloom included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
+  console.log(`     soft / contact shadows: high ${high.pcss} PCSS and ${high.contact} contact materials, ${high.contactTiles} tiles; contact builds idle ${high.idleContact}, forced frames ${high.contactForced}, storey change ${high.contactChange}; one build ${high.contactMs?.toFixed(1)} ms; standard ${std.pcss} / ${std.contact} materials, ${std.contactTotal} builds`);
+  console.log(`     shadow requests for two sun steps: standard ${std.shadowSteps} (${std.shadowLightSteps} lights), high ${high.shadowSteps} (${high.shadowLightSteps} lights)`);
+  check('standard: no soft-shadow or contact-shadow variant, no contact build', std.pcss === 0 && std.contact === 0 && std.contactTotal === 0 && std.contactTiles === 0, JSON.stringify({ pcss: std.pcss, contact: std.contact, builds: std.contactTotal }));
+  check('high: PCSS and contact variants on the model materials, contact tiles built', high.pcss > 0 && high.contact > 0 && high.contactTiles > 0, JSON.stringify({ pcss: high.pcss, contact: high.contact, tiles: high.contactTiles }));
+  check('high: no contact rebuild while idle or on forced / camera frames, one on a storey change', high.idleContact === 0 && high.contactForced === 0 && high.contactChange === 1, `${high.idleContact}, ${high.contactForced}, ${high.contactChange}`);
+  check('high: shadow requests for the sun steps as in standard', high.shadowSteps === std.shadowSteps && high.shadowLightSteps === std.shadowLightSteps, `${high.shadowSteps}/${high.shadowLightSteps} vs ${std.shadowSteps}/${std.shadowLightSteps}`);
+  check('high (bloom, PCSS, contact included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
   for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
 }
 

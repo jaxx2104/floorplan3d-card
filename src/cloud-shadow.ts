@@ -4,6 +4,8 @@
 // never inside the rooms (a mask of the room footprints, from the floor up), where the sun gets the
 // average dimming instead. Uniforms only after the one-time material patch.
 import * as THREE from 'three';
+import { PCSS_HEAD, pcssDirectional } from './soft-shadow.ts';
+import { CONTACT_HEAD, CONTACT_BODY, makeContactUniforms, type ContactUniforms } from './contact-shadow.ts';
 
 import type { PlanPoint } from './types/layout.ts';
 
@@ -46,8 +48,8 @@ export function roomMaskFrame(polygons: PlanPoint[][] | null | undefined, margin
   return { minX: minX - margin, minZ: minZ - margin, sizeX: maxX - minX + 2 * margin, sizeZ: maxZ - minZ + 2 * margin };
 }
 
-// Uniforms shared by every patched material.
-export interface CloudUniforms {
+// Uniforms shared by every patched material (the soft-shadow and contact-shadow ones too).
+export interface CloudUniforms extends ContactUniforms {
   [name: string]: THREE.IUniform;
   fpCloudMap: THREE.IUniform<THREE.Texture | null>;
   fpCloudOffset: THREE.IUniform<THREE.Vector2>;
@@ -66,6 +68,7 @@ export interface CloudUniforms {
   fpTime: THREE.IUniform<number>;
   fpSway: THREE.IUniform<number>;
   fpWindDir: THREE.IUniform<THREE.Vector2>;
+  fpPcss: THREE.IUniform<THREE.Vector4>;
 }
 
 export function makeCloudUniforms(): CloudUniforms {
@@ -91,6 +94,9 @@ export function makeCloudUniforms(): CloudUniforms {
     fpTime: { value: 0 },
     fpSway: { value: 0 },
     fpWindDir: { value: new THREE.Vector2(...CLOUD_WIND) },
+    // soft sun shadows (quality high, soft-shadow.ts): depth range, map span (m), light tan, on
+    fpPcss: { value: new THREE.Vector4(1, 1, 0, 0) },
+    ...makeContactUniforms(), // contact shadows (quality high, contact-shadow.ts)
   };
 }
 
@@ -231,6 +237,19 @@ export const shadable = (m: THREE.Material | null | undefined): m is THREE.MeshS
   return !!(f && (f.isMeshStandardMaterial || f.isMeshLambertMaterial || f.isMeshPhongMaterial));
 };
 
+// Program cache key part of the quality tier's shader variants: '' in standard (its programs untouched).
+export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}`;
+
+// Quality tier shader variants of a patched material: soft sun shadows, contact shadows. -> true when they
+// changed (the material then recompiles).
+export function setTierVariant(mat: THREE.Material, { pcss, contact }: { pcss: boolean; contact: boolean }): boolean {
+  if (!mat.userData.fpCloud || (!!mat.userData.fpPcss === pcss && !!mat.userData.fpContact === contact)) return false;
+  mat.userData.fpPcss = pcss;
+  mat.userData.fpContact = contact;
+  mat.needsUpdate = true;
+  return true;
+}
+
 // Patch a material once (shader compiled with the shade; later changes are uniforms only).
 export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): boolean {
   if (!shadable(mat) || mat.userData.fpCloud) return false;
@@ -243,13 +262,21 @@ export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): 
     let vs = sh.vertexShader;
     if (sway) vs = SWAY_HEAD + vs.replace('#include <begin_vertex>', `#include <begin_vertex>${SWAY_BODY}`);
     sh.vertexShader = VERT_HEAD + vs.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
-    const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
+    let begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
     const city = mat.userData.fpCityLit, head = city === 'windows' ? '#define FP_WINDOWS\n' : city === 'glow' ? '#define FP_GLOW\n' : '';
-    sh.fragmentShader = head + FRAG_HEAD + sh.fragmentShader.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
+    let fs = sh.fragmentShader;
+    // quality high: soft sun shadows (PCSS) and contact shadows; standard compiles neither (and keeps its cache key)
+    const pcss = mat.userData.fpPcss ? pcssDirectional(begin) : null;
+    if (pcss) {
+      begin = pcss;
+      fs = fs.replace('#include <shadowmap_pars_fragment>', `#include <shadowmap_pars_fragment>${PCSS_HEAD}`);
+    }
+    if (mat.userData.fpContact) fs = fs.replace('#include <aomap_fragment>', `#include <aomap_fragment>${CONTACT_BODY}`);
+    sh.fragmentShader = head + FRAG_HEAD + (mat.userData.fpContact ? CONTACT_HEAD : '') + fs.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
   };
   const key = mat.customProgramCacheKey;
-  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}${mat.userData.fpSway ? 's' : ''}`;
+  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}${mat.userData.fpSway ? 's' : ''}${tierKey(mat)}`;
   mat.needsUpdate = true;
   return true;
 }
