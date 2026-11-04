@@ -347,10 +347,8 @@ export function createMockHass({ onChange }) {
 
   // mower drives a circle in the garden (~4 m radius)
   let t = 0;
-  clearInterval(mockTimer);
-  mockTimer = setInterval(() => {
-    if (window.__demoMowerPaused) return; // headless checks hold it still
-    t += 0.06;
+  const step = (at) => {
+    t = at ?? t + 0.06;
     const lat = 45.0 + (Math.sin(t) * 4) / 111320;
     const lon = 10.0 + (Math.cos(t) * 4) / (111320 * Math.cos((45.0 * Math.PI) / 180));
     const s = current.states['device_tracker.sunseeker_position'];
@@ -359,7 +357,11 @@ export function createMockHass({ onChange }) {
       'device_tracker.sunseeker_position': { ...s, attributes: { ...s.attributes, latitude: lat, longitude: lon } },
       'image.sunseeker_live_map': { ...m, state: new Date().toISOString(), last_updated: new Date().toISOString(), attributes: { ...m.attributes, entity_picture: liveMap(t) } },
     });
-  }, 500);
+  };
+  // headless checks hold it still and move it exactly one step with window.__demoMowerStep(), or to angle at
+  window.__demoMowerStep = step;
+  clearInterval(mockTimer);
+  mockTimer = setInterval(() => { if (!window.__demoMowerPaused) step(); }, 500);
 
   // the second robot: window.__setRobot(t) puts it at angle t (radians) on its circle (heading t + 90°)
   let rt = 0;

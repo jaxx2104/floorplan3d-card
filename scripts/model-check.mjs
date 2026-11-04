@@ -2726,8 +2726,11 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
     image: { color: [255, 59, 48], tolerance: 40, min_pixels: 4 },
     overlay: { entity: 'image.sunseeker_live_map', x: 17.5, y: 1.5, rotation: 0, width: 9, opacity: 0.55, refresh: 10, height_offset: 0,
       bg_color: [47, 93, 44], mowed_color: [127, 194, 111], nomow_color: [140, 140, 140] } } }); })()`);
-  const tick = async () => { await ev('window.__demoMowerPaused = false'); await sleep(700); await ev('window.__demoMowerPaused = true'); await idle(page); };
-  await tick();
+  // exactly one new map picture (a timed unpause let one or two through, racing the processing)
+  const tick = async (at) => { await ev(`window.__demoMowerStep(${at ?? ''})`); await idle(page); };
+  // start at the top of the circle: where the earlier sections left it, the icon could sit past the
+  // garden zone's east edge and be clipped away
+  await tick(Math.PI / 2);
   const processed = (w) => until(`(() => { const c = ${card}, p = c._view.mapPlane; const t = p && p.material.map, im = p && p.userData.loaded && p.userData.loaded.image;
     return !!t && t.isCanvasTexture && !!im && (im.naturalWidth || im.width) === ${w} && t.image.width === ${w} && !!c._imageBlob && c._imageBlob.imgW === ${w} && !!c._mapStats; })()`, `the processed ${w} px map`, 15000);
   check('map processed into a canvas texture', await processed(450));
