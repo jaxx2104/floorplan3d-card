@@ -4,7 +4,7 @@ import * as esbuild from 'esbuild';
 const watch = process.argv.includes('--watch');
 const builds = [
   // the card itself, a single ES module for /config/www
-  { entryPoints: ['src/floorplan3d-card.js'], outfile: 'dist/floorplan3d-card.js', minify: !watch },
+  { entryPoints: ['src/floorplan3d-card.ts'], outfile: 'dist/floorplan3d-card.js', minify: !watch },
   // demo-only helpers (mock hass, ha-icon stand-in)
   { entryPoints: ['demo/demo.js'], outfile: 'dist/demo.js' },
 ];

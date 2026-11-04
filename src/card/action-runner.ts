@@ -2,37 +2,70 @@
 // more-info, navigation, URLs, Assist, and the in-card confirmation.
 
 import { actionCall } from '../actions.js';
+import type { Floorplan3dCard } from '../floorplan3d-card.js';
+import type { HassServiceTarget } from '../types/ha.js';
+
+/** An action as actions.js takes it (HA's { action, ... } shape, or a bare action name). */
+export type CardAction = Parameters<typeof actionCall>[0];
+/**
+ * What actionCall says to do (its documented result). Spelled out here until actions.ts exports it:
+ * replace with that type then.
+ */
+export type ActionCall = { confirm: string | null } & (
+  | { kind: 'service'; domain: string; service: string; data: Record<string, unknown>; target?: HassServiceTarget }
+  | { kind: 'more-info'; entityId: string }
+  | { kind: 'navigate'; path: string; replace: boolean }
+  | { kind: 'url'; url: string; newTab: boolean }
+  | { kind: 'assist'; action: unknown }
+  | { kind: 'popup' }
+  | { kind: 'none' }
+  | { kind: 'error'; message: string }
+);
+
+/** Where an action runs: the entity toggle / more-info act on, the model object it came from. */
+export interface ActionContext {
+  entity?: string | null;
+  objectId?: string;
+}
+
+/** What the runner reads of the card (the card itself; a narrow view for fakes). */
+export type ActionHost = Pick<Floorplan3dCard, '_hass' | '_stage' | '_toastEl' | 'dispatchEvent' | '_openObjectPopup'>;
 
 // HA frontend navigation: push the path and tell the router.
-function navigate(path, replace = false) {
+function navigate(path: string, replace = false): void {
   if (replace) window.history.replaceState(window.history.state, '', path);
   else window.history.pushState(null, '', path);
   window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace } }));
 }
 
 export class ActionRunner {
-  /** @param {object} card the Floorplan3dCard (host): read live, never captured */
-  constructor(card) {
+  card: ActionHost;
+  _confirmEl: HTMLDivElement | null | undefined;
+  _confirmKey: ((e: KeyboardEvent) => void) | undefined;
+  _toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** @param card the Floorplan3dCard (host): read live, never captured */
+  constructor(card: ActionHost) {
     this.card = card;
     this._confirmEl = undefined;
     this._confirmKey = undefined;
     this._toastTimer = undefined; // not cleared on disconnect (the toast hides itself)
   }
 
-  dispose() {
+  dispose(): void {
     this._closeConfirm(); // its window keydown listener
   }
 
   // Runs one HA action (after the in-card confirmation when it asks for one).
-  _runAction(action, ctx) {
-    const call = actionCall(action, { entity: ctx.entity || null, userId: (this.card._hass && this.card._hass.user && this.card._hass.user.id) || null });
+  _runAction(action: CardAction, ctx: ActionContext): void {
+    const call = actionCall(action, { entity: ctx.entity || null, userId: (this.card._hass && this.card._hass.user && this.card._hass.user.id) || null }) as ActionCall;
     if (call.kind === 'none') return;
     if (call.kind === 'error') { this._toast(call.message); return; }
     if (call.confirm) this._confirm(call.confirm, () => this._execCall(call, ctx));
     else this._execCall(call, ctx);
   }
 
-  _execCall(call, ctx) {
+  _execCall(call: ActionCall, ctx: ActionContext): void {
     switch (call.kind) {
       case 'service':
         this._callService(call.domain, call.service, call.data, call.target);
@@ -56,9 +89,9 @@ export class ActionRunner {
   }
 
   // hass.callService with a failure (rejected promise or a throw) shown as a toast, never unhandled.
-  _callService(domain, service, data, target) {
+  _callService(domain: string, service: string, data?: Record<string, unknown>, target?: HassServiceTarget): void {
     if (!this.card._hass) return;
-    const fail = (err) => this._toast((err && err.message) || 'Action failed');
+    const fail = (err: unknown): void => this._toast((err instanceof Object && 'message' in err && typeof err.message === 'string' && err.message) || 'Action failed');
     try {
       const p = target ? this.card._hass.callService(domain, service, data, target) : this.card._hass.callService(domain, service, data);
       if (p && typeof p.catch === 'function') p.catch(fail);
@@ -68,44 +101,46 @@ export class ActionRunner {
   }
 
   // A short message at the bottom of the stage (e.g. an action missing a field).
-  _toast(text) {
-    if (!this.card._toastEl) return;
-    this.card._toastEl.textContent = text;
-    this.card._toastEl.hidden = false;
+  _toast(text: string): void {
+    const el = this.card._toastEl;
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = false;
     clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => { this.card._toastEl.hidden = true; }, 4000);
+    this._toastTimer = setTimeout(() => { el.hidden = true; }, 4000);
   }
 
   // In-card confirmation (never a browser dialog). OK runs ok(); Cancel, Esc or a new one drops it.
-  _confirm(text, ok) {
+  _confirm(text: string, ok: () => void): void {
     this._closeConfirm();
     const el = document.createElement('div');
     el.className = 'fp-confirm';
     el.setAttribute('role', 'dialog');
     el.innerHTML = '<div class="fp-confirm-text"></div><div class="fp-confirm-btns"><button data-c="no">Cancel</button><button data-c="yes" class="primary">OK</button></div>';
-    el.querySelector('.fp-confirm-text').textContent = text;
+    el.querySelector('.fp-confirm-text')!.textContent = text; // in the markup above
     for (const t of ['pointerdown', 'pointerup', 'pointermove', 'click', 'contextmenu', 'wheel']) el.addEventListener(t, (e) => e.stopPropagation());
     el.addEventListener('click', (e) => {
-      const c = e.target.dataset && e.target.dataset.c;
+      const t = e.target as HTMLElement;
+      const c = t.dataset && t.dataset.c;
       if (!c) return;
       this._closeConfirm();
       if (c === 'yes') ok();
     });
-    this._confirmKey = (e) => { if (e.key === 'Escape') this._closeConfirm(); };
+    this._confirmKey = (e: KeyboardEvent) => { if (e.key === 'Escape') this._closeConfirm(); };
     window.addEventListener('keydown', this._confirmKey);
     this._confirmEl = el;
     this.card._stage.append(el);
-    el.querySelector('[data-c=yes]').focus();
+    el.querySelector<HTMLButtonElement>('[data-c=yes]')!.focus(); // in the markup above
   }
 
-  _closeConfirm() {
+  _closeConfirm(): void {
     if (!this._confirmEl) return;
-    window.removeEventListener('keydown', this._confirmKey);
+    if (this._confirmKey) window.removeEventListener('keydown', this._confirmKey);
     this._confirmEl.remove();
     this._confirmEl = null;
   }
 
-  _moreInfo(entityId) {
+  _moreInfo(entityId: string | null): void {
     this.card.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId }, bubbles: true, composed: true }));
   }
 }

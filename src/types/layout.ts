@@ -74,6 +74,9 @@ export interface MowerOverlay {
   [key: string]: unknown;
 }
 
+/** Alias used by the card slice. */
+export type MowerImage = MowerImageConfig;
+
 /** mower.image: mower icon detection on the live map (source 'image'). */
 export interface MowerImageConfig {
   entity?: string;
@@ -95,20 +98,25 @@ export interface LayoutMower {
   calibration?: MowerCalibrationPoint[];
   overlay?: MowerOverlay | null;
   image?: MowerImageConfig;
+  /** 'floor': the mower drives on the floor, not on the model's lawn. */
+  ground?: string;
   /** xy source: attribute with the path driven so far ([[u, v], ...] or a list of segments). */
   track_attr?: string;
-  track_show?: boolean;
+  /** true / 'always' (also while docked). */
+  track_show?: boolean | string;
   track_color?: string;
   track_width?: number;
   track_opacity?: number;
   error_entity?: string;
   /** Extra "no problem" states of the error entity: "a, b" or a list. */
   ok_values?: string | string[];
-  stuck_minutes?: number;
+  /** Minutes mowing without moving before the stuck warning (0 off); YAML may give a string. */
+  stuck_minutes?: number | string;
   /** Auto mode (static vs live map); false turns it off. */
   auto?: boolean;
-  static_entity?: string;
-  picture_entity?: string;
+  /** '' = none, unset = auto-detected. */
+  static_entity?: string | null;
+  picture_entity?: string | null;
   [key: string]: unknown;
 }
 
@@ -125,7 +133,8 @@ export interface LayoutModel {
   version?: unknown;
   /** Level / room ids the user has been shown (the regeneration notice reports changes since). */
   known?: { levels: string[]; rooms: string[] };
-  levels?: Record<string, { floor: string | null }>;
+  /** level id -> { floor } (bound) | { show } (older visibility rule). */
+  levels?: Record<string, { floor?: string | null; show?: string }>;
   rooms?: Record<string, { area?: string | null }>;
   pins_migrated?: boolean;
   [key: string]: unknown;

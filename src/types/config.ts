@@ -12,7 +12,18 @@ export interface CardConfig {
   model_rotation?: number;
   model_scale?: number;
   model_floors?: unknown;
+  model_opacity?: number;
+  /** Merge static model parts (default true). */
+  merge?: boolean;
   view?: string;
+  /** Start floor (HA floor id). */
+  floor?: string;
+  zoom_to?: string;
+  room_labels?: string;
+  /** Weather entity; 'none' / false: no weather. Unset: the first weather entity. */
+  weather?: string | false;
+  /** Cloud shadows, rain and snow (default true). */
+  clouds?: boolean;
   view_id?: string;
   views?: unknown;
   render?: unknown;

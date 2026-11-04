@@ -3,12 +3,26 @@
 // API, else measured frame gaps), the last map refresh's stages, shadow-map updates and renders a minute,
 // and the map refresh interval (doubled by the adaptive throttle).
 import { effectiveRefresh } from './mower-track.js';
+import type { FloorplanView } from './view.js';
+import type { Floorplan3dCard } from './floorplan3d-card.js';
 
-const fmt = (v) => (Number.isFinite(v) ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : '–');
+const fmt = (v: number | null): string => (v !== null && Number.isFinite(v) ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : '–');
+
+/** What the overlay reads of the card (the card itself; a narrow view for fakes). */
+export type DebugCard = Pick<Floorplan3dCard, '_perf' | '_throttle' | '_mapRefreshSec' | 'longTasks'>;
 
 export class DebugOverlay {
-  // card: { _perf, _throttle, _mapRefreshSec(), longTasks() }
-  constructor(stage, view, card) {
+  view: FloorplanView;
+  card: DebugCard;
+  el: HTMLDivElement;
+  frameMs: number[];
+  gaps: [number, number][];
+  minute: [number, number, number][];
+  last: { frames: number };
+  _lastTick: number;
+  timer: ReturnType<typeof setInterval>;
+
+  constructor(stage: HTMLElement, view: FloorplanView, card: DebugCard) {
     this.view = view;
     this.card = card;
     this.el = document.createElement('div');
@@ -19,8 +33,8 @@ export class DebugOverlay {
     this.minute = []; // [at, frames, shadowLights] samples, 1 s apart
     this.last = { frames: view.stats.frames };
     this._lastTick = 0;
-    view.onFrameTime = (ms) => this.frameMs.push(ms);
-    view.onTick = (ts) => {
+    view.onFrameTime = (ms: number) => this.frameMs.push(ms);
+    view.onTick = (ts: number) => {
       if (this._lastTick && ts - this._lastTick > 50) this.gaps.push([performance.now(), ts - this._lastTick]);
       this._lastTick = ts;
     };
@@ -28,7 +42,7 @@ export class DebugOverlay {
     this.update();
   }
 
-  update() {
+  update(): void {
     const v = this.view, now = performance.now();
     const frames = v.stats.frames - this.last.frames;
     this.last.frames = v.stats.frames;
@@ -56,7 +70,7 @@ export class DebugOverlay {
     this.el.textContent = lines.join('\n');
   }
 
-  dispose() {
+  dispose(): void {
     clearInterval(this.timer);
     if (this.view.onFrameTime) this.view.onFrameTime = null;
     if (this.view.onTick) this.view.onTick = null;

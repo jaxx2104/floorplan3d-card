@@ -1,5 +1,5 @@
 // The card's shadow DOM styles (markers, popup, toolbar, edit panel).
-export const STYLE = `
+export const STYLE: string = `
   :host { display: block; }
   ha-card { display: block; overflow: hidden; position: relative; container-type: inline-size;
     background: var(--ha-card-background, var(--card-background-color, #fff));

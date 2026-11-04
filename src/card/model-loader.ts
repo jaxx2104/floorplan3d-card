@@ -7,12 +7,75 @@ import { nodeIndex, unmatchedSelectors } from '../views.js';
 import { threeAdapter } from '../manifest.js';
 import { levelsFromFloorMap, resolveLevels, resolveRoomAreas, bindingDiff, snapshotDiff } from '../bindings.js';
 import { mergeFloors } from '../layout.js';
+import type { Floorplan3dCard } from '../floorplan3d-card.js';
+import type { CardConfig } from '../types/config.js';
+import type { LayoutModel } from '../types/layout.js';
+
+declare global {
+  interface Window {
+    /** Headless checks: the model download timeout (ms) instead of 60 s. */
+    __fpModelTimeoutMs?: number;
+  }
+}
 
 const MODEL_API = '/api/floorplan3d/model';
 
+type FetchFn = (init?: { signal?: AbortSignal }) => Promise<Response>;
+
+/** Where the last model bytes came from: cache key base, version, how to fetch them again. */
+export interface ModelSource {
+  base: string;
+  version: string | null;
+  fetchFn: FetchFn;
+}
+
+/** What the card asks the view to load (view.setModel); null: no model. */
+export interface ModelLoadOpts {
+  url?: string;
+  id?: string | number;
+  name?: string;
+  data: () => Promise<ArrayBuffer>;
+  dataFresh: () => Promise<ArrayBuffer>;
+  position: number[];
+  rotation: number;
+  scale: number;
+  opacity: number;
+  merge?: boolean;
+  keep?: () => string[] | Promise<string[]>;
+  onMerged?: () => void;
+  reload?: boolean;
+}
+
+/** Model placement in the card plan (bindings.js transformPoint). */
+export interface ModelAlign {
+  position: number[];
+  rotation: number;
+  scale: number;
+}
+
+/** The loaded model's fp manifest (as the view has it). */
+export type Manifest = NonNullable<ReturnType<Floorplan3dCard['_view']['modelManifest']>>;
+
+/** The loaded model's levels / rooms resolved against HA (modelBindings). */
+export interface ModelBindings {
+  manifest: Manifest;
+  levels: ReturnType<typeof resolveLevels>;
+  rooms: ReturnType<typeof resolveRoomAreas>;
+  diff: ReturnType<typeof bindingDiff>;
+  notice: ReturnType<typeof snapshotDiff>;
+}
+
 export class ModelLoader {
-  /** @param {object} card the Floorplan3dCard (host): read live, never captured */
-  constructor(card) {
+  card: Floorplan3dCard;
+  _loadGen: number | undefined;
+  _mbCache: { inputs: unknown[]; value: ModelBindings } | undefined;
+  _mergeReloadFor: unknown;
+  _modelSrc: ModelSource | undefined;
+  _modelFromCache: boolean | undefined;
+  _modelEvicted: number | undefined;
+
+  /** @param card the Floorplan3dCard (host): read live, never captured */
+  constructor(card: Floorplan3dCard) {
     this.card = card;
     this._loadGen = undefined; // a later load owns the loading drawing
     this._mbCache = undefined; // modelBindings() per input identity
@@ -23,9 +86,9 @@ export class ModelLoader {
   }
 
   // model: from YAML (model: url) if set, else the one uploaded to the integration (layout.model)
-  _loadModel(reload = false) {
+  _loadModel(reload = false): void {
     const c = this.card._config;
-    let opts = null;
+    let opts: ModelLoadOpts | null = null;
     if (c.model) {
       const url = new URL(String(c.model), location.href).href;
       opts = {
@@ -37,8 +100,8 @@ export class ModelLoader {
             const h = await fetch(url, { method: 'HEAD', credentials: 'same-origin' });
             if (h.ok) version = headerVersion(h.headers);
           } catch (e) { /* offline or no HEAD: fetched below (and not cached) */ }
-          this._modelSrc = { base: url, version, fetchFn: ({ signal } = {}) => fetch(url, { credentials: 'same-origin', signal }) };
-          return this._modelBytes(url, version, this._modelSrc.fetchFn);
+          const src: ModelSource = (this._modelSrc = { base: url, version, fetchFn: ({ signal } = {}) => fetch(url, { credentials: 'same-origin', signal }) });
+          return this._modelBytes(url, version, src.fetchFn);
         },
         dataFresh: () => this._modelFresh(),
         position: Array.isArray(c.model_position) ? c.model_position.map(Number) : [0, 0, 0],
@@ -48,14 +111,14 @@ export class ModelLoader {
     } else {
       const m = this.card._layout && this.card._layout.model;
       if (m && m.version && this.card._hass && this.card._hass.fetchWithAuth) {
-        const base = `${MODEL_API}/${encodeURIComponent(c.layout_key)}`;
+        const base = `${MODEL_API}/${encodeURIComponent(c.layout_key!)}`; // setConfig's default
         const url = `${base}?v=${m.version}`;
         opts = {
           id: m.version, name: m.name,
           // cached locally by version (only the body, keyed by the plain URL: no auth headers stored)
           data: () => {
-            this._modelSrc = { base: new URL(base, location.href).href, version: layoutModelVersion(m), fetchFn: ({ signal } = {}) => this.card._hass.fetchWithAuth(url, { signal }) };
-            return this._modelBytes(this._modelSrc.base, this._modelSrc.version, this._modelSrc.fetchFn);
+            const src: ModelSource = (this._modelSrc = { base: new URL(base, location.href).href, version: layoutModelVersion(m), fetchFn: ({ signal } = {}) => this.card._hass.fetchWithAuth(url, { signal }) });
+            return this._modelBytes(src.base, src.version, src.fetchFn);
           },
           dataFresh: () => this._modelFresh(),
           position: m.position || [0, 0, 0], rotation: m.rotation || 0, scale: m.scale || 1, opacity: m.opacity ?? 1,
@@ -78,12 +141,12 @@ export class ModelLoader {
       this.card._loadUI.progress('Loading model…');
     }
     // the model is there (or failed): the card rebuilds around it
-    this.card._view.setModel(opts).then((err) => this.card._afterModel(err, { fresh, opts, gen, prevModel }));
+    this.card._view.setModel(opts).then((err: string | null | undefined) => this.card._afterModel(err, { fresh, opts, gen, prevModel }));
   }
 
   // Model bytes through the local cache, with the download progress on the stage. -> ArrayBuffer
   // The cached copy did not parse: evicted and fetched once more (a fresh download that fails is final).
-  async _modelFresh() {
+  async _modelFresh(): Promise<ArrayBuffer> {
     const s = this._modelSrc;
     if (!s || !this._modelFromCache) throw new Error('not from the cache');
     await evictModel(s.base);
@@ -91,17 +154,17 @@ export class ModelLoader {
     return this._modelBytes(s.base, s.version, s.fetchFn, { skipCache: true });
   }
 
-  async _modelBytes(base, version, fetchFn, { skipCache = false } = {}) {
+  async _modelBytes(base: string, version: string | null, fetchFn: FetchFn, { skipCache = false }: { skipCache?: boolean } = {}): Promise<ArrayBuffer> {
     const ui = this.card._loadUI;
     const timeoutMs = Number(window.__fpModelTimeoutMs) || undefined; // headless checks shorten the 60 s
-    const { buf, cached } = await loadModelBuffer({ base, version, fetchFn, skipCache, timeoutMs, onProgress: (l, t) => ui.download(l, t) });
+    const { buf, cached } = await loadModelBuffer({ base, version, fetchFn, skipCache, timeoutMs, onProgress: (l: number, t: number) => ui.download(l, t) });
     this._modelFromCache = cached; // headless checks
     ui.progress('Preparing model…');
     return buf;
   }
 
   // The model was merged after it was shown (the layout came later): index the merged tree, re-apply the view.
-  _modelMerged() {
+  _modelMerged(): void {
     const vw = this.card._view;
     if (!vw.model) return;
     if (this.card._index && this.card._built.viewManifest === vw.model.manifest) {
@@ -118,7 +181,7 @@ export class ModelLoader {
 
   // Layout node: rules that match nothing and were not known when the model was merged (an imported or
   // later-loaded layout may target merged parts): load the model once more, merging around them.
-  _checkMergeKeep() {
+  _checkMergeKeep(): void {
     const vw = this.card._view, ms = vw.mergeStats;
     if (!vw.model || !ms || !ms.enabled || !ms.merged || !this.card._index || this._mergeReloadFor === vw.model.id) return;
     const known = new Set(ms.keep);
@@ -129,12 +192,13 @@ export class ModelLoader {
   }
 
   // View rule selectors from the layout and the card YAML: their node: matches are not merged away.
-  _mergeKeepSelectors() {
-    const out = [];
-    const add = (views) => {
+  _mergeKeepSelectors(): string[] {
+    const out: string[] = [];
+    // layout.views / YAML views: { [id]: { rules: [{ show | hide: selector }] } }, read defensively
+    const add = (views: unknown): void => {
       if (!views || typeof views !== 'object') return;
-      for (const v of Object.values(views)) {
-        for (const r of (v && Array.isArray(v.rules) ? v.rules : [])) {
+      for (const v of Object.values(views) as ({ rules?: unknown } | null)[]) {
+        for (const r of (v && Array.isArray(v.rules) ? v.rules as ({ show?: unknown; hide?: unknown } | null)[] : [])) {
           const sel = r && (r.show ?? r.hide);
           if (typeof sel === 'string') out.push(sel);
         }
@@ -145,21 +209,21 @@ export class ModelLoader {
     return out;
   }
 
-  _modelAlign() {
-    const c = this.card._config;
+  _modelAlign(): ModelAlign {
+    const c: CardConfig = this.card._config;
     if (c.model) {
       return {
         position: Array.isArray(c.model_position) ? c.model_position.map(Number) : [0, 0, 0],
         rotation: Number(c.model_rotation) || 0, scale: Number(c.model_scale) || 1,
       };
     }
-    const m = (this.card._layout && this.card._layout.model) || {};
+    const m: LayoutModel = (this.card._layout && this.card._layout.model) || {};
     return { position: m.position || [0, 0, 0], rotation: m.rotation || 0, scale: m.scale || 1 };
   }
 
   // Saved level/room bindings (layout.model; YAML model_floors for URL models) resolved
   // against the loaded model and the current HA floors and areas.
-  modelBindings() {
+  modelBindings(): ModelBindings | null {
     const manifest = this.card._view && this.card._view.modelManifest();
     if (!manifest || !this.card._hass) return null;
     // cached per input identity: per hass state update nothing here changes
@@ -171,8 +235,8 @@ export class ModelLoader {
     return value;
   }
 
-  _computeBindings(manifest) {
-    const saved = (this.card._layout && this.card._layout.model) || {};
+  _computeBindings(manifest: Manifest): ModelBindings {
+    const saved: LayoutModel = (this.card._layout && this.card._layout.model) || {};
     const savedLevels = { ...(this.card._config.model ? levelsFromFloorMap(this.card._config.model_floors) : {}), ...saved.levels };
     const haFloors = mergeFloors(this.card._hass, this.card._layout || {}); // HA floors plus layout-only floors
     return {

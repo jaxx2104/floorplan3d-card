@@ -26,10 +26,67 @@ import { MarkerLayer } from './card/marker-layer.js';
 import { ActionRunner } from './card/action-runner.js';
 import { ObjectInput } from './card/object-input.js';
 import { SkyController } from './card/sky-controller.js';
+import type { CardConfig } from './types/config.js';
+import type { Hass, HassEntity, HassThemes } from './types/ha.js';
+import type { Layout } from './types/layout.js';
 
 const VERSION = '0.0.0-dev';
 
-function cssColor(el, name, fallback) {
+/** The card's colours from the HA theme (view.setTheme). */
+export interface CardTheme {
+  dark: boolean;
+  floor: Color;
+  outdoor: Color;
+  wall: Color;
+  edge: Color;
+  primary: Color;
+}
+
+/** A main-thread long task (> 50 ms): start (performance.now ms) and duration. */
+export interface LongTask {
+  start: number;
+  ms: number;
+}
+
+/**
+ * What the scene was last built from (by identity), so _update rebuilds only the parts whose inputs
+ * changed. Filled lazily: every entry starts undefined.
+ */
+export interface Built {
+  themes?: HassThemes;
+  theme?: CardTheme;
+  modelKeyIn?: unknown[];
+  modelKeyNow?: string;
+  modelKey?: string;
+  manifest?: unknown;
+  rooms?: Layout['rooms'];
+  roomLabels?: unknown;
+  lfloors?: Layout['floors'];
+  floors?: Hass['floors'];
+  areas?: Hass['areas'];
+  sig?: unknown[];
+  pins?: Layout['pins'];
+  hidden?: Layout['hidden'];
+  mowerKey?: string;
+  model?: Layout['model'];
+  mower?: Layout['mower'];
+  states?: Record<string, HassEntity>;
+  badges?: Layout['badges'];
+  viewInputs?: unknown[];
+  viewManifest?: unknown;
+  viewKey?: string;
+  viewsKey?: string;
+}
+
+/** The info a ModelLoader load hands to _afterModel. */
+export interface ModelLoadInfo {
+  fresh: boolean;
+  opts: unknown;
+  gen: number;
+  prevModel: unknown;
+}
+
+function cssColor(el: Element, name: string, fallback: string): Color {
   const v = getComputedStyle(el).getPropertyValue(name).trim();
   const c = new Color();
   try {
@@ -41,9 +98,121 @@ function cssColor(el, name, fallback) {
   return c;
 }
 
-const luminance = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+const luminance = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
-class Floorplan3dCard extends HTMLElement {
+// Delegated members (see the facade at the end): the names per part. The interface merged with the
+// class below gives the card their types, taken from the part that owns them.
+const MOWER_METHODS = [
+  '_mowerFloor', '_refreshMower', '_mowerStateEntity', '_updateMowerWarning', '_warningText', '_dockGroup',
+  '_dockedNow', 'mowerStatus', 'mowerStatusText', 'mowerHeading', '_mapRefreshSec', 'mowerAuto', '_mowerZ',
+  'mapZone', 'mapInfo', '_refreshMapOverlay',
+] as const satisfies readonly (keyof MowerController)[];
+const MOWER_FIELDS = [
+  '_autoMismatch', '_dockPx', '_headSt', '_headingSource', '_iconHead', '_iconHeadRaw', '_imageBlob',
+  '_imageResult', '_lastFrame', '_mapDetect', '_mapProc', '_mapStats', '_mowerLive', '_mowerOffline', '_perf',
+  '_throttle', '_trk', '_warning',
+] as const satisfies readonly (keyof MowerController)[];
+const MODEL_METHODS = [
+  '_loadModel', '_modelFresh', '_modelBytes', '_checkMergeKeep', '_modelAlign', 'modelBindings',
+] as const satisfies readonly (keyof ModelLoader)[];
+const MODEL_FIELDS = [
+  '_loadGen', '_modelEvicted', '_modelFromCache', '_modelSrc',
+] as const satisfies readonly (keyof ModelLoader)[];
+const VIEW_METHODS = [
+  '_buildStructure', '_pickView', '_refreshViews', '_resolveViewList', '_stateFor', 'currentView', '_applyZoomTo',
+  'viewIndex', '_applyViewVisibility', '_applyMarkerStates', '_allRooms', '_setView', '_initialCamera',
+  '_resetCamera', '_setFloor', '_setMode', '_armIdleReset', '_dropSection', 'sectionPlaneNow', 'leaveSection',
+  'setSection', 'previewSection', 'saveViewPatch',
+] as const satisfies readonly (keyof ViewController)[];
+const VIEW_FIELDS = [
+  '_fitted', '_floor', '_floorOnly', '_floors', '_idleTimer', '_levels', '_modelRooms', '_outlineModel',
+  '_roomList', '_section', '_viewId', '_viewState', '_views', '_zones', '_index', '_mode',
+] as const satisfies readonly (keyof ViewController)[];
+const MARKER_METHODS = [
+  '_buildMarkers', '_refreshStates', 'badgeOpts', '_objectBadge', '_applyMarkerSelection', '_scheduleSurfaces',
+  '_refreshAttached',
+] as const satisfies readonly (keyof MarkerLayer)[];
+const MARKER_FIELDS = [
+  '_markers', '_markerEls', '_positions', '_mowerMarkerId', '_surf', '_surfJob',
+] as const satisfies readonly (keyof MarkerLayer)[];
+const ACTION_METHODS = [
+  '_runAction', '_callService', '_toast', '_closeConfirm', '_moreInfo',
+] as const satisfies readonly (keyof ActionRunner)[];
+const OBJECT_METHODS = [
+  '_syncBindings', '_tagIndex', '_updateObjects', '_objectTapsOn', '_objectHit', '_endGesture', 'testObject',
+  '_markerActions', '_runObjectAction', '_openObjectPopup', '_runMarkerAction', 'objectLabel', '_syncHints',
+] as const satisfies readonly (keyof ObjectInput)[];
+const OBJECT_FIELDS = [
+  '_bindings', '_boundEntities', '_groups',
+] as const satisfies readonly (keyof ObjectInput)[];
+const SKY_METHODS = [
+  'setSunTime', '_paintSunBtn', '_paintDayBtn', '_applySky', '_applyWeather', '_syncNightMarkers', '_wakeMarkers',
+] as const satisfies readonly (keyof SkyController)[];
+const SKY_FIELDS = [
+  '_skyMode', '_sunTime', '_sunNow', '_dayBtn',
+] as const satisfies readonly (keyof SkyController)[];
+
+type Names<T extends readonly string[]> = T[number];
+
+// The delegated members on the card, typed as their parts declare them (the accessors are defined below
+// by defineDelegates, so the declaration merging is intended).
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging
+export interface Floorplan3dCard extends
+  Pick<MowerController, Names<typeof MOWER_METHODS> | Names<typeof MOWER_FIELDS>>,
+  Pick<ModelLoader, Names<typeof MODEL_METHODS> | Names<typeof MODEL_FIELDS>>,
+  Pick<ViewController, Names<typeof VIEW_METHODS> | Names<typeof VIEW_FIELDS>>,
+  Pick<MarkerLayer, Names<typeof MARKER_METHODS> | Names<typeof MARKER_FIELDS>>,
+  Pick<ActionRunner, Names<typeof ACTION_METHODS>>,
+  Pick<ObjectInput, Names<typeof OBJECT_METHODS> | Names<typeof OBJECT_FIELDS>>,
+  Pick<SkyController, Names<typeof SKY_METHODS> | Names<typeof SKY_FIELDS>> {}
+
+export class Floorplan3dCard extends HTMLElement {
+  _mowerCtl: MowerController;
+  _modelLoader: ModelLoader;
+  _viewCtl: ViewController;
+  _markerLayer: MarkerLayer;
+  _actionRunner: ActionRunner;
+  _objectInput: ObjectInput;
+  _skyCtl: SkyController;
+  _layout: Layout | null;
+  _layoutReady: Promise<void>;
+  _built: Built;
+  _taps: TapSequencer;
+  _objects: ObjectLayer | null;
+  // Set later (declare: no own field until then). setConfig sets _config / _mode / _store before the
+  // card renders, _render the DOM parts and the view, the hass setter _hass: the members that use them
+  // run after that (the ones that may run earlier check them).
+  declare _layoutLoaded: () => void;
+  declare _config: CardConfig;
+  declare _store: LayoutStore;
+  declare _hass: Hass;
+  declare _view: FloorplanView;
+  declare _edit: EditMode;
+  declare _stage: HTMLDivElement;
+  declare _body: HTMLDivElement;
+  declare _chips: HTMLDivElement;
+  declare _empty: HTMLDivElement;
+  declare _notice: HTMLDivElement;
+  declare _toastEl: HTMLDivElement;
+  declare _sectionBtn: HTMLButtonElement;
+  declare _editBtn: HTMLButtonElement;
+  declare _loadUI: ModelLoadUI;
+  declare _popup: ObjectPopup;
+  declare _hints: TapHints;
+  declare _editing: boolean | undefined;
+  declare _loading: boolean | undefined;
+  declare _pending: boolean | undefined;
+  declare _saveSeq: number | undefined;
+  declare _mb: ReturnType<ModelLoader['modelBindings']> | undefined;
+  declare _labels: Record<string, { name: string }> | undefined;
+  declare _labelsTried: boolean | undefined;
+  declare _debug: DebugOverlay | null | undefined;
+  declare _ltObs: PerformanceObserver | null | undefined;
+  declare _longs: LongTask[] | undefined;
+  declare _ro: ResizeObserver | undefined;
+  declare _io: IntersectionObserver | null | undefined;
+  declare _onActivity: (() => void) | undefined;
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -56,32 +225,32 @@ class Floorplan3dCard extends HTMLElement {
     this._objectInput = new ObjectInput(this);
     this._skyCtl = new SkyController(this);
     this._layout = null;
-    this._layoutReady = new Promise((r) => { this._layoutLoaded = r; }); // resolves once the stored layout has loaded (or failed)
+    this._layoutReady = new Promise<void>((r) => { this._layoutLoaded = r; }); // resolves once the stored layout has loaded (or failed)
     this._built = {};
     this._taps = new TapSequencer(); // single vs double tap, per target
     this._objects = null; // ObjectLayer: model lamps and the real light pool
   }
 
-  static getStubConfig() {
+  static getStubConfig(): Partial<CardConfig> {
     return {};
   }
 
   // sections view: span the whole section by default
-  getGridOptions() {
+  getGridOptions(): { columns: string; min_columns: number; rows: string } {
     return { columns: 'full', min_columns: 6, rows: 'auto' };
   }
 
-  static getConfigElement() {
+  static getConfigElement(): HTMLElement {
     return document.createElement('floorplan3d-card-editor');
   }
 
-  setConfig(config) {
+  setConfig(config: CardConfig): void {
     this._config = { layout_key: 'default', height: '520px', group_by: 'device', wall_height: 1.0, view: '3d', ...config };
     this._mode = this._config.view === 'top' ? 'top' : '3d';
     this._store = new LayoutStore(this._config.layout_key);
     if (this._stage) {
-      this._stage.style.height = this._config.height;
-      this._body.style.setProperty('--fp-height', this._config.height);
+      this._stage.style.height = this._config.height!; // set: the default above
+      this._body.style.setProperty('--fp-height', this._config.height!);
     }
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
@@ -109,7 +278,7 @@ class Floorplan3dCard extends HTMLElement {
   }
 
   // debug: true -> the performance overlay
-  _syncDebug() {
+  _syncDebug(): void {
     const on = !!(this._config && this._config.debug) && !!this._view && this.isConnected;
     if (on && !this._debug) this._debug = new DebugOverlay(this._stage, this._view, this);
     else if (!on && this._debug) { this._debug.dispose(); this._debug = null; }
@@ -117,16 +286,16 @@ class Floorplan3dCard extends HTMLElement {
 
   // Main-thread long tasks (> 50 ms) of the last minute, where the browser reports them: the adaptive
   // map throttle and the debug overlay. -> [{ start, ms }] | null (not supported)
-  _observeLongTasks() {
+  _observeLongTasks(): void {
     if (this._ltObs || typeof PerformanceObserver !== 'function') return;
     const types = PerformanceObserver.supportedEntryTypes || [];
     if (!types.includes('longtask')) return;
-    this._longs = this._longs || [];
+    const longs = (this._longs = this._longs || []);
     try {
       this._ltObs = new PerformanceObserver((list) => {
         const now = performance.now();
-        for (const e of list.getEntries()) this._longs.push({ start: e.startTime, ms: e.duration });
-        while (this._longs.length && now - this._longs[0].start > 60000) this._longs.shift();
+        for (const e of list.getEntries()) longs.push({ start: e.startTime, ms: e.duration });
+        while (longs.length && now - longs[0].start > 60000) longs.shift();
       });
       this._ltObs.observe({ type: 'longtask' });
     } catch (e) {
@@ -134,15 +303,15 @@ class Floorplan3dCard extends HTMLElement {
     }
   }
 
-  longTasks() {
+  longTasks(): LongTask[] | null {
     return this._ltObs ? this._longs || [] : null;
   }
 
-  getCardSize() {
-    return Math.ceil(parseInt(this._config?.height, 10) / 50) || 10;
+  getCardSize(): number {
+    return Math.ceil(parseInt(this._config?.height as string, 10) / 50) || 10; // NaN (no config) -> 10
   }
 
-  set hass(hass) {
+  set hass(hass: Hass) {
     this._hass = hass;
     this._fetchLabels(hass);
     if (this._view && this._view.model && this._skyMode === 'auto') this._applySky(false);
@@ -152,25 +321,25 @@ class Floorplan3dCard extends HTMLElement {
     this._schedule();
   }
 
-  get hass() {
+  get hass(): Hass {
     return this._hass;
   }
 
   // hass.labels is missing on some HA versions: ask the label registry once (non-admins may be refused), cache the names.
-  _fetchLabels(hass) {
+  _fetchLabels(hass: Hass): void {
     if (hass.labels || this._labelsTried || typeof hass.callWS !== 'function') return;
     this._labelsTried = true;
-    Promise.resolve().then(() => hass.callWS({ type: 'config/label_registry/list' })).then((list) => {
+    Promise.resolve().then(() => hass.callWS<unknown>({ type: 'config/label_registry/list' })).then((list) => {
       if (!Array.isArray(list)) return;
-      const out = {};
-      for (const l of list) if (l && l.label_id) out[l.label_id] = { name: l.name };
+      const out: Record<string, { name: string }> = {};
+      for (const l of list as ({ label_id?: string; name: string } | null)[]) if (l && l.label_id) out[l.label_id] = { name: l.name };
       this._labels = out;
       this._objectInput.resetBindKey();
       this._schedule();
     }).catch(() => {});
   }
 
-  connectedCallback() {
+  connectedCallback(): void {
     if (!this._config) return; // setConfig renders once it arrives
     if (!this._view) this._render();
     else if (this._editing) this._edit.attach();
@@ -192,12 +361,14 @@ class Floorplan3dCard extends HTMLElement {
     this._scheduleSurfaces();
     // idle_reset: any touch, wheel or key on the card restarts the countdown
     if (!this._onActivity) this._onActivity = () => { this._armIdleReset(); this._wakeMarkers(); };
-    for (const t of ['pointerdown', 'wheel', 'keydown']) this.addEventListener(t, this._onActivity, { capture: true, passive: true });
+    const onActivity = this._onActivity;
+    for (const t of ['pointerdown', 'wheel', 'keydown']) this.addEventListener(t, onActivity, { capture: true, passive: true });
     this._armIdleReset(); // counting from when the card is shown, so an untouched tablet starts turning too
   }
 
-  disconnectedCallback() {
-    for (const t of ['pointerdown', 'wheel', 'keydown']) if (this._onActivity) this.removeEventListener(t, this._onActivity, { capture: true });
+  disconnectedCallback(): void {
+    const onActivity = this._onActivity;
+    for (const t of ['pointerdown', 'wheel', 'keydown']) if (onActivity) this.removeEventListener(t, onActivity, { capture: true });
     if (this._view) this._view.stopOrbit();
     this._viewCtl.dispose(); // idle reset timer
     if (this._view) this._view.stop();
@@ -216,7 +387,7 @@ class Floorplan3dCard extends HTMLElement {
     this._markerLayer.dispose(); // surface job
   }
 
-  async _load() {
+  async _load(): Promise<void> {
     this._loading = true;
     try {
       this._layout = await this._store.load(this._hass);
@@ -227,8 +398,8 @@ class Floorplan3dCard extends HTMLElement {
     this._schedule();
   }
 
-  _render() {
-    const root = this.shadowRoot;
+  _render(): void {
+    const root = this.shadowRoot!; // attached in the constructor
     root.innerHTML = `<style>${STYLE}${LOAD_STYLE}</style>
       <ha-card>
         <div class="body">
@@ -249,26 +420,31 @@ class Floorplan3dCard extends HTMLElement {
           </div>
         </div>
       </ha-card>`;
-    this._stage = root.querySelector('.stage');
-    this._stage.style.height = this._config.height;
-    root.querySelector('.body').style.setProperty('--fp-height', this._config.height);
-    this._chips = root.querySelector('.chips');
-    this._empty = root.querySelector('.empty');
-    this._notice = root.querySelector('.notice');
-    this._toastEl = root.querySelector('.fp-toast');
-    root.querySelector('.seg').addEventListener('click', (e) => {
-      const mode = e.target.dataset && e.target.dataset.mode;
-      if (mode) this._setMode(mode);
+    // the elements of the markup above (always there)
+    const q = <E extends Element>(sel: string): E => root.querySelector<E>(sel)!;
+    this._stage = q<HTMLDivElement>('.stage');
+    const height = this._config.height!; // setConfig's default
+    this._stage.style.height = height;
+    q<HTMLDivElement>('.body').style.setProperty('--fp-height', height);
+    this._chips = q<HTMLDivElement>('.chips');
+    this._empty = q<HTMLDivElement>('.empty');
+    this._notice = q<HTMLDivElement>('.notice');
+    this._toastEl = q<HTMLDivElement>('.fp-toast');
+    q<HTMLDivElement>('.seg').addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const mode = t.dataset && t.dataset.mode;
+      if (mode) this._setMode(mode as '3d' | 'top'); // the buttons' data-mode
     });
     this._chips.addEventListener('click', (e) => {
-      const id = e.target.dataset && e.target.dataset.view;
+      const t = e.target as HTMLElement;
+      const id = t.dataset && t.dataset.view;
       if (id) this._setView(id);
     });
-    root.querySelector('button.reset').addEventListener('click', () => this._resetCamera());
-    this._sectionBtn = root.querySelector('button.section');
+    q<HTMLButtonElement>('button.reset').addEventListener('click', () => this._resetCamera());
+    this._sectionBtn = q<HTMLButtonElement>('button.section');
     this._sectionBtn.addEventListener('click', () => this.setSection(!this._section));
-    this._body = root.querySelector('.body');
-    this._editBtn = root.querySelector('button.edit');
+    this._body = q<HTMLDivElement>('.body');
+    this._editBtn = q<HTMLButtonElement>('button.edit');
     this._skyCtl.wire(root); // Day / night button, sun time scrubber
     this._editBtn.addEventListener('click', () => this._toggleEdit());
     this._view = new FloorplanView(this._stage);
@@ -284,17 +460,17 @@ class Floorplan3dCard extends HTMLElement {
         return drawn.length ? drawn : null;
       },
     });
-    this._view.onMapImage = (img, w, h) => this._mowerCtl._onMapImage(img, w, h);
+    this._view.onMapImage = (img: ImageBitmap, w: number, h: number) => this._mowerCtl._onMapImage(img, w, h);
     // auto mode: settings or the mower picture changed -> the current picture again, searched in full
     this._view.onMapReprocess = () => this._mowerCtl.onMapReprocess();
-    this._objects = new ObjectLayer(this._view);
+    const objects = (this._objects = new ObjectLayer(this._view));
     this._view.onObjectsInvalidate = () => this._objectInput._updateObjects(); // view, section or placement changed
     this._popup = new ObjectPopup(this._stage, {
-      onAction: (domain, service, data) => this._callService(domain, service, data),
-      onLink: (action) => this._runAction(action, {}),
-      project: (w) => this._view.projectWorld(w),
-      anchor: (id) => this._objects.anchorOf(id),
-      resolve: (id) => this._objectInput.popupResolve(id),
+      onAction: (domain: string, service: string, data?: Record<string, unknown>) => this._callService(domain, service, data),
+      onLink: (action: Parameters<ActionRunner['_runAction']>[0]) => this._runAction(action, {}),
+      project: (w: Parameters<FloorplanView['projectWorld']>[0]) => this._view.projectWorld(w),
+      anchor: (id: string) => objects.anchorOf(id),
+      resolve: (id: string) => this._objectInput.popupResolve(id),
     });
     this._hints = new TapHints(this._view.objectsGroup);
     this._hints.setPixelRatio(this._view.renderer.getPixelRatio());
@@ -310,7 +486,7 @@ class Floorplan3dCard extends HTMLElement {
     this._view.setMaxFps(this._config.max_fps);
     this._view.setSurroundLight(this._config.surround_light);
     this._view.setCityLights(this._config.city_lights);
-    this._view.onPixelRatio = (pr) => this._hints.setPixelRatio(pr);
+    this._view.onPixelRatio = (pr: number) => this._hints.setPixelRatio(pr);
     this._view.setMode(this._mode);
     this._loadModel();
     this._edit = new EditMode(this);
@@ -328,11 +504,11 @@ class Floorplan3dCard extends HTMLElement {
 
   // A model load finished (ModelLoader._loadModel; err: its message, '' / undefined when fine): the
   // card rebuilds around the model that is there now.
-  _afterModel(err, { fresh, opts, gen, prevModel }) {
+  _afterModel(err: string | null | undefined, { fresh, opts, gen, prevModel }: ModelLoadInfo): void {
     if ((fresh || err || !opts) && gen === (this._loadGen || 0)) this._loadUI.done(!!this._view.model && !err, err || '');
     if (this._view.model !== prevModel && this._section) this._dropSection();
     if (this._view.model !== prevModel) { this._endGesture(); this._popup.close(); }
-    this._objects.setModel(this._view.model);
+    this._objects!.setModel(this._view.model); // created with the view, before any model load
     // bind now: lamps light and bound markers hide without waiting for the next hass push
     if (this._hass && this._layout && this._floors && this._syncBindings()) {
       this._buildMarkers();
@@ -354,7 +530,7 @@ class Floorplan3dCard extends HTMLElement {
     if (this._editing) this._edit.onModelLoaded(this._view.model !== prevModel);
   }
 
-  _toggleEdit() {
+  _toggleEdit(): void {
     this._objectInput.clearHover();
     this._endGesture();
     this._taps.cancel();
@@ -363,7 +539,8 @@ class Floorplan3dCard extends HTMLElement {
     this._editing = !this._editing;
     this._body.classList.toggle('editing', this._editing);
     if (this._editing) {
-      if (!this._view.model && this._floor === 'all') this._setFloor(this._floors[0].id);
+      const first = this._floors && this._floors[0];
+      if (!this._view.model && this._floor === 'all' && first) this._setFloor(first.id);
       this._edit.enter();
     } else {
       this._edit.exit();
@@ -379,24 +556,24 @@ class Floorplan3dCard extends HTMLElement {
   }
 
   // Apply an edited layout: rebuild the plan and save it.
-  _commit(layout) {
+  _commit(layout: Layout): void {
     this._layout = layout;
     const seq = (this._saveSeq = (this._saveSeq || 0) + 1);
     this._edit.setSaveState('saving');
-    this._store.save(this._hass, layout).then((ok) => {
+    this._store.save(this._hass, layout).then((ok: boolean) => {
       if (seq === this._saveSeq) this._edit.setSaveState(ok ? 'saved' : 'failed');
     });
     this._schedule();
   }
 
-  _resize() {
+  _resize(): void {
     const r = this._stage.getBoundingClientRect();
     if (!r.width || !r.height) return;
     this._view.resize(r.width, r.height);
     if (!this._fitted && this._roomList) this._initialCamera();
   }
 
-  _schedule() {
+  _schedule(): void {
     if (this._pending) return;
     this._pending = true;
     queueMicrotask(() => {
@@ -407,10 +584,10 @@ class Floorplan3dCard extends HTMLElement {
 
   // Rebuild only what changed. Edits replace just the layout parts they touch, so identity
   // comparisons per part keep e.g. overlay slider changes from rebuilding the whole scene.
-  _update() {
+  _update(): void {
     const h = this._hass;
     const b = this._built;
-    const l = this._layout;
+    const l = this._layout!; // _schedule runs it only with a layout
     let structure = false, markers = false, mower = false;
 
     if (h.themes !== b.themes || !b.theme) {
@@ -425,7 +602,8 @@ class Floorplan3dCard extends HTMLElement {
     const viewsOnly = viewsChanged === 'views'; // only layout.views / view_order: no scene or marker rebuild
     let viewRefreshed = false;
     const mkIn = [mb, this._config, l.model];
-    if (!b.modelKeyIn || mkIn.some((x, i) => x !== b.modelKeyIn[i])) {
+    const was = b.modelKeyIn;
+    if (!was || mkIn.some((x, i) => x !== was[i])) {
       b.modelKeyIn = mkIn;
       b.modelKeyNow = mb ? JSON.stringify([mb.levels, mb.rooms, this._modelAlign()]) : '';
     }
@@ -443,7 +621,8 @@ class Floorplan3dCard extends HTMLElement {
     const sig = registrySignature(h);
     const m = l.mower || null;
     const mowerKey = m ? `${m.entity}|${m.floor_id}` : '';
-    if (this._syncBindings() || markers || !b.sig || sig.some((x, i) => x !== b.sig[i]) || l.pins !== b.pins || l.hidden !== b.hidden || mowerKey !== b.mowerKey) {
+    const bsig = b.sig;
+    if (this._syncBindings() || markers || !bsig || sig.some((x, i) => x !== bsig[i]) || l.pins !== b.pins || l.hidden !== b.hidden || mowerKey !== b.mowerKey) {
       b.sig = sig;
       b.pins = l.pins;
       b.hidden = l.hidden;
@@ -472,24 +651,24 @@ class Floorplan3dCard extends HTMLElement {
     else if (this._editing) this._edit.onStates();
   }
 
-  _applyTheme() {
+  _applyTheme(): void {
     const bg = cssColor(this, '--card-background-color', '#ffffff');
     const text = cssColor(this, '--primary-text-color', '#212121');
     const dark = this._hass.themes && typeof this._hass.themes.darkMode === 'boolean'
       ? this._hass.themes.darkMode : luminance(bg) < 0.4;
-    const mix = (a, c, t) => a.clone().lerp(c, t);
-    this._built.theme = {
+    const mix = (a: Color, c: Color, t: number): Color => a.clone().lerp(c, t);
+    const theme: CardTheme = (this._built.theme = {
       dark,
       floor: mix(bg, text, dark ? 0.09 : 0.05),
       outdoor: mix(bg, new Color('#5a9e4b'), dark ? 0.22 : 0.3),
       wall: mix(bg, text, dark ? 0.42 : 0.3),
       edge: mix(bg, text, dark ? 0.3 : 0.22),
       primary: cssColor(this, '--primary-color', '#03a9f4'),
-    };
-    this._view.setTheme(this._built.theme);
+    });
+    this._view.setTheme(theme);
   }
 
-  _syncToolbar() {
+  _syncToolbar(): void {
     const hasModel = !!(this._view && this._view.model);
     // without a model: one chip per floor plus All (not while editing), shown with 2+ floors
     const views = this._views.filter((v) => !v.hidden && (hasModel || !this._editing || v.id !== 'all'));
@@ -504,8 +683,8 @@ class Floorplan3dCard extends HTMLElement {
         this._chips.append(btn);
       }
     }
-    for (const btn of this.shadowRoot.querySelectorAll('.seg button')) btn.classList.toggle('on', btn.dataset.mode === this._mode);
-    this._dayBtn.hidden = !(this._view && this._view.model);
+    for (const btn of this.shadowRoot!.querySelectorAll<HTMLButtonElement>('.seg button')) btn.classList.toggle('on', btn.dataset.mode === this._mode);
+    this._dayBtn!.hidden = !(this._view && this._view.model); // wired by _render first
     if (this._section && (!this._mb || !this._index || !hasModel)) this._dropSection();
     if (this._sectionBtn) {
       this._sectionBtn.hidden = !(this._view && this._view.model && this._mode === '3d');
@@ -514,7 +693,7 @@ class Floorplan3dCard extends HTMLElement {
     this._paintDayBtn();
     this._paintSunBtn();
     this._editBtn.hidden = !(this._hass && this._hass.user && this._hass.user.is_admin);
-    this._editBtn.querySelector('span').textContent = this._editing ? 'Done' : 'Edit';
+    this._editBtn.querySelector('span')!.textContent = this._editing ? 'Done' : 'Edit';
     if (this._empty && this._editing) this._empty.hidden = true;
   }
 }
@@ -522,74 +701,35 @@ class Floorplan3dCard extends HTMLElement {
 // The facade: members used outside their part (edit mode, the debug overlay, headless checks, the other
 // parts) keep their names on the card. Fields forward get / set, so the same objects come back.
 const proto = Floorplan3dCard.prototype;
-defineDelegates(proto, '_mowerCtl', {
-  methods: [
-    '_mowerFloor', '_refreshMower', '_mowerStateEntity', '_updateMowerWarning', '_warningText', '_dockGroup',
-    '_dockedNow', 'mowerStatus', 'mowerStatusText', 'mowerHeading', '_mapRefreshSec', 'mowerAuto', '_mowerZ',
-    'mapZone', 'mapInfo', '_refreshMapOverlay',
-  ],
-  fields: [
-    '_autoMismatch', '_dockPx', '_headSt', '_headingSource', '_iconHead', '_iconHeadRaw', '_imageBlob',
-    '_imageResult', '_lastFrame', '_mapDetect', '_mapProc', '_mapStats', '_mowerLive', '_mowerOffline', '_perf',
-    '_throttle', '_trk', '_warning',
-  ],
-});
-defineDelegates(proto, '_modelLoader', {
-  methods: [
-    '_loadModel', '_modelFresh', '_modelBytes', '_checkMergeKeep', '_modelAlign', 'modelBindings',
-  ],
-  fields: [
-    '_loadGen', '_modelEvicted', '_modelFromCache', '_modelSrc',
-  ],
-});
-defineDelegates(proto, '_viewCtl', {
-  methods: [
-    '_buildStructure', '_pickView', '_refreshViews', '_resolveViewList', '_stateFor', 'currentView', '_applyZoomTo',
-    'viewIndex', '_applyViewVisibility', '_applyMarkerStates', '_allRooms', '_setView', '_initialCamera',
-    '_resetCamera', '_setFloor', '_setMode', '_armIdleReset', '_dropSection', 'sectionPlaneNow', 'leaveSection',
-    'setSection', 'previewSection', 'saveViewPatch',
-  ],
-  fields: [
-    '_fitted', '_floor', '_floorOnly', '_floors', '_idleTimer', '_levels', '_modelRooms', '_outlineModel',
-    '_roomList', '_section', '_viewId', '_viewState', '_views', '_zones', '_index', '_mode',
-  ],
-});
-defineDelegates(proto, '_markerLayer', {
-  methods: [
-    '_buildMarkers', '_refreshStates', 'badgeOpts', '_objectBadge', '_applyMarkerSelection', '_scheduleSurfaces',
-    '_refreshAttached',
-  ],
-  fields: [
-    '_markers', '_markerEls', '_positions', '_mowerMarkerId', '_surf', '_surfJob',
-  ],
-});
-defineDelegates(proto, '_actionRunner', {
-  methods: [
-    '_runAction', '_callService', '_toast', '_closeConfirm', '_moreInfo',
-  ],
-});
-defineDelegates(proto, '_objectInput', {
-  methods: [
-    '_syncBindings', '_tagIndex', '_updateObjects', '_objectTapsOn', '_objectHit', '_endGesture', 'testObject',
-    '_markerActions', '_runObjectAction', '_openObjectPopup', '_runMarkerAction', 'objectLabel', '_syncHints',
-  ],
-  fields: [
-    '_bindings', '_boundEntities', '_groups',
-  ],
-});
-defineDelegates(proto, '_skyCtl', {
-  methods: [
-    'setSunTime', '_paintSunBtn', '_paintDayBtn', '_applySky', '_applyWeather', '_syncNightMarkers', '_wakeMarkers',
-  ],
-  fields: [
-    '_skyMode', '_sunTime', '_sunNow', '_dayBtn',
-  ],
-});
+defineDelegates<MowerController>(proto, '_mowerCtl', { methods: MOWER_METHODS, fields: MOWER_FIELDS });
+defineDelegates<ModelLoader>(proto, '_modelLoader', { methods: MODEL_METHODS, fields: MODEL_FIELDS });
+defineDelegates<ViewController>(proto, '_viewCtl', { methods: VIEW_METHODS, fields: VIEW_FIELDS });
+defineDelegates<MarkerLayer>(proto, '_markerLayer', { methods: MARKER_METHODS, fields: MARKER_FIELDS });
+defineDelegates<ActionRunner>(proto, '_actionRunner', { methods: ACTION_METHODS });
+defineDelegates<ObjectInput>(proto, '_objectInput', { methods: OBJECT_METHODS, fields: OBJECT_FIELDS });
+defineDelegates<SkyController>(proto, '_skyCtl', { methods: SKY_METHODS, fields: SKY_FIELDS });
+
+/** An entry of HA's custom card picker (window.customCards). */
+export interface CustomCardEntry {
+  type: string;
+  name: string;
+  description?: string;
+  preview?: boolean;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'floorplan3d-card': Floorplan3dCard;
+  }
+  interface Window {
+    customCards?: CustomCardEntry[];
+  }
+}
 
 if (!customElements.get('floorplan3d-card')) {
   customElements.define('floorplan3d-card', Floorplan3dCard);
-  window.customCards = window.customCards || [];
-  window.customCards.push({
+  const cards = (window.customCards = window.customCards || []);
+  cards.push({
     type: 'floorplan3d-card',
     name: 'Floorplan 3D',
     description: '3D floorplan with automatically placed devices',

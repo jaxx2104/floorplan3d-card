@@ -1,9 +1,30 @@
 // Visual editor for the card options (Lovelace "Show visual editor"), built on HA's ha-form.
 // Rooms, devices, mower and model are edited on the card itself (its Edit button).
 
-const DEFAULTS = { layout_key: 'default', height: '520px', group_by: 'device', wall_height: 1.0, view: '3d', room_labels: 'size', zoom_to: 'center', occlusion: true, lights: 'auto', render: 'model', merge: true, sky_bodies: true, clouds: true };
+import type { CardConfig } from './types/config.js';
+import type { Hass } from './types/ha.js';
 
-export const SCHEMA = [
+/** One ha-form schema entry (HA frontend: a field with a selector, or a grid / expandable of fields). */
+export interface FormSchema {
+  name: string;
+  type?: 'grid' | 'expandable';
+  title?: string;
+  selector?: Record<string, unknown>;
+  schema?: FormSchema[];
+}
+
+/** HA's ha-form element: the properties this editor sets. */
+interface HaForm extends HTMLElement {
+  hass?: Hass;
+  schema: FormSchema[];
+  data: Record<string, unknown>;
+  computeLabel: (s: FormSchema) => string;
+  computeHelper: (s: FormSchema) => string;
+}
+
+const DEFAULTS: Record<string, unknown> = { layout_key: 'default', height: '520px', group_by: 'device', wall_height: 1.0, view: '3d', room_labels: 'size', zoom_to: 'center', occlusion: true, lights: 'auto', render: 'model', merge: true, sky_bodies: true, clouds: true };
+
+export const SCHEMA: FormSchema[] = [
   { name: 'height', selector: { text: {} } },
   {
     type: 'grid', name: '', schema: [
@@ -42,7 +63,7 @@ export const SCHEMA = [
   },
 ];
 
-const LABELS = {
+const LABELS: Record<string, string> = {
   height: 'Card height',
   view: 'Start view',
   floor: 'Start floor',
@@ -69,7 +90,7 @@ const LABELS = {
   model_opacity: 'Model opacity',
 };
 
-const HELPERS = {
+const HELPERS: Record<string, string> = {
   height: 'CSS height, e.g. 520px or 60vh',
   wall_height: 'Drawn walls only; a model is cut at the top of the storey',
   occlusion: 'With a 3D model: markers hidden by a wall from the current angle are shown faint',
@@ -90,50 +111,64 @@ const HELPERS = {
 };
 
 // Drop empty values and defaults so the YAML stays short.
-export function cleanConfig(config) {
-  const out = {};
+export function cleanConfig<C extends Record<string, unknown>>(config: C): Partial<C> {
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(config)) {
     if (v === undefined || v === null || v === '') continue;
     if (k !== 'type' && DEFAULTS[k] === v) continue;
     out[k] = v;
   }
-  return out;
+  return out as Partial<C>;
 }
 
 export class Floorplan3dCardEditor extends HTMLElement {
-  setConfig(config) {
+  // set by setConfig / the hass setter / the first render (declare: no own field before then)
+  declare _config: CardConfig;
+  declare _hass: Hass | undefined;
+  declare _form: HaForm | undefined;
+
+  setConfig(config: CardConfig): void {
     this._config = config;
     this._render();
   }
 
-  set hass(hass) {
+  set hass(hass: Hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
   }
 
-  _render() {
+  _render(): void {
     if (!customElements.get('ha-form')) {
       this.textContent = 'Edit this card in YAML (the visual editor needs a newer Home Assistant).';
       return;
     }
     if (!this._form) {
-      this._form = document.createElement('ha-form');
-      this._form.computeLabel = (s) => LABELS[s.name] || s.name;
-      this._form.computeHelper = (s) => HELPERS[s.name] || '';
-      this._form.addEventListener('value-changed', (e) => {
+      const form = document.createElement('ha-form') as HaForm; // HA's element (registered by the frontend)
+      this._form = form;
+      form.computeLabel = (s) => LABELS[s.name] || s.name;
+      form.computeHelper = (s) => HELPERS[s.name] || '';
+      form.addEventListener('value-changed', (e) => {
         e.stopPropagation();
-        const config = cleanConfig({ ...this._config, ...e.detail.value, type: this._config.type });
+        const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+        const config = cleanConfig({ ...this._config, ...value, type: this._config.type }) as CardConfig; // type kept
         this._config = config;
         this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
       });
       const hint = document.createElement('p');
       hint.style.cssText = 'margin: 16px 0 0; color: var(--secondary-text-color); font-size: 13px;';
       hint.textContent = 'Rooms, devices, the mower and the 3D model are set up on the card itself: save, then use its Edit button.';
-      this.append(this._form, hint);
+      this.append(form, hint);
     }
-    this._form.hass = this._hass;
-    this._form.schema = SCHEMA;
-    this._form.data = { ...DEFAULTS, ...this._config };
+    const form = this._form;
+    form.hass = this._hass;
+    form.schema = SCHEMA;
+    form.data = { ...DEFAULTS, ...this._config };
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'floorplan3d-card-editor': Floorplan3dCardEditor;
   }
 }
 
