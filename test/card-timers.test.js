@@ -1,96 +1,119 @@
 // @vitest-environment jsdom
-// Live map camera timer across disconnect / reconnect (a wall tablet switching dashboard views).
+// Card timers across disconnect / reconnect (a wall tablet switching dashboard views), idle reset and
+// night markers, on the card's parts with fake hosts.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import '../src/floorplan3d-card.js';
+import { MowerController } from '../src/card/mower-controller.js';
+import { ViewController } from '../src/card/view-controller.js';
+import { SkyController } from '../src/card/sky-controller.js';
 
-const proto = customElements.get('floorplan3d-card').prototype;
-
-function fake(connected) {
-  const o = Object.create(proto);
-  Object.defineProperty(o, 'isConnected', { value: connected, writable: true });
-  o._refreshMapOverlay = vi.fn();
-  return o;
+function mower(connected) {
+  const host = { isConnected: connected };
+  const m = new MowerController(host);
+  m._refreshMapOverlay = vi.fn();
+  return { host, m };
 }
 
 describe('_setCameraTimer', () => {
   afterEach(() => vi.useRealTimers());
   it('while disconnected counts as 0 s, so a later reconnect can start the interval', () => {
     vi.useFakeTimers();
-    const c = fake(false);
-    c._setCameraTimer(10); // e.g. model load .then finishing after the disconnect
-    expect(c._cameraTimer).toBeNull();
-    expect(c._cameraTimerSec).toBe(0);
-    c.isConnected = true;
-    c._setCameraTimer(10); // reconnect -> _refreshMapOverlay
-    expect(c._cameraTimer).not.toBeNull();
+    const { host, m } = mower(false);
+    m._setCameraTimer(10); // e.g. model load .then finishing after the disconnect
+    expect(m._cameraTimer).toBeNull();
+    expect(m._cameraTimerSec).toBe(0);
+    host.isConnected = true;
+    m._setCameraTimer(10); // reconnect -> _refreshMapOverlay
+    expect(m._cameraTimer).not.toBeNull();
     vi.advanceTimersByTime(10000);
-    expect(c._refreshMapOverlay).toHaveBeenCalledTimes(1);
-    c._setCameraTimer(0);
+    expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
+    m._setCameraTimer(0);
   });
   it('the image timer behaves the same', () => {
     vi.useFakeTimers();
-    const c = fake(false);
-    c._detectMower = vi.fn();
-    c._setImageTimer(5);
-    expect(c._imageTimer).toBeNull();
-    c.isConnected = true;
-    c._setImageTimer(5);
+    const { host, m } = mower(false);
+    m._detectMower = vi.fn();
+    m._setImageTimer(5);
+    expect(m._imageTimer).toBeNull();
+    host.isConnected = true;
+    m._setImageTimer(5);
     vi.advanceTimersByTime(5000);
-    expect(c._detectMower).toHaveBeenCalledTimes(1);
-    c._setImageTimer(0);
+    expect(m._detectMower).toHaveBeenCalledTimes(1);
+    m._setImageTimer(0);
+  });
+  it('resume() lets the same interval start again; dispose() stops both', () => {
+    vi.useFakeTimers();
+    const { host, m } = mower(true);
+    m._detectMower = vi.fn();
+    m._setCameraTimer(10);
+    m._setImageTimer(5);
+    host.isConnected = false;
+    m.dispose();
+    expect(m._cameraTimer).toBeNull();
+    expect(m._imageTimer).toBeNull();
+    vi.advanceTimersByTime(20000);
+    expect(m._refreshMapOverlay).not.toHaveBeenCalled();
+    expect(m._detectMower).not.toHaveBeenCalled();
+    host.isConnected = true;
+    m.resume(); // connectedCallback: the next update re-arms whatever interval it asks for
+    expect(m._cameraTimerSec).toBeNull();
+    expect(m._imageTimerSec).toBeNull();
+    m._setCameraTimer(10);
+    vi.advanceTimersByTime(10000);
+    expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
+    m._setCameraTimer(0);
   });
 });
 
 describe('idle_reset', () => {
   afterEach(() => vi.useRealTimers());
   function idle(config) {
-    const c = fake(true);
-    c._config = config;
-    c._view = {};
-    c._views = [{ id: 'ground' }, { id: 'upper' }];
-    c._viewId = 'upper';
-    c._mode = 'top';
-    c._sunTime = 600;
-    c._popup = { close: vi.fn() };
-    c._stateFor = () => ({ floors: [] });
-    c._setView = vi.fn((id) => { c._viewId = id; });
-    c._setMode = vi.fn((m) => { c._mode = m; });
-    c.setSunTime = vi.fn((m) => { c._sunTime = m; });
-    c._resetCamera = vi.fn();
-    c._view = { startOrbit: vi.fn(), stopOrbit: vi.fn() };
-    return c;
+    const host = {
+      isConnected: true, _config: config, _editing: false, _sunTime: 600,
+      _popup: { close: vi.fn() }, _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
+    };
+    host.setSunTime = vi.fn((m) => { host._sunTime = m; });
+    const v = new ViewController(host);
+    v._views = [{ id: 'ground' }, { id: 'upper' }];
+    v._viewId = 'upper';
+    v._mode = 'top';
+    v._stateFor = () => ({ floors: [] });
+    v._setView = vi.fn((id) => { v._viewId = id; });
+    v._setMode = vi.fn((m) => { v._mode = m; });
+    v._resetCamera = vi.fn();
+    return { host, v };
   }
   it('returns to the start view, mode and camera after the idle time', () => {
     vi.useFakeTimers();
-    const c = idle({ idle_reset: 60, view_id: 'ground' });
-    c._armIdleReset();
+    const { host, v } = idle({ idle_reset: 60, view_id: 'ground' });
+    v._armIdleReset();
     vi.advanceTimersByTime(59000);
-    expect(c._resetCamera).not.toHaveBeenCalled();
-    c._armIdleReset(); // a touch restarts the countdown
+    expect(v._resetCamera).not.toHaveBeenCalled();
+    v._armIdleReset(); // a touch restarts the countdown
     vi.advanceTimersByTime(59000);
-    expect(c._resetCamera).not.toHaveBeenCalled();
+    expect(v._resetCamera).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);
-    expect(c._popup.close).toHaveBeenCalled();
-    expect(c._setView).toHaveBeenCalledWith('ground');
-    expect(c._setMode).toHaveBeenCalledWith('3d');
-    expect(c.setSunTime).toHaveBeenCalledWith(null);
-    expect(c._resetCamera).toHaveBeenCalledTimes(1);
+    expect(host._popup.close).toHaveBeenCalled();
+    expect(v._setView).toHaveBeenCalledWith('ground');
+    expect(v._setMode).toHaveBeenCalledWith('3d');
+    expect(host.setSunTime).toHaveBeenCalledWith(null);
+    expect(v._resetCamera).toHaveBeenCalledTimes(1);
   });
   it('is off without the option and waits while editing', () => {
     vi.useFakeTimers();
-    const off = idle({});
+    const off = idle({}).v;
     off._armIdleReset();
     expect(off._idleTimer).toBeNull();
-    const c = idle({ idle_reset: 5 });
-    c._editing = true;
-    c._armIdleReset();
+    const { host, v } = idle({ idle_reset: 5 });
+    host._editing = true;
+    v._armIdleReset();
     vi.advanceTimersByTime(5000);
-    expect(c._resetCamera).not.toHaveBeenCalled();
-    c._editing = false;
+    expect(v._resetCamera).not.toHaveBeenCalled();
+    host._editing = false;
     vi.advanceTimersByTime(5000);
-    expect(c._resetCamera).toHaveBeenCalledTimes(1);
-    c._armIdleReset();
-    clearTimeout(c._idleTimer);
+    expect(v._resetCamera).toHaveBeenCalledTimes(1);
+    v._armIdleReset();
+    v.dispose();
+    expect(v._idleTimer).toBeNull();
   });
 });
 
@@ -98,59 +121,71 @@ describe('idle_orbit', () => {
   afterEach(() => vi.useRealTimers());
   it('starts after the idle reset in 3D and a touch stops it', () => {
     vi.useFakeTimers();
-    const c = Object.create(proto);
-    Object.defineProperty(c, 'isConnected', { value: true });
-    Object.assign(c, {
-      _config: { idle_reset: 10, idle_orbit: 3 }, _views: [{ id: 'g' }], _viewId: 'g', _mode: '3d', _sunTime: null,
-      _popup: { close: vi.fn() }, _stateFor: () => ({ floors: [] }), _setView: vi.fn(), _setMode: vi.fn(), _resetCamera: vi.fn(),
-      _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
+    const host = {
+      isConnected: true, _config: { idle_reset: 10, idle_orbit: 3 }, _sunTime: null, _editing: false,
+      _popup: { close: vi.fn() }, _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
+    };
+    const v = new ViewController(host);
+    Object.assign(v, {
+      _views: [{ id: 'g' }], _viewId: 'g', _mode: '3d',
+      _stateFor: () => ({ floors: [] }), _setView: vi.fn(), _setMode: vi.fn(), _resetCamera: vi.fn(),
     });
-    c._armIdleReset();
+    v._armIdleReset();
     vi.advanceTimersByTime(10000);
-    expect(c._view.startOrbit).toHaveBeenCalledWith(3);
-    c._armIdleReset();
-    expect(c._view.stopOrbit).toHaveBeenCalled();
-    clearTimeout(c._idleTimer);
+    expect(host._view.startOrbit).toHaveBeenCalledWith(3);
+    v._armIdleReset();
+    expect(host._view.stopOrbit).toHaveBeenCalled();
+    v.dispose();
   });
 });
 
 describe('night_markers', () => {
   afterEach(() => vi.useRealTimers());
-  const card = (config, daylight) => {
-    const c = Object.create(proto);
-    Object.assign(c, { _config: config, _daylight: daylight, _stage: document.createElement('div') });
-    return c;
+  const sky = (config, daylight) => {
+    const s = new SkyController({ _config: config, _stage: document.createElement('div') });
+    s._daylight = daylight;
+    return s;
   };
   it('hides the markers at night only with hide', () => {
-    const c = card({ night_markers: 'hide' }, false);
-    c._syncNightMarkers();
-    expect(c._stage.classList.contains('night-quiet')).toBe(true);
-    c._daylight = true;
-    c._syncNightMarkers();
-    expect(c._stage.classList.contains('night-quiet')).toBe(false);
-    const d = card({}, false);
+    const s = sky({ night_markers: 'hide' }, false);
+    s._syncNightMarkers();
+    expect(s.card._stage.classList.contains('night-quiet')).toBe(true);
+    s._daylight = true;
+    s._syncNightMarkers();
+    expect(s.card._stage.classList.contains('night-quiet')).toBe(false);
+    const d = sky({}, false);
     d._syncNightMarkers();
-    expect(d._stage.classList.contains('night-quiet')).toBe(false);
+    expect(d.card._stage.classList.contains('night-quiet')).toBe(false);
   });
   it('a touch shows them for idle_reset seconds, 30 without it', () => {
     vi.useFakeTimers();
-    const c = card({ night_markers: 'hide', idle_reset: 10 }, false);
-    c._wakeMarkers();
-    expect(c._stage.classList.contains('awake')).toBe(true);
+    const s = sky({ night_markers: 'hide', idle_reset: 10 }, false);
+    const stage = s.card._stage;
+    s._wakeMarkers();
+    expect(stage.classList.contains('awake')).toBe(true);
     vi.advanceTimersByTime(9000);
-    c._wakeMarkers(); // touched again: the countdown restarts
+    s._wakeMarkers(); // touched again: the countdown restarts
     vi.advanceTimersByTime(9000);
-    expect(c._stage.classList.contains('awake')).toBe(true);
+    expect(stage.classList.contains('awake')).toBe(true);
     vi.advanceTimersByTime(1000);
-    expect(c._stage.classList.contains('awake')).toBe(false);
-    const d = card({ night_markers: 'hide' }, false);
+    expect(stage.classList.contains('awake')).toBe(false);
+    const d = sky({ night_markers: 'hide' }, false);
     d._wakeMarkers();
     vi.advanceTimersByTime(29000);
-    expect(d._stage.classList.contains('awake')).toBe(true);
+    expect(d.card._stage.classList.contains('awake')).toBe(true);
     vi.advanceTimersByTime(1000);
-    expect(d._stage.classList.contains('awake')).toBe(false);
-    const e = card({}, false);
+    expect(d.card._stage.classList.contains('awake')).toBe(false);
+    const e = sky({}, false);
     e._wakeMarkers();
-    expect(e._stage.classList.contains('awake')).toBe(false);
+    expect(e.card._stage.classList.contains('awake')).toBe(false);
+  });
+  it('dispose() drops the wake countdown', () => {
+    vi.useFakeTimers();
+    const s = sky({ night_markers: 'hide' }, false);
+    s._wakeMarkers();
+    s.dispose();
+    expect(s._wakeTimer).toBeNull();
+    vi.advanceTimersByTime(30000);
+    expect(s.card._stage.classList.contains('awake')).toBe(true); // no timer left to remove it
   });
 });
