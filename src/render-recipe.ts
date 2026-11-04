@@ -3,6 +3,8 @@
 // clamped, unknown keys ignored, warnings for invalid values); mergeRender fills the rest from the
 // card's defaults (the values used before recipes existed).
 
+import { normMaterialRules, type MaterialRule } from './material-class.ts';
+
 /** [sky colour, ground colour, intensity] */
 export type HemiSetting = [number, number, number];
 /** [colour, intensity] */
@@ -40,6 +42,8 @@ export interface RenderRecipe {
   day?: Partial<SkySetting>;
   night?: Partial<SkySetting>;
   glowIntensityPerBrightness?: number;
+  /** Physical material rules (quality high, material-class.ts): fp.render.materials, in order. */
+  materials?: MaterialRule[];
 }
 
 type Frozen<T> = { readonly [K in keyof T]: T[K] extends unknown[] ? Readonly<T[K]> : T[K] extends object ? Frozen<T[K]> : T[K] };
@@ -142,6 +146,11 @@ export function normRender(raw: unknown): { recipe: RenderRecipe | null; warning
       else warnings.push(`render.${part}.sun: needs [colour, intensity]`);
     }
     if (Object.keys(o).length) out[part] = o;
+  }
+  if (raw.materials !== undefined) {
+    const m = normMaterialRules(raw.materials, 'render.materials');
+    warnings.push(...m.warnings);
+    if (m.rules.length) out.materials = m.rules;
   }
   const keys = Object.keys(out).length;
   return { recipe: keys ? (out as RenderRecipe) : null, warnings, keys };
@@ -314,10 +323,12 @@ export interface QualityTier {
   softShadows: boolean;
   /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
   contactShadows: boolean;
+  /** Glass, floors and fabric as physical materials: thin glass, clear-coated floors, fabric sheen (material-class.ts). */
+  physicalMaterials: boolean;
 }
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> = Object.freeze({
-  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false }),
-  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true }),
+  standard: Object.freeze({ toneMapping: null, envLight: false, hemiScale: 1, physicalLights: false, bloom: false, softShadows: false, contactShadows: false, physicalMaterials: false }),
+  high: Object.freeze({ toneMapping: 'AgX', envLight: true, hemiScale: 0.35, physicalLights: true, bloom: true, softShadows: true, contactShadows: true, physicalMaterials: true }),
 });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
 
@@ -327,12 +338,14 @@ export const TONE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 });
 const TONE_NAMES = Object.keys(TONE_ALIASES).filter((a) => a !== 'acesfilmic');
 
-/** Card option render, normalised: which recipe, the quality tier, the tone mapping (null: tier / recipe). */
-export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; toneMapping: string | null }
+/** Card option render, normalised: which recipe, the quality tier, the tone mapping (null: tier / recipe), the
+ * physical material rules (set only when given; they come after the model's). */
+export interface RenderOption { recipe: 'model' | 'default'; quality: Quality; toneMapping: string | null; materials?: MaterialRule[] }
 export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({ recipe: 'model', quality: 'standard', toneMapping: null });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'standard' | 'high', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none' }
+// quality: 'standard' | 'high', tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): { option: RenderOption; warnings: string[] } {
   const option: RenderOption = { ...RENDER_OPTION_DEFAULTS }, warnings: string[] = [];
@@ -353,6 +366,10 @@ export function normRenderOption(opt: unknown): { option: RenderOption; warnings
       const name = typeof v === 'string' ? TONE_ALIASES[v.trim().toLowerCase()] : undefined;
       if (name) option.toneMapping = name;
       else warnings.push(`render.tone_mapping: "${String(v)}" is not one of ${TONE_NAMES.join(', ')}`);
+    } else if (k === 'materials') {
+      const m = normMaterialRules(v, 'render.materials');
+      warnings.push(...m.warnings);
+      option.materials = m.rules;
     } else warnings.push(`render.${k}: unknown option, ignored`);
   }
   return { option, warnings };

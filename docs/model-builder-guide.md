@@ -181,6 +181,46 @@ house.userData.fp = { render: {
   ratio above 2 or 4 CPU cores or fewer, else 6 with maps of at most 1024 px. The light pool is built once when the model loads (shadow lamps + 4 more point
   lights + 4 spots), so it never changes at runtime.
 
+### Physical materials (`render: { quality: high }`)
+
+With the card's `quality: high` the card turns three kinds of plain `MeshStandardMaterial` into
+`MeshPhysicalMaterial`, once when the model loads (and back when the quality changes):
+
+| class | look | found by |
+|---|---|---|
+| `glass` | thin glass: smooth (roughness 0.04), reflects the sky environment, gets more opaque at grazing angles (fresnel); keeps its colour (tint) and opacity | the material or mesh name has the word `glass`, `glazing`, `pane(s)` or `window` (not `window_frame` / `window_sill`); the `glass` layer; or a see-through (`opacity` ≤ 0.6), untextured, non-glowing material |
+| `floor` | a subtle clear coat over its own roughness | the material or mesh name has `floor(s)`, `flooring`, `parquet`, `laminate`, `tile(s)`, `wood(en)`; or a flat mesh (≤ 0.4 m thick) inside a room whose top lies within 5 cm of its level's floor height. Indoors only: zones, exterior / roof levels and the terrain keep their look |
+| `fabric` | sheen (a soft rim at grazing angles) | the name has `sofa`, `couch`, `bed`, `mattress`, `curtain`, `drape`, `fabric`, `textile`, `upholstery`, `cushion`, `pillow`, `blanket`, `rug`, `carpet` (rugs and carpets are fabric, never clear-coated floors); also the name of an untagged group around the mesh (a cushion `Cube.003` in the group `Sofa`) |
+
+- Names match as words: letters on both sides break a word, so `bedroom` is no `bed` and
+  `fiberglass` no `glass`; `_`, digits, spaces and `.` separate words.
+- The material's own name decides first. Without a hint there, every mesh that uses the material
+  must point to the same class (a material shared by a floor and a wall stays as it is).
+- Materials the file already makes physical (any `KHR_materials_*` extension: transmission,
+  clearcoat, sheen, ior, specular …) are left exactly as the file says, also by the rules below.
+  A real `KHR_materials_transmission` glass keeps three's transmission (an extra render pass while
+  it is in view); the card's own glass is the cheap thin-glass look on purpose.
+- Model objects (`kind: object`) keep their materials: the card drives their glow.
+
+Explicit rules opt a material in or out. On the material itself, its glTF `extras`:
+`{ "fp_surface": "glass" | "floor" | "fabric" | "none" }`. For many at once, `fp.render.materials`
+(next to the recipe keys above), an object of selector → class, applied in order (a later rule
+wins), after the material extras:
+
+```js
+house.userData.fp = { render: { materials: {
+  'material:Glass*': 'glass',          // material name, * matches any characters (case-insensitive)
+  'layer:rugs': 'fabric',              // and every view selector (see Selectors): layer:, node:, room:,
+  'node:**/Kitchen/Worktop': 'none',   // zone:, level:, role:, all; a selector picks the materials of
+  'room:bath': 'floor',                // the meshes it matches (with their ancestors)
+} } };
+```
+
+`none` keeps a material plain even when its name says otherwise. A material is one object for
+every mesh that uses it, so a rule that picks one of its meshes changes all of them. The card
+option `render.materials` takes the same object and comes after the model's (README). Invalid
+selectors or classes are skipped with a warning (`npm run check-model` lists them).
+
 ## Layers
 
 `fp.layer` on any node (a string, or an array of strings) groups parts across rooms and levels,

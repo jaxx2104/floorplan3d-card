@@ -7,8 +7,9 @@
 // shadows) against 'standard': no environment rebuild while idle or for a sun step under ENV_ANGLE_DEG, one
 // (throttled) for a larger step; bloom never in 'standard', in 'high' only on frames with an emissive surface in
 // view, nothing while idle; soft / contact shadow variants only in 'high', contact shadows rebuilt only when the
-// casters change (not while idle, not per frame), shadow requests as in 'standard'; frame time (render + bloom +
-// finish, GPU included) in bounds.
+// casters change (not while idle, not per frame), shadow requests as in 'standard'; physical materials (glass,
+// floors, fabric) only in 'high', upgraded at load and on a tier change (restored and upgraded again, without GL
+// errors), never while idle or per frame; frame time (render + bloom + finish, GPU included) in bounds.
 //   node scripts/perf-check.mjs [--quality-only]
 import { openDemo } from './lib/demo-browser.mjs';
 
@@ -38,6 +39,12 @@ async function qualityRun(quality) {
     const bloomPasses = () => ev(`${card}._view.stats.bloomPasses`);
     const contactBuilds = () => ev(`${card}._view.stats.contactBuilds`);
     const shadows = () => ev(`(() => { const s = ${card}._view.stats; return { shadow: s.shadow, lights: s.shadowLights }; })()`);
+    const swaps = () => ev(`${card}._view.stats.materialSwaps`);
+    const surfaces = () => ev(`(() => { const out = { glass: 0, floor: 0, fabric: 0, physical: 0 }, seen = new Set();
+      ${card}._view.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (seen.has(m)) continue; seen.add(m);
+        if (m.userData.fpSurface) out[m.userData.fpSurface]++; if (m.isMeshPhysicalMaterial) out.physical++; } });
+      return out; })()`);
+    const ms0 = await swaps();
     const b0 = await builds(), f0 = await ev(`${card}._view.stats.frames`), bp0 = await bloomPasses(), cb0 = await contactBuilds(), sh0 = await shadows();
     await sleep(8000);
     const b1 = await builds(), f1 = await ev(`${card}._view.stats.frames`), bp1 = await bloomPasses(), cb1 = await contactBuilds();
@@ -83,8 +90,21 @@ async function qualityRun(quality) {
     const cbChange = (await contactBuilds()) - cb2;
     const contactMs = await ev(`(() => { const v = ${card}._view, c = v.look._contact, gl = v.renderer.getContext(); if (!c) return null;
       const t = performance.now(); c.update(v.scene, v.look._contactFloors()); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); return performance.now() - t; })()`);
+    const msSteady = (await swaps()) - ms0; // idle, sun steps, forced and camera frames, a storey change
+    const surf = await surfaces();
+    // a tier change and back: every upgraded material restored, then upgraded again; frames render without GL errors
+    let roundTrip = null;
+    if (quality === 'high') {
+      const glErr = () => ev(`(() => { const v = ${card}._view; v.dirty = true; return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(v.renderer.getContext().getError())))); })()`);
+      const r0 = await swaps();
+      await ev(`${card}._view.setRenderOption({ quality: 'standard' })`);
+      const errStd = await glErr(), down = (await swaps()) - r0, surfStd = await surfaces();
+      await ev(`${card}._view.setRenderOption({ quality: 'high' })`);
+      const errHigh = await glErr(), up = (await swaps()) - r0 - down, surfHigh = await surfaces();
+      roundTrip = { down, up, surfStd, surfHigh, errStd, errHigh };
+    }
     const sorted = [...times].sort((a, b) => a - b);
-    return { buildMs, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
+    return { buildMs, msLoad: ms0, msSteady, surf, roundTrip, idleBuilds: b1 - b0, idleFrames: f1 - f0, smallStep: b2 - b1, bigStep: b3 - b2, builds: b3, ...env,
       idleContact: cb1 - cb0, contactForced: cbForced, contactChange: cbChange, contactMs, contactTotal: await contactBuilds(), shadowSteps: sh1.shadow - sh0.shadow, shadowLightSteps: sh1.lights - sh0.lights,
       idleBloom: bp1 - bp0, bloomForced: bp3 - bp2, framesForced: fr3 - fr2, bloomAway: bp4 - bp3, skippedAway: skip1 - skip0, framesAway: fr5 - fr4, bloomTotal: bp4,
       awayAvg: awayTimes.reduce((a, b) => a + b, 0) / Math.max(1, awayTimes.length),
@@ -114,7 +134,15 @@ async function qualityChecks() {
   check('high: PCSS and contact variants on the model materials, contact tiles built', high.pcss > 0 && high.contact > 0 && high.contactTiles > 0, JSON.stringify({ pcss: high.pcss, contact: high.contact, tiles: high.contactTiles }));
   check('high: no contact rebuild while idle or on forced / camera frames, one on a storey change', high.idleContact === 0 && high.contactForced === 0 && high.contactChange === 1, `${high.idleContact}, ${high.contactForced}, ${high.contactChange}`);
   check('high: shadow requests for the sun steps as in standard', high.shadowSteps === std.shadowSteps && high.shadowLightSteps === std.shadowLightSteps, `${high.shadowSteps}/${high.shadowLightSteps} vs ${std.shadowSteps}/${std.shadowLightSteps}`);
-  check('high (bloom, PCSS, contact included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
+  const upgraded = (x) => x.glass + x.floor + x.fabric;
+  console.log(`     physical materials: high ${JSON.stringify(high.surf)} (upgraded at load ${high.msLoad}, later ${high.msSteady}); tier round trip ${JSON.stringify(high.roundTrip)}; standard ${JSON.stringify(std.surf)}, ${std.msLoad + std.msSteady} swaps`);
+  check('standard: no physical material upgrade', upgraded(std.surf) === 0 && std.msLoad + std.msSteady === 0, JSON.stringify({ surf: std.surf, swaps: std.msLoad + std.msSteady }));
+  check('high: glass, floor and fabric materials upgraded once at load', high.surf.glass > 0 && high.surf.floor > 0 && high.surf.fabric > 0 && high.msLoad === upgraded(high.surf), JSON.stringify({ surf: high.surf, load: high.msLoad }));
+  check('high: no material upgrade while idle, per frame or on a storey change', high.msSteady === 0, String(high.msSteady));
+  const rt = high.roundTrip;
+  check('high -> standard -> high: restored and upgraded again, no GL error', !!rt && rt.down === upgraded(high.surf) && rt.up === rt.down && upgraded(rt.surfStd) === 0 && rt.surfStd.physical === high.surf.physical - upgraded(high.surf)
+    && JSON.stringify(rt.surfHigh) === JSON.stringify(high.surf) && rt.errStd === 0 && rt.errHigh === 0, JSON.stringify(rt));
+  check('high (bloom, PCSS, contact, physical materials included): frame time <= 2 x standard + 8 ms', high.avg <= 2 * std.avg + 8, `${high.avg.toFixed(1)} vs ${std.avg.toFixed(1)} ms`);
   for (const r of [std, high]) if (r.errors.length) check('quality demo without page errors', false, r.errors.slice(0, 3).join(' | '));
 }
 

@@ -19,6 +19,8 @@ import { ContactShadows, type ContactFloor } from '../contact-shadow.ts';
 import { setTierVariant } from '../cloud-shadow.ts';
 import { pcssFrame } from '../soft-shadow.ts';
 import { measuredElevations } from '../bindings.ts';
+import { classifyMaterial, type MaterialFacts, type MaterialRule } from '../material-class.ts';
+import { materialFacts, setSurface, surfaceOf } from '../physical-materials.ts';
 import { frameInterval, isMesh, type Drawable } from './core.ts';
 import type { FloorplanView } from '../view.ts';
 import type { ModelManifest } from './model.ts';
@@ -53,6 +55,7 @@ export class RenderLook {
   _env: EnvLight | null;
   _bloom: SelectiveBloom | null;
   _contact: ContactShadows | null;
+  _surfFacts: { model: unknown; facts: Map<THREE.Material, MaterialFacts> } | null;
   renderFrom: { keys: number } | null;
   background: DayNight;
   furniture: 'color' | 'white';
@@ -86,6 +89,7 @@ export class RenderLook {
     this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
     this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
     this._contact = null; // ContactShadows while the tier grounds things on the floors (made on first use)
+    this._surfFacts = null; // { model, facts }: the loaded model's material facts (physical materials, gathered once)
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
     this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
@@ -121,7 +125,8 @@ export class RenderLook {
     const prev = this.renderOpt;
     this.renderOpt = option;
     this.renderOption = option.recipe;
-    const recipe = option.recipe !== prev.recipe, look = option.quality !== prev.quality || option.toneMapping !== prev.toneMapping;
+    const recipe = option.recipe !== prev.recipe, look = option.quality !== prev.quality || option.toneMapping !== prev.toneMapping
+      || JSON.stringify(option.materials || []) !== JSON.stringify(prev.materials || []);
     if (!this.view.model || (!recipe && !look)) return;
     if (recipe) {
       this._useRecipe(this.view.model.manifest);
@@ -234,9 +239,10 @@ export class RenderLook {
     this._skyEnv();
   }
 
-  // The tier's selective bloom, physical lamp light, soft sun shadows and contact shadows: on with a model when
-  // the tier asks for them. A change of the lamp model re-evaluates the lamps (the card's object update); the
-  // shadow variants recompile the model materials whose variant changed (the callers flag every material anyway).
+  // The tier's selective bloom, physical lamp light, soft sun shadows, contact shadows and physical materials: on
+  // with a model when the tier asks for them. A change of the lamp model re-evaluates the lamps (the card's object
+  // update); the shadow variants and material upgrades recompile the model materials that changed (the callers flag
+  // every material anyway).
   _syncTierLook(): void {
     const t = this.tier(), model = this.view.model;
     if (model && t.bloom && !this._bloom) this._bloom = new SelectiveBloom(this.view.renderer);
@@ -249,9 +255,36 @@ export class RenderLook {
         if (!isMesh(o)) return;
         for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) if (m) setTierVariant(m, variant);
       });
+      this._syncSurfaces(t.physicalMaterials);
     }
     const layer = this.view.objectLayer;
     if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
+  }
+
+  // Physical materials (quality high): glass, floors and fabric upgraded in place (physical-materials.ts), or all
+  // restored. The facts are gathered at the model's first look, before its static meshes are merged; the classes
+  // follow the rules: the model's fp.render.materials (unless render: default), then the card's render.materials.
+  // Runs on model load and look changes (tier, rules), never per frame. -> materials changed.
+  _syncSurfaces(on: boolean): number {
+    const model = this.view.model!; // callers checked view.model
+    if (!this._surfFacts || this._surfFacts.model !== model) this._surfFacts = { model, facts: materialFacts(model.root, model.manifest) };
+    const facts = this._surfFacts.facts;
+    const rules: MaterialRule[] = [...((this.renderOption !== 'default' && model.manifest.render && model.manifest.render.materials) || []), ...(this.renderOpt.materials || [])];
+    let n = 0;
+    const seen = new Set<THREE.Material>();
+    model.root.traverse((o) => {
+      if (!isMesh(o)) return;
+      for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) {
+        if (!m || seen.has(m)) continue;
+        seen.add(m);
+        const f = facts.get(m);
+        // a material made later (a clone of an upgraded one) keeps its class in high and is restored otherwise
+        const want = !on ? null : f ? classifyMaterial(f, rules) : surfaceOf(m);
+        if (setSurface(m, want)) n++;
+      }
+    });
+    this.view.stats.materialSwaps += n;
+    return n;
   }
 
   _skyEnv(): void {

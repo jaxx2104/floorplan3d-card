@@ -6,6 +6,8 @@ export interface RenderCardOptions {
   recipe?: 'model' | 'default';
   quality?: 'standard' | 'high';
   tone_mapping?: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none';
+  /** Physical material rules (quality high): { '<selector>': 'glass' | 'floor' | 'fabric' | 'none' }. */
+  materials?: Record<string, string>;
 }
 export type RenderCardOption = 'model' | 'default' | RenderCardOptions;
 

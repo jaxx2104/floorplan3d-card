@@ -44,6 +44,7 @@ export interface ViewStats {
   envBuilds: number; // environment maps built from the sky (render quality 'high')
   bloomPasses: number; // frames with a selective bloom pass (render quality 'high', an emissive surface in view)
   contactBuilds: number; // contact shadow rebuilds (render quality 'high', the shadow casters changed)
+  materialSwaps: number; // model materials upgraded to physical or restored (render quality 'high', look changes)
   mapUploads?: number;
 }
 
@@ -197,7 +198,7 @@ export class FloorplanView {
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
     this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
-    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    this.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0, frames: 0, shadowLights: 0, cloudFrames: 0, envBuilds: 0, bloomPasses: 0, contactBuilds: 0, materialSwaps: 0 }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure

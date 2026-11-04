@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { PCSS_HEAD, pcssDirectional } from './soft-shadow.ts';
 import { CONTACT_HEAD, CONTACT_BODY, makeContactUniforms, type ContactUniforms } from './contact-shadow.ts';
+import { GLASS_FRESNEL } from './physical-materials.ts';
 
 import type { PlanPoint } from './types/layout.ts';
 
@@ -238,7 +239,7 @@ export const shadable = (m: THREE.Material | null | undefined): m is THREE.MeshS
 };
 
 // Program cache key part of the quality tier's shader variants: '' in standard (its programs untouched).
-export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}`;
+export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}${mat.userData.fpGlass ? 'g' : ''}`;
 
 // Quality tier shader variants of a patched material: soft sun shadows, contact shadows. -> true when they
 // changed (the material then recompiles).
@@ -266,13 +267,14 @@ export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): 
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
     const city = mat.userData.fpCityLit, head = city === 'windows' ? '#define FP_WINDOWS\n' : city === 'glow' ? '#define FP_GLOW\n' : '';
     let fs = sh.fragmentShader;
-    // quality high: soft sun shadows (PCSS) and contact shadows; standard compiles neither (and keeps its cache key)
+    // quality high: soft sun shadows (PCSS), contact shadows, thin glass; standard compiles none of them (and keeps its cache key)
     const pcss = mat.userData.fpPcss ? pcssDirectional(begin) : null;
     if (pcss) {
       begin = pcss;
       fs = fs.replace('#include <shadowmap_pars_fragment>', `#include <shadowmap_pars_fragment>${PCSS_HEAD}`);
     }
     if (mat.userData.fpContact) fs = fs.replace('#include <aomap_fragment>', `#include <aomap_fragment>${CONTACT_BODY}`);
+    if (mat.userData.fpGlass) fs = fs.replace('#include <opaque_fragment>', `${GLASS_FRESNEL}#include <opaque_fragment>`); // thin glass (physical-materials.ts)
     sh.fragmentShader = head + FRAG_HEAD + (mat.userData.fpContact ? CONTACT_HEAD : '') + fs.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
   };
   const key = mat.customProgramCacheKey;
