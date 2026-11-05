@@ -10,15 +10,8 @@ import {
   viewCut,
 } from "../src/views.ts";
 import { buildManifest } from "../src/manifest.ts";
+import { tree, fp } from "./helpers/manifest.js";
 
-const tree = (roots) => ({
-  roots: () => roots,
-  children: (n) => n.children || [],
-  name: (n) => n.name || "",
-  extras: (n) => n.extras || {},
-  parent: () => null,
-});
-const fp = (o) => ({ fp: o });
 const sq = [
   [0, 0],
   [4, 0],

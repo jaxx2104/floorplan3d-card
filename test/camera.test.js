@@ -161,22 +161,6 @@ describe("resolveViews camera_top / zoom_to", () => {
 });
 
 describe("manifest camera_top", () => {
-  const tree = (roots) => {
-    const parent = new Map();
-    const walk = (n) =>
-      (n.children || []).forEach((c) => {
-        parent.set(c, n);
-        walk(c);
-      });
-    roots.forEach(walk);
-    return {
-      roots: () => roots,
-      children: (n) => n.children || [],
-      name: (n) => n.name || "",
-      extras: (n) => n.extras || {},
-      parent: (n) => parent.get(n) || null,
-    };
-  };
   it("reads a valid camera_top, warns on an invalid one", () => {
     const root = {
       name: "Scene",
@@ -199,6 +183,7 @@ describe("manifest camera_top", () => {
 });
 
 import { orbitStep } from "../src/view.ts";
+import { tree } from "./helpers/manifest.js";
 describe("orbitStep", () => {
   it("turns around the target on the ground plane, keeping height and distance", () => {
     const pos = { x: 2, y: 5, z: 0 };

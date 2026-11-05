@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { checkGlb } from "../tools/check-model.mjs";
+import { fp } from "./helpers/manifest.js";
 
 // minimal GLB: JSON chunk (+ optional BIN chunk)
 function glb(json, bin = null) {
@@ -28,7 +29,17 @@ function u32(n) {
   b.writeUInt32LE(n);
   return b;
 }
-const fp = (o) => ({ fp: o });
+// a PNG header (signature + IHDR) of w x h: enough for the size check
+function png(w, h) {
+  const b = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+  b.writeUInt32BE(13, 8);
+  b.write("IHDR", 12, "latin1");
+  b.writeUInt32BE(w, 16);
+  b.writeUInt32BE(h, 20);
+  return b;
+}
+
 const sq = [
   [0, 0],
   [4, 0],
@@ -381,5 +392,144 @@ describe("CLI", () => {
     const json = JSON.parse(out || "{}");
     expect(json.ok).toBe(false);
     expect(json.errors.some((e) => /cannot read/.test(e))).toBe(true);
+  });
+});
+
+describe("check-model: lightmaps", () => {
+  const file = ({
+    extras,
+    occlusion,
+    attrs = { POSITION: 0, TEXCOORD_0: 1, TEXCOORD_1: 2 },
+    size = 1024,
+  }) => {
+    const img = png(size, size);
+    return glb(
+      {
+        asset: { version: "2.0" },
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        nodes: [
+          {
+            name: "ground",
+            extras: { fp: { kind: "level", id: "ground" } },
+            children: [1],
+          },
+          { name: "wall", mesh: 0 },
+        ],
+        meshes: [
+          { name: "wall", primitives: [{ attributes: attrs, material: 0 }] },
+        ],
+        accessors: [
+          {
+            componentType: 5126,
+            count: 3,
+            type: "VEC3",
+            min: [0, 0, 0],
+            max: [1, 1, 1],
+          },
+          { componentType: 5126, count: 3, type: "VEC2" },
+          { componentType: 5126, count: 3, type: "VEC2" },
+        ],
+        materials: [
+          {
+            name: "wall_baked",
+            ...(occlusion
+              ? { occlusionTexture: { index: 0, texCoord: 1 } }
+              : {}),
+            extras,
+          },
+        ],
+        textures: [{ source: 0 }, { source: 0 }],
+        images: [{ bufferView: 0, mimeType: "image/png" }],
+        bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: img.length }],
+        buffers: [{ byteLength: img.length }],
+      },
+      img,
+    );
+  };
+  it("a valid occlusion lightmap on TEXCOORD_1 passes and is reported", () => {
+    const r = checkGlb(
+      file({ extras: { fp_lightmap: "occlusion" }, occlusion: true }),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.lightmaps).toEqual([
+      {
+        material: "wall_baked",
+        texture: 0,
+        texCoord: 1,
+        type: "light",
+        size: [1024, 1024],
+      },
+    ]);
+  });
+  it("a texture index lightmap, its UV set missing on a mesh: error", () => {
+    const r = checkGlb(
+      file({
+        extras: { fp_lightmap: { texture: 1 } },
+        attrs: { POSITION: 0, TEXCOORD_0: 1 },
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(
+      r.errors.some((e) =>
+        /reads TEXCOORD_1, missing on mesh\(es\) wall/.test(e),
+      ),
+    ).toBe(true);
+  });
+  it("errors: no occlusionTexture, a missing texture, an invalid spec, a lightmap over 4096 px", () => {
+    expect(
+      checkGlb(file({ extras: { fp_lightmap: "occlusion" } })).errors.some(
+        (e) => /no occlusionTexture/.test(e),
+      ),
+    ).toBe(true);
+    expect(
+      checkGlb(file({ extras: { fp_lightmap: { texture: 9 } } })).errors.some(
+        (e) => /texture 9 does not exist/.test(e),
+      ),
+    ).toBe(true);
+    expect(
+      checkGlb(
+        file({ extras: { fp_lightmap: { texture: 1, texCoord: 9 } } }),
+      ).errors.some((e) => /texCoord/.test(e)),
+    ).toBe(true);
+    const big = checkGlb(
+      file({
+        extras: { fp_lightmap: "occlusion" },
+        occlusion: true,
+        size: 8192,
+      }),
+    );
+    expect(big.errors.some((e) => /8192 × 8192 px; at most 4096/.test(e))).toBe(
+      true,
+    );
+  });
+  it("error: an occlusion lightmap packed into the metallic-roughness texture", () => {
+    const buf = file({ extras: { fp_lightmap: "occlusion" }, occlusion: true });
+    const json = JSON.parse(
+      buf.toString("utf8", 20, 20 + buf.readUInt32LE(12)),
+    );
+    json.materials[0].pbrMetallicRoughness = {
+      metallicRoughnessTexture: { index: 0 },
+    };
+    const img = png(64, 64);
+    json.bufferViews[0].byteLength = json.buffers[0].byteLength = img.length;
+    expect(
+      checkGlb(glb(json, img)).errors.some((e) =>
+        /packed by the exporter/.test(e),
+      ),
+    ).toBe(true);
+  });
+  it("warnings: TEXCOORD_0 (needs its own unwrap), unknown keys", () => {
+    const r = checkGlb(
+      file({
+        extras: { fp_lightmap: { texture: 1, texCoord: 0, bogus: true } },
+      }),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.some((w) => /TEXCOORD_0/.test(w))).toBe(true);
+    expect(r.warnings.some((w) => /fp_lightmap.bogus/.test(w))).toBe(true);
+  });
+  it("models without lightmaps: an empty list", () => {
+    expect(checkGlb(file({ extras: {} })).lightmaps).toEqual([]);
   });
 });

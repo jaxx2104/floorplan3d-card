@@ -14,6 +14,7 @@ import {
   resolveViews,
 } from "../src/views.ts";
 import { buildManifest } from "../src/manifest.ts";
+import { tree } from "./helpers/manifest.js";
 
 const box = { min: [0, 0, -10], max: [16, 8, 0] }; // centre x 8, plan y 0..10
 const close = (a, b) => a.forEach((x, i) => expect(x).toBeCloseTo(b[i], 6));
@@ -187,13 +188,6 @@ describe("section directions and slider position", () => {
 });
 
 describe("section in manifest and resolveViews", () => {
-  const tree = (roots) => ({
-    roots: () => roots,
-    children: (n) => n.children || [],
-    name: (n) => n.name || "",
-    extras: (n) => n.extras || {},
-    parent: () => null,
-  });
   it("manifest reads a valid section only", () => {
     const root = {
       name: "Scene",

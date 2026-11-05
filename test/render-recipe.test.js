@@ -21,14 +21,7 @@ import {
   CITY_DEFAULTS,
 } from "../src/render-recipe.ts";
 import { buildManifest } from "../src/manifest.ts";
-
-const tree = (roots) => ({
-  roots: () => roots,
-  children: (n) => n.children || [],
-  name: (n) => n.name || "",
-  extras: (n) => n.extras || {},
-  parent: () => null,
-});
+import { tree } from "./helpers/manifest.js";
 
 describe("normRender", () => {
   it("returns null without a recipe", () => {

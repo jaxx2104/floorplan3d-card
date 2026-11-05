@@ -20,24 +20,8 @@ import {
 } from "../src/views.ts";
 import { buildManifest } from "../src/manifest.ts";
 import { transformPoint } from "../src/bindings.ts";
+import { tree, fp } from "./helpers/manifest.js";
 
-const tree = (roots) => {
-  const parent = new Map();
-  const walk = (n) =>
-    (n.children || []).forEach((c) => {
-      parent.set(c, n);
-      walk(c);
-    });
-  roots.forEach(walk);
-  return {
-    roots: () => roots,
-    children: (n) => n.children || [],
-    name: (n) => n.name || "",
-    extras: (n) => n.extras || {},
-    parent: (n) => parent.get(n) || null,
-  };
-};
-const fp = (o) => ({ fp: o });
 const sq = [
   [0, 0],
   [4, 0],
