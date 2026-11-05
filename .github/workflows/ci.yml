@@ -27,7 +27,7 @@ jobs:
             dist/floorplan3d-card.js
             dist/chunks/
 
-  # demo screenshots, edit mode, perf (each retried once where timing on a slow shared runner can flake)
+  # demo screenshots, edit mode
   browser:
     runs-on: ubuntu-latest
     strategy:
@@ -36,10 +36,6 @@ jobs:
         check:
           - { name: screenshot, run: bun scripts/screenshot.mjs }
           - { name: edit-check, run: bun scripts/edit-check.mjs }
-          - {
-              name: perf-check,
-              run: 'bun scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && bun scripts/perf-check.mjs)',
-            }
     name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4
@@ -57,22 +53,56 @@ jobs:
           path: screenshots/
           if-no-files-found: ignore
 
-  # the model checks, one shard per section group (7 today; --shard k/7 takes every 7th group, so a new
-  # group still runs, in a shard with another), each retried once on a slow shared runner
-  model-check:
+  # the render loop's work by counters and condition waits (no frame-time budget), one shard per group pair
+  # (--shard k/3 takes every 3rd group: mower-map + still, quality-standard + auto, quality-high)
+  perf-check:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
       - uses: jdx/mise-action@v5
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - name: Model checks (shard ${{ matrix.shard }} of 7)
-        run: bun scripts/model-check.mjs --shard ${{ matrix.shard }}/7 || (echo "model-check retry (slow shared runner timing)" && bun scripts/model-check.mjs --shard ${{ matrix.shard }}/7)
+      - name: Perf checks (shard ${{ matrix.shard }} of 3)
+        run: bun scripts/perf-check.mjs --shard ${{ matrix.shard }}/3
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+  # timing numbers (main-thread ms per map refresh, frame time per tier): a shared runner's timing is no verdict,
+  # so this job reports and never fails the run
+  perf-bench:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
+      - uses: jdx/mise-action@v5
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun scripts/perf-check.mjs --only bench
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+  # the model checks, one shard per section group (8 today; --shard k/8 takes every 8th group, so a new
+  # group still runs, in a shard with another)
+  model-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
+      - uses: jdx/mise-action@v5
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Model checks (shard ${{ matrix.shard }} of 8)
+        run: bun scripts/model-check.mjs --shard ${{ matrix.shard }}/8
         env:
           CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4
