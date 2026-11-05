@@ -36,7 +36,7 @@ export interface HassEntityRegistryEntry {
   icon?: string | null;
   labels?: string[];
   hidden?: boolean;
-  entity_category?: 'config' | 'diagnostic' | null;
+  entity_category?: "config" | "diagnostic" | null;
   translation_key?: string;
 }
 
@@ -111,7 +111,10 @@ export interface Hass {
   config: HassConfig;
   themes?: HassThemes;
   language?: string;
-  callWS<T = unknown>(msg: { type: string; [key: string]: unknown }): Promise<T>;
+  callWS<T = unknown>(msg: {
+    type: string;
+    [key: string]: unknown;
+  }): Promise<T>;
   callService(
     domain: string,
     service: string,

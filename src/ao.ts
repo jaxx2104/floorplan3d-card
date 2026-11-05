@@ -3,27 +3,50 @@
 // cut): SAO (scalable ambient obscurance) at a reduced resolution and a depth-aware blur. In the frame itself a full-screen quad multiplies the canvas right after the opaque pass (lowest transparent render
 // order), so whatever is drawn later (glows, rain, sprites, lines) is not darkened, and the main render keeps
 // its tone mapping, MSAA and background.
-import * as THREE from 'three';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import type { DepthPrepass } from './depth-pass.ts';
-import { isPerspective, type ViewCamera } from './view/core.ts';
+import * as THREE from "three";
+import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import type { DepthPrepass } from "./depth-pass.ts";
+import { isPerspective, type ViewCamera } from "./view/core.ts";
 
-export const AO_DEFAULTS = Object.freeze({ intensity: 1, radius: 0.5, resolution: 0.5 });
-const AO_RANGE = { intensity: [0, 4], radius: [0.05, 3], resolution: [0.25, 1] };
+export const AO_DEFAULTS = Object.freeze({
+  intensity: 1,
+  radius: 0.5,
+  resolution: 0.5,
+});
+const AO_RANGE = {
+  intensity: [0, 4],
+  radius: [0.05, 3],
+  resolution: [0.25, 1],
+};
 export const AO_SAMPLES = 16;
 // darkest the occlusion gets (share of the light left)
 export const AO_FLOOR = 0.45;
 
 // Card option ao: true | { intensity, radius (m), resolution (share of the canvas) } -> settings, or null (off).
-export interface AoSettings { intensity: number; radius: number; resolution: number }
+export interface AoSettings {
+  intensity: number;
+  radius: number;
+  resolution: number;
+}
 export function normAo(opt: unknown): AoSettings | null {
   if (!opt) return null;
-  const o = opt === true ? {} : typeof opt === 'object' ? (opt as Record<string, unknown>) : null;
+  const o =
+    opt === true
+      ? {}
+      : typeof opt === "object"
+        ? (opt as Record<string, unknown>)
+        : null;
   if (!o) return null;
   const out = {} as AoSettings; // every key of AO_RANGE is set below
-  for (const [k, [lo, hi]] of Object.entries(AO_RANGE) as [keyof AoSettings, number[]][]) {
+  for (const [k, [lo, hi]] of Object.entries(AO_RANGE) as [
+    keyof AoSettings,
+    number[],
+  ][]) {
     const v = Number(o[k]);
-    out[k] = o[k] === undefined || !Number.isFinite(v) ? AO_DEFAULTS[k] : Math.min(hi, Math.max(lo, v));
+    out[k] =
+      o[k] === undefined || !Number.isFinite(v)
+        ? AO_DEFAULTS[k]
+        : Math.min(hi, Math.max(lo, v));
   }
   return out;
 }
@@ -122,25 +145,62 @@ export class AmbientOcclusion {
     this.renderer = renderer;
     this.settings = settings;
     this.size = new THREE.Vector2();
-    const rt = () => new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    const rt = () =>
+      new THREE.WebGLRenderTarget(1, 1, {
+        depthBuffer: false,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+      });
     this.aoTarget = rt();
     this.blurTarget = rt();
-    const tDepth: THREE.IUniform<THREE.Texture | null> = { value: null }, tFront: THREE.IUniform<THREE.Texture | null> = { value: null }, invProj = { value: new THREE.Matrix4() };
+    const tDepth: THREE.IUniform<THREE.Texture | null> = { value: null },
+      tFront: THREE.IUniform<THREE.Texture | null> = { value: null },
+      invProj = { value: new THREE.Matrix4() };
     this.sao = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: SAO_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { tDepth, tFront, invProj, texel: { value: new THREE.Vector2() }, radius: { value: 0 }, intensity: { value: 0 }, projScale: { value: 0 }, persp: { value: 1 } },
+      vertexShader: VERT,
+      fragmentShader: SAO_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: {
+        tDepth,
+        tFront,
+        invProj,
+        texel: { value: new THREE.Vector2() },
+        radius: { value: 0 },
+        intensity: { value: 0 },
+        projScale: { value: 0 },
+        persp: { value: 1 },
+      },
     });
     this.blur = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { tDepth, tFront, invProj, tAo: { value: null }, dir: { value: new THREE.Vector2() } },
+      vertexShader: VERT,
+      fragmentShader: BLUR_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: {
+        tDepth,
+        tFront,
+        invProj,
+        tAo: { value: null },
+        dir: { value: new THREE.Vector2() },
+      },
     });
     this.fsQuad = new FullScreenQuad(this.sao); // its material is set before every render
     // multiplies the canvas colour, keeps its alpha
     const apply = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: APPLY_FRAG, uniforms: { tAo: { value: this.aoTarget.texture } },
-      transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
-      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
-      blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+      vertexShader: VERT,
+      fragmentShader: APPLY_FRAG,
+      uniforms: { tAo: { value: this.aoTarget.texture } },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.DstColorFactor,
+      blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.ZeroFactor,
+      blendDstAlpha: THREE.OneFactor,
     });
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), apply);
     quad.frustumCulled = false;
@@ -168,16 +228,21 @@ export class AmbientOcclusion {
   // SAO and blur from the depth pre-pass (depth-pass.js) for this camera; shows the quad for the next scene
   // render (end() hides it).
   begin(depth: DepthPrepass, camera: ViewCamera): void {
-    const r = this.renderer, s = this.settings;
-    const w = depth.size.x, h = depth.size.y;
+    const r = this.renderer,
+      s = this.settings;
+    const w = depth.size.x,
+      h = depth.size.y;
     this._setSize(w, h);
     this._tDepth.value = depth.target.depthTexture;
     this._tFront.value = depth.target.texture;
-    const prevTarget = r.getRenderTarget(), prevAutoClear = r.autoClear;
-    const clear = r.getClearColor(new THREE.Color()), clearAlpha = r.getClearAlpha();
+    const prevTarget = r.getRenderTarget(),
+      prevAutoClear = r.autoClear;
+    const clear = r.getClearColor(new THREE.Color()),
+      clearAlpha = r.getClearAlpha();
     r.autoClear = true;
 
-    const u = this.sao.uniforms, proj = camera.projectionMatrix;
+    const u = this.sao.uniforms,
+      proj = camera.projectionMatrix;
     u.invProj.value.copy(camera.projectionMatrixInverse);
     u.texel.value.set(1 / w, 1 / h);
     u.radius.value = s.radius;

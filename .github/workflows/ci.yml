@@ -36,7 +36,10 @@ jobs:
         check:
           - { name: screenshot, run: bun scripts/screenshot.mjs }
           - { name: edit-check, run: bun scripts/edit-check.mjs }
-          - { name: perf-check, run: 'bun scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && bun scripts/perf-check.mjs)' }
+          - {
+              name: perf-check,
+              run: 'bun scripts/perf-check.mjs || (echo "perf-check retry (slow shared runner timing)" && bun scripts/perf-check.mjs)',
+            }
     name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4

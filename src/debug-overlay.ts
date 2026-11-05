@@ -2,14 +2,22 @@
 // second: FPS, frame ms (avg / max over 1 s), the longest main-thread task of the last 60 s (long task
 // API, else measured frame gaps), the last map refresh's stages, shadow-map updates and renders a minute,
 // and the map refresh interval (doubled by the adaptive throttle).
-import { effectiveRefresh } from './mower-track.ts';
-import type { FloorplanView } from './view.ts';
-import type { Floorplan3dCard } from './card-impl.ts';
+import { effectiveRefresh } from "./mower-track.ts";
+import type { FloorplanView } from "./view.ts";
+import type { Floorplan3dCard } from "./card-impl.ts";
 
-const fmt = (v: number | null): string => (v !== null && Number.isFinite(v) ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : '–');
+const fmt = (v: number | null): string =>
+  v !== null && Number.isFinite(v)
+    ? v >= 100
+      ? v.toFixed(0)
+      : v.toFixed(1)
+    : "–";
 
 /** What the overlay reads of the card (the card itself; a narrow view for fakes). */
-export type DebugCard = Pick<Floorplan3dCard, '_perf' | '_throttle' | '_mapRefreshSec' | 'longTasks'>;
+export type DebugCard = Pick<
+  Floorplan3dCard,
+  "_perf" | "_throttle" | "_mapRefreshSec" | "longTasks"
+>;
 
 export class DebugOverlay {
   view: FloorplanView;
@@ -25,8 +33,8 @@ export class DebugOverlay {
   constructor(stage: HTMLElement, view: FloorplanView, card: DebugCard) {
     this.view = view;
     this.card = card;
-    this.el = document.createElement('div');
-    this.el.className = 'fp-debug';
+    this.el = document.createElement("div");
+    this.el.className = "fp-debug";
     stage.appendChild(this.el);
     this.frameMs = [];
     this.gaps = []; // [at, ms] frame gaps over 60 s (no long task API)
@@ -35,7 +43,8 @@ export class DebugOverlay {
     this._lastTick = 0;
     view.onFrameTime = (ms: number) => this.frameMs.push(ms);
     view.onTick = (ts: number) => {
-      if (this._lastTick && ts - this._lastTick > 50) this.gaps.push([performance.now(), ts - this._lastTick]);
+      if (this._lastTick && ts - this._lastTick > 50)
+        this.gaps.push([performance.now(), ts - this._lastTick]);
       this._lastTick = ts;
     };
     this.timer = setInterval(() => this.update(), 1000);
@@ -43,31 +52,42 @@ export class DebugOverlay {
   }
 
   update(): void {
-    const v = this.view, now = performance.now();
+    const v = this.view,
+      now = performance.now();
     const frames = v.stats.frames - this.last.frames;
     this.last.frames = v.stats.frames;
     const fm = this.frameMs;
     this.frameMs = [];
-    const avg = fm.length ? fm.reduce((a, b) => a + b, 0) / fm.length : null, max = fm.length ? Math.max(...fm) : null;
+    const avg = fm.length ? fm.reduce((a, b) => a + b, 0) / fm.length : null,
+      max = fm.length ? Math.max(...fm) : null;
     this.minute.push([now, v.stats.frames, v.stats.shadowLights]);
-    while (this.minute.length && now - this.minute[0][0] > 60000) this.minute.shift();
+    while (this.minute.length && now - this.minute[0][0] > 60000)
+      this.minute.shift();
     const first = this.minute[0];
     const span = Math.max(1, (now - first[0]) / 60000);
-    const rendersMin = (v.stats.frames - first[1]) / span, shadowsMin = (v.stats.shadowLights - first[2]) / span;
+    const rendersMin = (v.stats.frames - first[1]) / span,
+      shadowsMin = (v.stats.shadowLights - first[2]) / span;
     this.gaps = this.gaps.filter(([at]) => now - at < 60000);
     const lt = this.card.longTasks ? this.card.longTasks() : null;
-    const longest = lt ? Math.max(0, ...lt.filter((e) => now - e.start < 60000).map((e) => e.ms)) : Math.max(0, ...this.gaps.map(([, ms]) => ms - 16.7));
+    const longest = lt
+      ? Math.max(0, ...lt.filter((e) => now - e.start < 60000).map((e) => e.ms))
+      : Math.max(0, ...this.gaps.map(([, ms]) => ms - 16.7));
     const p = this.card._perf && this.card._perf.last;
     const t = this.card._throttle;
     const base = this.card._mapRefreshSec ? this.card._mapRefreshSec() : null;
     const lines = [
       `fps ${frames} · frame ${fmt(avg)} / ${fmt(max)} ms`,
-      `longest task (60 s) ${fmt(longest)} ms ${lt ? '' : '(gaps)'}`.trim(),
-      p ? `map: decode ${fmt(p.decode)} · worker ${fmt(p.worker)} · apply ${fmt(p.apply)} ms (main ${fmt(p.main)})` : 'map: decode – · worker – · apply –',
+      `longest task (60 s) ${fmt(longest)} ms ${lt ? "" : "(gaps)"}`.trim(),
+      p
+        ? `map: decode ${fmt(p.decode)} · worker ${fmt(p.worker)} · apply ${fmt(p.apply)} ms (main ${fmt(p.main)})`
+        : "map: decode – · worker – · apply –",
       `shadows ${fmt(shadowsMin)}/min · renders ${fmt(rendersMin)}/min`,
     ];
-    if (base) lines.push(`map refresh ${effectiveRefresh(base, t)} s${t && t.factor > 1 ? ' (throttled)' : ''}`);
-    this.el.textContent = lines.join('\n');
+    if (base)
+      lines.push(
+        `map refresh ${effectiveRefresh(base, t)} s${t && t.factor > 1 ? " (throttled)" : ""}`,
+      );
+    this.el.textContent = lines.join("\n");
   }
 
   dispose(): void {

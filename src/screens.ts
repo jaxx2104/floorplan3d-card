@@ -4,11 +4,11 @@
 // The screen plays while its entity is on: state 'on', or a number above `above` when that is given
 // (e.g. a desk plug's power for monitors). Off, its emissive goes dark. No entity: always on.
 
-import type * as THREE from 'three';
-import type { HassEntity } from './types/ha.ts';
-import { isMesh, meshMaterials } from './view/core.ts';
+import type * as THREE from "three";
+import type { HassEntity } from "./types/ha.ts";
+import { isMesh, meshMaterials } from "./view/core.ts";
 
-const TEX = ['map', 'emissiveMap'] as const;
+const TEX = ["map", "emissiveMap"] as const;
 
 export interface ScreenAnim {
   frames: number;
@@ -18,7 +18,11 @@ export interface ScreenAnim {
 }
 
 /** A material that may carry textures and an emissive colour (MeshStandardMaterial and the like). */
-export type ScreenMaterial = THREE.Material & { map?: THREE.Texture | null; emissiveMap?: THREE.Texture | null; emissive?: THREE.Color };
+export type ScreenMaterial = THREE.Material & {
+  map?: THREE.Texture | null;
+  emissiveMap?: THREE.Texture | null;
+  emissive?: THREE.Color;
+};
 
 export interface Screen {
   mat: ScreenMaterial;
@@ -29,19 +33,34 @@ export interface Screen {
 }
 
 // The animation spec of a material, or null.
-export function animOf(mat: THREE.Material | null | undefined): ScreenAnim | null {
+export function animOf(
+  mat: THREE.Material | null | undefined,
+): ScreenAnim | null {
   const a: unknown = mat && mat.userData && mat.userData.fp_anim;
-  if (!a || typeof a !== 'object') return null;
-  const spec = a as { frames?: unknown; fps?: unknown; entity?: unknown; above?: unknown };
+  if (!a || typeof a !== "object") return null;
+  const spec = a as {
+    frames?: unknown;
+    fps?: unknown;
+    entity?: unknown;
+    above?: unknown;
+  };
   const frames = Math.floor(Number(spec.frames));
   const fps = Number(spec.fps);
   if (!(frames > 1) || !(fps > 0)) return null;
   const above = spec.above == null ? null : Number(spec.above);
-  return { frames, fps, entity: typeof spec.entity === 'string' ? spec.entity : null, above: Number.isFinite(above) ? above : null };
+  return {
+    frames,
+    fps,
+    entity: typeof spec.entity === "string" ? spec.entity : null,
+    above: Number.isFinite(above) ? above : null,
+  };
 }
 
 // Is the screen showing, given hass.states?
-export function screenOn(anim: ScreenAnim, states: Record<string, HassEntity> | null | undefined): boolean {
+export function screenOn(
+  anim: ScreenAnim,
+  states: Record<string, HassEntity> | null | undefined,
+): boolean {
   if (!anim.entity) return true;
   const st = states && states[anim.entity];
   if (!st) return false;
@@ -49,15 +68,17 @@ export function screenOn(anim: ScreenAnim, states: Record<string, HassEntity> | 
     const v = Number(st.state);
     return Number.isFinite(v) && v > anim.above;
   }
-  return st.state === 'on';
+  return st.state === "on";
 }
 
 // Frame index at time t (seconds).
-export const frameAt = (anim: ScreenAnim, t: number): number => Math.floor(Math.max(0, t) * anim.fps) % anim.frames;
+export const frameAt = (anim: ScreenAnim, t: number): number =>
+  Math.floor(Math.max(0, t) * anim.fps) % anim.frames;
 
 // Every animated material under root (each once): { mat, anim, emissive (the modelled colour), frame, on }.
 export function collectScreens(root: THREE.Object3D): Screen[] {
-  const out: Screen[] = [], seen = new Set<THREE.Material>();
+  const out: Screen[] = [],
+    seen = new Set<THREE.Material>();
   root.traverse((o) => {
     if (!isMesh(o)) return;
     for (const mat of meshMaterials(o) as ScreenMaterial[]) {
@@ -65,7 +86,13 @@ export function collectScreens(root: THREE.Object3D): Screen[] {
       seen.add(mat);
       const anim = animOf(mat);
       if (!anim) continue;
-      out.push({ mat, anim, emissive: mat.emissive ? mat.emissive.clone() : null, frame: 0, on: true });
+      out.push({
+        mat,
+        anim,
+        emissive: mat.emissive ? mat.emissive.clone() : null,
+        frame: 0,
+        on: true,
+      });
     }
   });
   return out;

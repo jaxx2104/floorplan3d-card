@@ -35,10 +35,12 @@
 ### Task 1: Pure logic (`src/objects/logic.js`)
 
 **Files:**
+
 - Create: `src/objects/logic.js`
 - Test: `test/objects-logic.test.js`
 
 **Interfaces:**
+
 - Produces:
   - `bindObjects(objects, layoutObjects, states)` → `Map<objectId, { entity: string|null, auto: boolean, missing: boolean, hidden: boolean }>`
   - `chainState(obj, binding, groups, states)` → `{ lit: boolean, unavailable: boolean, source: stateObj|null, entities: string[], reason: string|null }`
@@ -292,11 +294,13 @@ export function screenNearest(points, x, y, radius) {
 ### Task 2: Object layer, lamps and the light pool
 
 **Files:**
+
 - Create: `src/objects/layer.js`, `src/objects/types.js`
 - Modify: `src/view.js` (hooks below), `src/floorplan3d-card.js` (wiring, hide markers of bound devices, `lights` option), `src/card-editor.js` (`lights` select)
 - Test: `test/objects-types.test.js` (pure parts of types: glow lookup by name, hint defaults), headless checks in Task 8
 
 **Interfaces:**
+
 - Consumes: Task 1 functions; manifest `objects` entries `{ id, type, label, level, room, group, glow, anchor, hints, suggest, ui, node }` (node via `manifest.byNode` inverse — add `entry.node` in `src/manifest.js` if missing, through the adapter's node).
 - Produces:
   - `class ObjectLayer { constructor(view); setModel(model|null); setBindings(bindings: Map, groups); update(states, { visibleLevel: (levelId)=>boolean, lightsOn: boolean }); anchors(): Array<{ id, world: THREE.Vector3 }>; objectAt(id); dispose() }`
@@ -325,6 +329,7 @@ export function screenNearest(points, x, y, radius) {
 **Files:** Modify `src/view.js` (`_applyLook`, `_fitShadow`), `src/floorplan3d-card.js` (toolbar button cycle, sun from hass), `README.md`. Test: `test/objects-logic.test.js` already covers the math; headless in Task 8.
 
 **Interfaces:**
+
 - Consumes: `nightFactor`, `sunVector` (Task 1).
 - Produces: `view.setSky({ night: 0..1, sunDir: [x,y,z] | null })`; card `this._skyMode` in `'auto'|'day'|'night'` persisted at localStorage key `floorplan3d.sky` (try/catch).
 
@@ -339,6 +344,7 @@ export function screenNearest(points, x, y, radius) {
 **Files:** Create `src/objects/popup.js`; modify `src/floorplan3d-card.js` (pointer handling), STYLE; Test: `test/objects-popup.test.js` (row building is pure).
 
 **Interfaces:**
+
 - Consumes: `screenNearest` (Task 1), `ObjectLayer.anchors()`, `TYPES[type].defaults`, `chainState`.
 - Produces: `popupRows(obj, chain, states)` → array of `{ kind, entity?, label, value? }`; `class ObjectPopup { constructor(root, { onAction }); open(obj, anchorWorld); update(states); close(); get isOpen }`.
 
@@ -354,6 +360,7 @@ export function screenNearest(points, x, y, radius) {
 **Files:** Modify `src/objects/types.js`, `src/floorplan3d-card.js` (mower position feed), Test: `test/objects-types.test.js` (state → colour/label mapping).
 
 **Interfaces:**
+
 - Consumes: the card's existing live mower position (`readSource` + calibration in `src/mower.js`, used where `_mowerMarkerId` is updated), Task 2 layer.
 - Produces: `layer.setMowerPose({ x, y, floorId, heading } | null)`; `statusColor(type, state)` → `[r,g,b]|null`; `objectLabel(type, states, entity)` → string|null.
 
@@ -369,6 +376,7 @@ export function screenNearest(points, x, y, radius) {
 **Files:** Modify `src/edit-mode.js`, `src/floorplan3d-card.js` (STYLE), `src/editor.js` (pure layout helpers), Test: `test/editor.test.js`.
 
 **Interfaces:**
+
 - Consumes: bindings (Task 1), `ObjectLayer`, `saveLayout` path via `this.commit(...)`.
 - Produces: `E.setObject(layout, id, patch)` (merge into `layout.objects[id]`, `patch.entity === undefined` removes the key to return to auto), `E.setGroup(layout, name, patch)`.
 
@@ -383,6 +391,7 @@ export function screenNearest(points, x, y, radius) {
 **Files:** Modify `src/edit-mode.js` (marker drag), `src/view.js` (surface raycast helper), `src/floorplan3d-card.js` (attached marker positions), `src/editor.js`, Test: `test/editor.test.js`, `test/objects-logic.test.js` (`snapPin`).
 
 **Interfaces:**
+
 - Produces: `view.surfaceAt(clientX, clientY)` → `{ point: Vector3, normal: Vector3, object, owner }` (visible model meshes only, section/cut respected) or null; pure `snapPin(hit, floorElevation, floorId)` → `{ x, y, z, floor_id }` (plan coords, z = hit.y + normal.y×0.05 − floorElevation, x/y from hit + normal×0.05); `E.attachPin(layout, markerId, objectId, offset)`; card: markers with `pins[id].attach` positioned at the object's anchor + offset every time positions are computed (and when the mower object moves).
 
 - [ ] **Step 1:** Tests for `snapPin` (wall hit offsets 5 cm along the normal; ceiling hit gives z just below the ceiling) and `attachPin` (keeps `on_model`, stores `attach` and `offset`).

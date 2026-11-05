@@ -40,30 +40,32 @@
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `src/views.js` (new) | selectors, node index, view sources/merge, visibility resolution, primary level, default floors, device-in-view state, legacy show-mode migration |
-| `src/outline.js` (new) | outline polygon from triangles (pure) |
-| `src/manifest.js` (modify) | read root `fp.views` (validated) into `manifest.views` |
-| `src/bindings.js` (modify) | `measuredElevations(levels)` |
-| `src/layout.js` (modify) | `roomLabel(name, polygon, mode)` |
-| `src/view.js` (modify) | visible floor set, `applyModelVisibility`, `setMarkerStates`, `setCut`, `getCamera`/`setCamera`, `meshTriangles`, `pickModel` returns hit |
-| `src/floorplan3d-card.js` (modify) | resolve views, chips from views, `_setView`, markers state, cameras, labels, YAML `views`, `room_labels` |
-| `src/edit-mode.js` (modify) | Views tab, click-in-3D menu, Model tab "belongs to floor", Rooms tab Pick + Advanced floors |
-| `scripts/make-demo-model.mjs`, `demo/house.glb`, `scripts/model-check.mjs` | demo model with views/layers, headless checks |
-| `docs/model-builder-guide.md`, `README.md` | views/layers/ceilings/room-floor rules, usage |
-| tests: `test/views.test.js`, `test/outline.test.js`, additions to `test/manifest.test.js`, `test/bindings.test.js`, `test/layout.test.js` | unit tests |
+| File                                                                                                                                      | Responsibility                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/views.js` (new)                                                                                                                      | selectors, node index, view sources/merge, visibility resolution, primary level, default floors, device-in-view state, legacy show-mode migration |
+| `src/outline.js` (new)                                                                                                                    | outline polygon from triangles (pure)                                                                                                             |
+| `src/manifest.js` (modify)                                                                                                                | read root `fp.views` (validated) into `manifest.views`                                                                                            |
+| `src/bindings.js` (modify)                                                                                                                | `measuredElevations(levels)`                                                                                                                      |
+| `src/layout.js` (modify)                                                                                                                  | `roomLabel(name, polygon, mode)`                                                                                                                  |
+| `src/view.js` (modify)                                                                                                                    | visible floor set, `applyModelVisibility`, `setMarkerStates`, `setCut`, `getCamera`/`setCamera`, `meshTriangles`, `pickModel` returns hit         |
+| `src/floorplan3d-card.js` (modify)                                                                                                        | resolve views, chips from views, `_setView`, markers state, cameras, labels, YAML `views`, `room_labels`                                          |
+| `src/edit-mode.js` (modify)                                                                                                               | Views tab, click-in-3D menu, Model tab "belongs to floor", Rooms tab Pick + Advanced floors                                                       |
+| `scripts/make-demo-model.mjs`, `demo/house.glb`, `scripts/model-check.mjs`                                                                | demo model with views/layers, headless checks                                                                                                     |
+| `docs/model-builder-guide.md`, `README.md`                                                                                                | views/layers/ceilings/room-floor rules, usage                                                                                                     |
+| tests: `test/views.test.js`, `test/outline.test.js`, additions to `test/manifest.test.js`, `test/bindings.test.js`, `test/layout.test.js` | unit tests                                                                                                                                        |
 
 ---
 
 ### Task 1: Manifest views and the selector engine
 
 **Files:**
+
 - Modify: `src/manifest.js` (inside `buildManifest`, after `tops` is computed)
 - Create: `src/views.js` (selectors + node index + resolution)
 - Test: `test/manifest.test.js` (add), `test/views.test.js` (new)
 
 **Interfaces:**
+
 - Produces:
   - `manifest.views: Array<{ id, label, show: string[], hide: string[], camera: {position:[n,n,n], target:[n,n,n]} | null }>` (invalid entries dropped with a warning)
   - `parseSelector(s: string): { kind: string, value: string | null } | null`
@@ -75,6 +77,7 @@
 - [ ] **Step 1: Failing tests**
 
 `test/manifest.test.js` (append):
+
 ```js
 describe('manifest views', () => {
   it('reads valid root views and drops invalid ones', () => {
@@ -95,9 +98,11 @@ describe('manifest views', () => {
   });
 });
 ```
+
 (Use the existing `tree` and `fp` helpers in that file. `show`/`hide` that are not arrays of strings become `[]`; a `camera` without two 3-number arrays becomes `null`.)
 
 `test/views.test.js` (new):
+
 ```js
 import { describe, it, expect } from 'vitest';
 import { parseSelector, nodeIndex, matches, resolveVisibility, unmatchedSelectors } from '../src/views.js';
@@ -310,10 +315,12 @@ export function unmatchedSelectors(index, rules) {
 ### Task 2: View sources, merging, primary level, devices in view, measured elevations
 
 **Files:**
+
 - Modify: `src/views.js`, `src/bindings.js` (`measuredElevations`)
 - Test: `test/views.test.js`, `test/bindings.test.js`
 
 **Interfaces:**
+
 - Consumes: Task 1 (`nodeIndex`, `resolveVisibility`, `parseSelector`), manifest levels (`id, label, role, order, minY?`).
 - Produces:
   - `modelViewRules(v: {show, hide}): Rule[]`
@@ -397,6 +404,7 @@ describe('primary level, floors, devices', () => {
 ```
 
 Append to `test/bindings.test.js`:
+
 ```js
 import { measuredElevations } from '../src/bindings.js';
 describe('measuredElevations', () => {
@@ -501,6 +509,7 @@ export function markerState({ roomId, roomLevelId, markerFloorId }, ctx) {
 ```
 
 In `src/bindings.js`:
+
 ```js
 // Elevation/height for levels the model did not tag with numbers, measured from their geometry.
 export function measuredElevations(levels) {
@@ -520,6 +529,7 @@ export function measuredElevations(levels) {
   return out;
 }
 ```
+
 (Rounding note: `snap(2.89)` = 2.9; the test expects `ground.height` 2.9 and `attic.elevation` 2.9.)
 
 - [ ] **Step 4: Run** the two test files → PASS; full `npx vitest run`; `npx eslint .`.
@@ -530,16 +540,19 @@ export function measuredElevations(levels) {
 ### Task 3: Outline from mesh triangles and room labels
 
 **Files:**
+
 - Create: `src/outline.js`
 - Modify: `src/layout.js` (`roomLabel`)
 - Test: `test/outline.test.js` (new), `test/layout.test.js` (append)
 
 **Interfaces:**
+
 - Produces: `outlineFromTriangles(tris: number[] (x,y,z per vertex, 9 per triangle, world), hit: [x, y, z]): [x, y][] | null` (plan coords: plan x = world x, plan y = −world z); `roomLabel(name: string, polygon: [x,y][], mode: 'name'|'size'|'none'): string`.
 
 - [ ] **Step 1: Failing tests**
 
 `test/outline.test.js`:
+
 ```js
 import { describe, it, expect } from 'vitest';
 import { outlineFromTriangles } from '../src/outline.js';
@@ -585,6 +598,7 @@ describe('outlineFromTriangles', () => {
 ```
 
 `test/layout.test.js` (append):
+
 ```js
 import { roomLabel } from '../src/layout.js';
 describe('roomLabel', () => {
@@ -664,6 +678,7 @@ export function outlineFromTriangles(tris, hit) {
 ```
 
 In `src/layout.js` (and import nothing new; `signedArea` comes from `./placement.js`, already imported there or add it):
+
 ```js
 // Room label text: name plus size (bounding width × depth for rectangles, area otherwise).
 export function roomLabel(name, polygon, mode = 'size') {
@@ -691,6 +706,7 @@ export function roomLabel(name, polygon, mode = 'size') {
 **Files:** Modify `src/view.js`. (No unit tests: WebGL; verified by Task 8 headless checks. Keep existing behaviour when the new hooks are not called.)
 
 **Interfaces (produce):**
+
 - `setVisibleFloors(ids: string[] | 'all')`; `setVisibleFloor(id)` becomes `setVisibleFloors(id === 'all' ? 'all' : [id])` and keeps `this.visibleFloor` (first id or `'all'`) for existing callers; `_shows(floorId)` checks the set.
 - `applyModelVisibility(index, flags: boolean[] | null)`: when flags given, sets `index.nodes[i].node.visible = flags[i]` for every node and records `this._modelVisibility = { index, flags }`; `_applyFloorVisibility` then skips its `levelVisible` loop. `null` → back to level rules.
 - `setMarkerStates(states: Map<markerId, {shown, faded}> | null)`: when set, marker CSS objects and their glows use `shown` instead of floor visibility, and the `fp-faded` class uses `faded` (replacing the current "top floor" fading for markers).
@@ -722,6 +738,7 @@ export function roomLabel(name, polygon, mode = 'size') {
     return { position: r(this.persp.position), target: r(this.controls.target) };
   }
 ```
+
 `setCamera` starts the tween from the current position/target to the given ones (or sets them directly when `instant` or `!this._framed`), exactly like `fit()` does today; factor the tween start into a private `_moveCamera(position, target, instant)` used by both.
 
 - [ ] **Step 2: Verify** `npm run build`, `npx eslint .`, `npx vitest run`, and that the existing headless checks still pass: `node scripts/screenshot.mjs && node scripts/edit-check.mjs && node scripts/model-check.mjs`.
@@ -734,6 +751,7 @@ export function roomLabel(name, polygon, mode = 'size') {
 **Files:** Modify `src/floorplan3d-card.js` (+ `src/layout.js` call sites if needed).
 
 **Interfaces:**
+
 - Consumes: Tasks 1–4.
 - Produces on the card (used by Task 6/7/8): `this._views: View[]` (resolved, incl. hidden), `this._viewId`, `currentView(): View`, `viewIndex(): index | null`, `_setView(id, { instant })`, `_viewState: { effective: boolean[], primary, floors: string[] }`, `saveViewPatch(id, patch)` (merges into `layout.views[id]` and commits).
 
@@ -757,6 +775,7 @@ export function roomLabel(name, polygon, mode = 'size') {
 **Files:** Modify `src/edit-mode.js`, `src/floorplan3d-card.js` (STYLE only).
 
 **Interfaces:**
+
 - Consumes: card `this._views`, `currentView()`, `viewIndex()`, `_setView`, `saveViewPatch`, `_viewState`; view `pickModel` (with `hit`), `highlightModelNode`; `unmatchedSelectors`, `parseSelector`.
 - Produces (DOM hooks for Task 8): tab button `Views` (`data-act="tab" data-id="views"`); `select[data-field="vw-view"]`; `input[data-field="vw-label"]`; `input[data-field="vw-floor"][data-id=<floorId>]` (checkboxes); buttons `data-act="vw-add"`, `vw-hide`, `vw-up`, `vw-down`, `vw-save-cam`, `vw-reset-cam`, `vw-reset`; `input[data-field="vw-cut"]`; tree rows `li[data-sel="<selector>"]` with an eye `button[data-act="vw-eye"][data-sel=…]` cycling default → hide → show → default; unmatched selectors listed under "Not in this model" with remove buttons `data-act="vw-rm"`; floating menu `.fp-pickmenu` with buttons `data-act="vw-hide-here"`, `vw-show-here`, `vw-hide-all`, `vw-reveal`.
 

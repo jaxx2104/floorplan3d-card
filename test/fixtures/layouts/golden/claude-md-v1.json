@@ -18,29 +18,12 @@
         "area_id": "kitchen",
         "floor_id": "ground",
         "polygon": [
-          [
-            0,
-            0
-          ],
-          [
-            4,
-            0
-          ],
-          [
-            4,
-            3
-          ],
-          [
-            0,
-            3
-          ]
+          [0, 0],
+          [4, 0],
+          [4, 3],
+          [0, 3]
         ],
-        "doors": [
-          [
-            2,
-            0
-          ]
-        ],
+        "doors": [[2, 0]],
         "outdoor": false
       }
     ],
@@ -52,9 +35,7 @@
         "floor_id": "ground"
       }
     },
-    "hidden": [
-      "device:xyz"
-    ],
+    "hidden": ["device:xyz"],
     "mower": {
       "entity": "device_tracker.mower_position",
       "source": "gps",
@@ -63,14 +44,8 @@
       "floor_id": "ground",
       "calibration": [
         {
-          "src": [
-            45,
-            10
-          ],
-          "plan": [
-            10,
-            -5
-          ]
+          "src": [45, 10],
+          "plan": [10, -5]
         }
       ],
       "overlay": {

@@ -4,14 +4,16 @@ Status: scope agreed in chat item by item; spec awaiting review
 Date: 2026-10-05
 
 ## Goal
+
 1. Objects and markers can navigate and run HA actions like standard Lovelace cards.
 2. Devices sit on real model surfaces (walls, ceilings, floors), never floating; dragging shows where they land.
 3. The Sunseeker live map lies on the real lawn: aligned by points, background transparent so mowed
    stripes, path and no-mow zones show on the lawn; the enlarged mower icon hidden; a warning over the
    mower when it is in error or stuck.
-Rule: stay light and easy — good defaults, few options.
+   Rule: stay light and easy — good defaults, few options.
 
 ## 1. Actions
+
 - Keys `tap_action`, `hold_action`, `double_tap_action` with HA's standard shape:
   `toggle`, `more-info` (`entity`), `navigate` (`navigation_path`), `url` (`url_path`),
   `perform-action` (`perform_action`, `data`, `target`), `assist`, `none`, plus our `popup`;
@@ -29,6 +31,7 @@ Rule: stay light and easy — good defaults, few options.
   `fp.ui.popup` or YAML; shown at the popup bottom.
 
 ## 2. Placement on surfaces
+
 - Drag preview (edit mode, Devices): while dragging over the model, a ring (r 0.12 m) on the target
   surface, the hit surface face tinted, and the stem; over a model object its outline highlights and a
   label "Attach: <object label>". Alt = free drag (no preview).
@@ -42,6 +45,7 @@ Rule: stay light and easy — good defaults, few options.
   move them like above; shows "N markers will move" with Apply / Cancel.
 
 ## 3. Mower map
+
 - Align by points: "Align by points" → click a point on the map image, then the same point on the
   model; 2 points → similarity (scale, rotation, offset) written to overlay x/y/rotation/width;
   3+ → least-squares similarity. Sliders stay for fine tuning.
@@ -57,6 +61,7 @@ Rule: stay light and easy — good defaults, few options.
 - "Show the map only in edit mode" checkbox.
 
 ## 4. Mower warning
+
 - Red ⚠ (world-size sprite above the mower model, gentle pulse, also in top view) when the mower
   entity state is `error`, or an optional "Error entity" (Mower tab) reports a problem
   (`binary_sensor` on, or a sensor whose state is not empty/none/ok/unknown/unavailable).
@@ -65,6 +70,7 @@ Rule: stay light and easy — good defaults, few options.
 - Tap → popup with the error text (error entity state or attributes), Start / Dock buttons.
 
 ## Testing
+
 Unit: action resolution and merge order, double-tap timing, navigation calls; surface snapping
 direction choice; point alignment fit; image processing (key colours, icon mask, zone mask) on
 synthetic images; stuck detector. Headless: navigate/perform-action from a tap and hold; drag preview

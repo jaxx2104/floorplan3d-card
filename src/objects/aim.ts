@@ -15,63 +15,94 @@ export interface AimSpot {
   target?: readonly number[] | null;
   distance?: unknown;
 }
-export type BadTarget = 'far' | 'shared';
+export type BadTarget = "far" | "shared";
 type TargetSpot = AimSpot & { target: readonly number[] };
 
-const key = (t: readonly number[]): string => t.map((v) => Math.round(v * 1e6) / 1e6).join(',');
+const key = (t: readonly number[]): string =>
+  t.map((v) => Math.round(v * 1e6) / 1e6).join(",");
 
 // True for an object aimed up: hints beam "up", or an id / label naming an uplight.
-export function aimsUp(obj: { id?: unknown; label?: unknown; hints?: { beam?: unknown } | null } | null | undefined): boolean {
+export function aimsUp(
+  obj:
+    | { id?: unknown; label?: unknown; hints?: { beam?: unknown } | null }
+    | null
+    | undefined,
+): boolean {
   if (!obj) return false;
-  if (obj.hints && obj.hints.beam === 'up') return true;
-  return UP_RE.test(String(obj.id || '')) || UP_RE.test(String(obj.label || ''));
+  if (obj.hints && obj.hints.beam === "up") return true;
+  return (
+    UP_RE.test(String(obj.id || "")) || UP_RE.test(String(obj.label || ""))
+  );
 }
 
 export const CONE_MAX_DEG = 60; // an uplight's target more than this off vertical is suspicious
 
 const offCone = (s: TargetSpot): boolean => {
-  const p = s.pos || [0, 0, 0], d = [s.target[0] - p[0], s.target[1] - p[1], s.target[2] - p[2]];
+  const p = s.pos || [0, 0, 0],
+    d = [s.target[0] - p[0], s.target[1] - p[1], s.target[2] - p[2]];
   const len = Math.hypot(d[0], d[1], d[2]);
-  return len > 0 && Math.acos(Math.max(-1, Math.min(1, d[1] / len))) * 180 / Math.PI > CONE_MAX_DEG;
+  return (
+    len > 0 &&
+    (Math.acos(Math.max(-1, Math.min(1, d[1] / len))) * 180) / Math.PI >
+      CONE_MAX_DEG
+  );
 };
-const isOrigin = (t: readonly number[]): boolean => t.every((v) => Math.abs(v) < 1e-9);
+const isOrigin = (t: readonly number[]): boolean =>
+  t.every((v) => Math.abs(v) < 1e-9);
 
 // spots: [{ id, group, up, targetOk, pos: [x, y, z], target: [x, y, z] | null, distance }] (one frame,
 // y up). -> Map id -> 'far' | 'shared' for each target that is ignored: farther than distance (8 m when
 // 0 / unset) from the lamp; or shared by 2+ spots of one group when the shared point is also suspicious
 // (the origin, or off the cone of an uplight: > 60 deg from straight up). targetOk (hints.target_ok)
 // opts a spot out.
-export function badTargets(spots: readonly (AimSpot | null | undefined)[] | null | undefined): Map<string, BadTarget> {
-  const bad = new Map<string, BadTarget>(), byGroup = new Map<string, TargetSpot[]>();
+export function badTargets(
+  spots: readonly (AimSpot | null | undefined)[] | null | undefined,
+): Map<string, BadTarget> {
+  const bad = new Map<string, BadTarget>(),
+    byGroup = new Map<string, TargetSpot[]>();
   for (const raw of spots || []) {
     if (!raw || !Array.isArray(raw.target)) continue;
     const s = raw as TargetSpot; // target checked just above
     if (s.group) {
-      const k = s.group + '|' + key(s.target);
+      const k = s.group + "|" + key(s.target);
       if (!byGroup.has(k)) byGroup.set(k, []);
       byGroup.get(k)!.push(s); // set just above
     }
     if (s.targetOk) continue;
     const max = Number(s.distance) > 0 ? Number(s.distance) : TARGET_MAX_M;
     const p = s.pos || [0, 0, 0];
-    if (Math.hypot(s.target[0] - p[0], s.target[1] - p[1], s.target[2] - p[2]) > max) bad.set(s.id, 'far');
+    if (
+      Math.hypot(s.target[0] - p[0], s.target[1] - p[1], s.target[2] - p[2]) >
+      max
+    )
+      bad.set(s.id, "far");
   }
   for (const list of byGroup.values()) {
     if (list.length < 2) continue;
-    const suspicious = isOrigin(list[0].target) || list.some((s) => s.up && offCone(s));
-    if (suspicious) for (const s of list) if (!s.targetOk) bad.set(s.id, 'shared');
+    const suspicious =
+      isOrigin(list[0].target) || list.some((s) => s.up && offCone(s));
+    if (suspicious)
+      for (const s of list) if (!s.targetOk) bad.set(s.id, "shared");
   }
   return bad;
 }
 
 // Where a spot points (same frame as pos): its target when trusted, else straight up (uplights) or down.
-export function aimPoint(pos: readonly number[], target: readonly number[] | null | undefined, { bad = false, up = false } = {}): number[] {
+export function aimPoint(
+  pos: readonly number[],
+  target: readonly number[] | null | undefined,
+  { bad = false, up = false } = {},
+): number[] {
   if (Array.isArray(target) && !bad) return target.slice();
   return [pos[0], pos[1] + (up ? UP_M : -DOWN_M), pos[2]];
 }
 
 // The model check / Model tab warning, or null.
-export function aimWarning(bad: Map<string, unknown> | null | undefined): string | null {
+export function aimWarning(
+  bad: Map<string, unknown> | null | undefined,
+): string | null {
   const ids = [...(bad ? bad.keys() : [])].sort();
-  return ids.length ? `spot target looks wrong (shared / too far): ${ids.join(', ')}` : null;
+  return ids.length
+    ? `spot target looks wrong (shared / too far): ${ids.join(", ")}`
+    : null;
 }

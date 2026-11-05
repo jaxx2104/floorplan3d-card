@@ -2,18 +2,27 @@
 // the vertex shader from a time uniform (no buffer updates), kept off the rooms twice: no drop starts
 // over a room footprint (world x / z, with a margin), and fragments over the rooms on screen are
 // discarded (a mask of the on-screen room hulls), so nothing falls in front of a room either.
-import * as THREE from 'three';
-import { CLOUD_WIND } from './cloud-shadow.ts';
-import type { PlanPoint } from './types/layout.ts';
+import * as THREE from "three";
+import { CLOUD_WIND } from "./cloud-shadow.ts";
+import type { PlanPoint } from "./types/layout.ts";
 
 // Amounts 0..1 of rain and snow for a weather condition.
-export interface PrecipAmounts { rain: number; snow: number }
-export type PrecipKind = 'rain' | 'snow';
+export interface PrecipAmounts {
+  rain: number;
+  snow: number;
+}
+export type PrecipKind = "rain" | "snow";
 const CONDITIONS: Record<string, PrecipAmounts> = {
-  rainy: { rain: 0.6, snow: 0 }, pouring: { rain: 1, snow: 0 }, 'lightning-rainy': { rain: 0.8, snow: 0 }, hail: { rain: 0.7, snow: 0 },
-  snowy: { rain: 0, snow: 0.7 }, 'snowy-rainy': { rain: 0.4, snow: 0.4 },
+  rainy: { rain: 0.6, snow: 0 },
+  pouring: { rain: 1, snow: 0 },
+  "lightning-rainy": { rain: 0.8, snow: 0 },
+  hail: { rain: 0.7, snow: 0 },
+  snowy: { rain: 0, snow: 0.7 },
+  "snowy-rainy": { rain: 0.4, snow: 0.4 },
 };
-export function precipAmounts(condition: string | null | undefined): PrecipAmounts {
+export function precipAmounts(
+  condition: string | null | undefined,
+): PrecipAmounts {
   return (condition && CONDITIONS[condition]) || { rain: 0, snow: 0 };
 }
 
@@ -29,12 +38,22 @@ export const PRECIP_ROOM_MARGIN = 0.6;
 export const PRECIP_FRAME_MS = 33;
 
 // Point in polygon ([[x, y], ...], plan coordinates) or within margin of its edges.
-export function nearPolygon(poly: PlanPoint[], x: number, y: number, margin = 0): boolean {
-  let inside = false, best = Infinity;
+export function nearPolygon(
+  poly: PlanPoint[],
+  x: number,
+  y: number,
+  margin = 0,
+): boolean {
+  let inside = false,
+    best = Infinity;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i], [xj, yj] = poly[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    const ex = xi - xj, ey = yi - yj, l2 = ex * ex + ey * ey || 1;
+    const [xi, yi] = poly[i],
+      [xj, yj] = poly[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+      inside = !inside;
+    const ex = xi - xj,
+      ey = yi - yj,
+      l2 = ex * ex + ey * ey || 1;
     const t = Math.max(0, Math.min(1, ((x - xj) * ex + (y - yj) * ey) / l2));
     best = Math.min(best, Math.hypot(x - xj - t * ex, y - yj - t * ey));
   }
@@ -44,13 +63,23 @@ export function nearPolygon(poly: PlanPoint[], x: number, y: number, margin = 0)
 // Deterministic drop bases in a square of half-size `half` (m) around centre [x, z] (world), none
 // over the room polygons (plan coordinates: world z = -y) within margin: Float32Array of
 // [x, z, phase 0..1] per drop.
-export function placeDrops(count: number, centre: [number, number], half: number, rooms: PlanPoint[][] = [], margin = PRECIP_ROOM_MARGIN): Float32Array {
+export function placeDrops(
+  count: number,
+  centre: [number, number],
+  half: number,
+  rooms: PlanPoint[][] = [],
+  margin = PRECIP_ROOM_MARGIN,
+): Float32Array {
   let seed = 424242;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const rnd = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
   const out = new Float32Array(count * 3);
   let n = 0;
   for (let tries = 0; n < count && tries < count * 20; tries++) {
-    const x = centre[0] + (rnd() * 2 - 1) * half, z = centre[1] + (rnd() * 2 - 1) * half;
+    const x = centre[0] + (rnd() * 2 - 1) * half,
+      z = centre[1] + (rnd() * 2 - 1) * half;
     if (rooms.some((p) => nearPolygon(p, x, -z, margin))) continue;
     out.set([x, z, rnd()], n * 3);
     n++;
@@ -100,29 +129,55 @@ export interface PrecipUniforms {
 
 export function makePrecipUniforms(): PrecipUniforms {
   return {
-    uTime: { value: 0 }, uTop: { value: 10 }, uBottom: { value: 0 }, uMask: { value: null }, uRes: { value: new THREE.Vector2(1, 1) },
+    uTime: { value: 0 },
+    uTop: { value: 10 },
+    uBottom: { value: 0 },
+    uMask: { value: null },
+    uRes: { value: new THREE.Vector2(1, 1) },
   };
 }
 
 // A rain (LineSegments) or snow (Points) layer for drop bases from placeDrops; own uniforms for speed,
 // look and drift, the shared ones (time, range, mask) by reference.
-export function makePrecipLayer(kind: PrecipKind, drops: Float32Array, shared: PrecipUniforms): THREE.LineSegments | THREE.Points {
-  const n = drops.length / 3, g = new THREE.BufferGeometry(), rain = kind === 'rain';
-  const per = rain ? 2 : 1, aDrop = new Float32Array(n * per * 3), aEnd = new Float32Array(n * per), pos = new Float32Array(n * per * 3);
+export function makePrecipLayer(
+  kind: PrecipKind,
+  drops: Float32Array,
+  shared: PrecipUniforms,
+): THREE.LineSegments | THREE.Points {
+  const n = drops.length / 3,
+    g = new THREE.BufferGeometry(),
+    rain = kind === "rain";
+  const per = rain ? 2 : 1,
+    aDrop = new Float32Array(n * per * 3),
+    aEnd = new Float32Array(n * per),
+    pos = new Float32Array(n * per * 3);
   for (let i = 0; i < n; i++) {
-    for (let k = 0; k < per; k++) { aDrop.set(drops.subarray(i * 3, i * 3 + 3), (i * per + k) * 3); aEnd[i * per + k] = k; }
+    for (let k = 0; k < per; k++) {
+      aDrop.set(drops.subarray(i * 3, i * 3 + 3), (i * per + k) * 3);
+      aEnd[i * per + k] = k;
+    }
   }
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); // unused (the shader places the drops)
-  g.setAttribute('aDrop', new THREE.BufferAttribute(aDrop, 3));
-  g.setAttribute('aEnd', new THREE.BufferAttribute(aEnd, 1));
-  const wind: [number, number] = rain ? [CLOUD_WIND[0] * RAIN_SLANT, CLOUD_WIND[1] * RAIN_SLANT] : [CLOUD_WIND[0] * 0.25, CLOUD_WIND[1] * 0.25];
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); // unused (the shader places the drops)
+  g.setAttribute("aDrop", new THREE.BufferAttribute(aDrop, 3));
+  g.setAttribute("aEnd", new THREE.BufferAttribute(aEnd, 1));
+  const wind: [number, number] = rain
+    ? [CLOUD_WIND[0] * RAIN_SLANT, CLOUD_WIND[1] * RAIN_SLANT]
+    : [CLOUD_WIND[0] * 0.25, CLOUD_WIND[1] * 0.25];
   const mat = new THREE.ShaderMaterial({
-    vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false,
+    vertexShader: VERT,
+    fragmentShader: FRAG,
+    transparent: true,
+    depthWrite: false,
     uniforms: {
       ...shared,
-      uSpeed: { value: rain ? RAIN_SPEED : SNOW_SPEED }, uLen: { value: rain ? RAIN_LEN : 0 }, uWobble: { value: rain ? 0 : 0.25 },
-      uSize: { value: rain ? 1 : 150 }, uWind: { value: new THREE.Vector2(...wind) },
-      uColor: { value: new THREE.Color(rain ? 0x8fa3bd : 0xffffff) }, uOpacity: { value: rain ? 0.55 : 0.9 }, uRound: { value: rain ? 0 : 1 },
+      uSpeed: { value: rain ? RAIN_SPEED : SNOW_SPEED },
+      uLen: { value: rain ? RAIN_LEN : 0 },
+      uWobble: { value: rain ? 0 : 0.25 },
+      uSize: { value: rain ? 1 : 150 },
+      uWind: { value: new THREE.Vector2(...wind) },
+      uColor: { value: new THREE.Color(rain ? 0x8fa3bd : 0xffffff) },
+      uOpacity: { value: rain ? 0.55 : 0.9 },
+      uRound: { value: rain ? 0 : 1 },
     },
   });
   const obj = rain ? new THREE.LineSegments(g, mat) : new THREE.Points(g, mat);
@@ -137,18 +192,29 @@ export function makePrecipLayer(kind: PrecipKind, drops: Float32Array, shared: P
 
 // Screen mask of the room hulls (px from the centre, y up) as a canvas texture (red = room), drawn
 // into an existing canvas texture when given.
-export function drawRoomMask(hulls: number[][][] | null, width: number, height: number, tex: THREE.CanvasTexture | null = null, px = 256): THREE.CanvasTexture {
-  const t = tex || new THREE.CanvasTexture(document.createElement('canvas'));
+export function drawRoomMask(
+  hulls: number[][][] | null,
+  width: number,
+  height: number,
+  tex: THREE.CanvasTexture | null = null,
+  px = 256,
+): THREE.CanvasTexture {
+  const t = tex || new THREE.CanvasTexture(document.createElement("canvas"));
   const c = t.image as HTMLCanvasElement;
   c.width = c.height = px;
-  const g = c.getContext('2d');
+  const g = c.getContext("2d");
   if (g) {
-    g.fillStyle = '#000';
+    g.fillStyle = "#000";
     g.fillRect(0, 0, px, px);
-    g.fillStyle = '#fff';
+    g.fillStyle = "#fff";
     for (const h of hulls || []) {
       g.beginPath();
-      h.forEach(([x, y], i) => { const u = ((x + width / 2) / width) * px, v = ((height / 2 - y) / height) * px; if (i) g.lineTo(u, v); else g.moveTo(u, v); });
+      h.forEach(([x, y], i) => {
+        const u = ((x + width / 2) / width) * px,
+          v = ((height / 2 - y) / height) * px;
+        if (i) g.lineTo(u, v);
+        else g.moveTo(u, v);
+      });
       g.closePath();
       g.fill();
     }

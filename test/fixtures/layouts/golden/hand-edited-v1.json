@@ -74,76 +74,36 @@
       "message": "expected a number, got \"9\""
     }
   ],
-  "unknown": [
-    "my_extension"
-  ],
+  "unknown": ["my_extension"],
   "value": {
     "rooms": [
       {
         "id": "ok",
         "area_id": "kitchen",
         "polygon": [
-          [
-            0,
-            0
-          ],
-          [
-            4,
-            0
-          ],
-          [
-            4,
-            3
-          ],
-          [
-            0,
-            3
-          ]
+          [0, 0],
+          [4, 0],
+          [4, 3],
+          [0, 3]
         ]
       },
       {
         "area_id": "hall",
         "polygon": [
-          [
-            4,
-            0
-          ],
-          [
-            6,
-            0
-          ],
-          [
-            6,
-            3
-          ],
-          [
-            4,
-            3
-          ]
+          [4, 0],
+          [6, 0],
+          [6, 3],
+          [4, 3]
         ],
-        "doors": [
-          [
-            5,
-            0
-          ]
-        ],
+        "doors": [[5, 0]],
         "id": ""
       },
       {
         "id": "bad_points",
         "polygon": [
-          [
-            0,
-            0
-          ],
-          [
-            3,
-            3
-          ],
-          [
-            0,
-            3
-          ]
+          [0, 0],
+          [3, 3],
+          [0, 3]
         ]
       },
       {
@@ -167,9 +127,7 @@
         "z": 1.1
       }
     },
-    "hidden": [
-      "device:x"
-    ],
+    "hidden": ["device:x"],
     "objects": {
       "a": {
         "entity": "light.a"
@@ -186,9 +144,7 @@
       "overlay": {}
     },
     "my_extension": {
-      "keep": [
-        "me"
-      ]
+      "keep": ["me"]
     },
     "version": 2,
     "model": null

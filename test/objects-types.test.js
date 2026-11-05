@@ -1,98 +1,195 @@
-import { describe, it, expect } from 'bun:test';
-import * as THREE from 'three';
-import { hintDefaults, findGlow, TYPES, typeOf, statusColor, objectLabel, coverPose, reanchor, railOf, railAt, railDistance } from '../src/objects/types.ts';
+import { describe, it, expect } from "bun:test";
+import * as THREE from "three";
+import {
+  hintDefaults,
+  findGlow,
+  TYPES,
+  typeOf,
+  statusColor,
+  objectLabel,
+  coverPose,
+  reanchor,
+  railOf,
+  railAt,
+  railDistance,
+} from "../src/objects/types.ts";
 
-const DEF = { beam: 'point', up: false, max: 5, distance: 0, decay: 2, angle: 24, penumbra: 0.6, target: null, castShadow: true, offset: null, lumens: null };
+const DEF = {
+  beam: "point",
+  up: false,
+  max: 5,
+  distance: 0,
+  decay: 2,
+  angle: 24,
+  penumbra: 0.6,
+  target: null,
+  castShadow: true,
+  offset: null,
+  lumens: null,
+};
 
-describe('hintDefaults', () => {
-  it('fills defaults for empty or missing hints', () => {
+describe("hintDefaults", () => {
+  it("fills defaults for empty or missing hints", () => {
     expect(hintDefaults()).toEqual(DEF);
     expect(hintDefaults(null)).toEqual(DEF);
     expect(hintDefaults({})).toEqual(DEF);
   });
 
-  it('keeps valid hints', () => {
-    expect(hintDefaults({ beam: 'spot', max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12], lumens: 450 }))
-      .toEqual({ beam: 'spot', up: false, max: 34, distance: 9, decay: 1.5, angle: 30, penumbra: 0.2, target: [1, 0, 2], castShadow: false, offset: [0, 0, 0.12], lumens: 450 });
+  it("keeps valid hints", () => {
+    expect(
+      hintDefaults({
+        beam: "spot",
+        max: 34,
+        distance: 9,
+        decay: 1.5,
+        angle: 30,
+        penumbra: 0.2,
+        target: [1, 0, 2],
+        castShadow: false,
+        offset: [0, 0, 0.12],
+        lumens: 450,
+      }),
+    ).toEqual({
+      beam: "spot",
+      up: false,
+      max: 34,
+      distance: 9,
+      decay: 1.5,
+      angle: 30,
+      penumbra: 0.2,
+      target: [1, 0, 2],
+      castShadow: false,
+      offset: [0, 0, 0.12],
+      lumens: 450,
+    });
   });
 
-  it('treats down as point, up as a spot aimed up (24 deg, penumbra 0.6) and unknown beams as point', () => {
-    expect(hintDefaults({ beam: 'down' }).beam).toBe('point');
-    expect(hintDefaults({ beam: 'up' })).toMatchObject({ beam: 'spot', up: true, angle: 24, penumbra: 0.6 });
-    expect(hintDefaults({ beam: 'laser' }).beam).toBe('point');
+  it("treats down as point, up as a spot aimed up (24 deg, penumbra 0.6) and unknown beams as point", () => {
+    expect(hintDefaults({ beam: "down" }).beam).toBe("point");
+    expect(hintDefaults({ beam: "up" })).toMatchObject({
+      beam: "spot",
+      up: true,
+      angle: 24,
+      penumbra: 0.6,
+    });
+    expect(hintDefaults({ beam: "laser" }).beam).toBe("point");
   });
 
-  it('replaces invalid values with defaults', () => {
-    const h = hintDefaults({ max: -1, distance: 'far', decay: NaN, penumbra: 3, target: [1, 2], castShadow: 'yes', offset: ['a', 0, 0], angle: 'wide', lumens: -5 });
+  it("replaces invalid values with defaults", () => {
+    const h = hintDefaults({
+      max: -1,
+      distance: "far",
+      decay: NaN,
+      penumbra: 3,
+      target: [1, 2],
+      castShadow: "yes",
+      offset: ["a", 0, 0],
+      angle: "wide",
+      lumens: -5,
+    });
     expect(h).toEqual(DEF);
   });
 
-  it('clamps the spot angle to 5..80 degrees', () => {
+  it("clamps the spot angle to 5..80 degrees", () => {
     expect(hintDefaults({ angle: 1 }).angle).toBe(5);
     expect(hintDefaults({ angle: 120 }).angle).toBe(80);
     expect(hintDefaults({ angle: 45 }).angle).toBe(45);
   });
 });
 
-describe('findGlow', () => {
+describe("findGlow", () => {
   const tree = {
-    name: 'lamp', userData: {}, children: [
-      { name: 'base', userData: {}, isMesh: true, children: [] },
-      { name: 'shade', userData: {}, children: [
-        { name: 'bulb_glow', userData: { name: 'bulb:glow' }, isMesh: true, children: [] },
-        { name: 'glow', userData: {}, isMesh: true, children: [] },
-      ] },
+    name: "lamp",
+    userData: {},
+    children: [
+      { name: "base", userData: {}, isMesh: true, children: [] },
+      {
+        name: "shade",
+        userData: {},
+        children: [
+          {
+            name: "bulb_glow",
+            userData: { name: "bulb:glow" },
+            isMesh: true,
+            children: [],
+          },
+          { name: "glow", userData: {}, isMesh: true, children: [] },
+        ],
+      },
     ],
   };
 
-  it('finds the first mesh by name, userData.name first', () => {
-    expect(findGlow(tree, 'glow').name).toBe('glow');
-    expect(findGlow(tree, 'bulb:glow').name).toBe('bulb_glow');
+  it("finds the first mesh by name, userData.name first", () => {
+    expect(findGlow(tree, "glow").name).toBe("glow");
+    expect(findGlow(tree, "bulb:glow").name).toBe("bulb_glow");
   });
 
-  it('returns null when nothing matches', () => {
-    expect(findGlow(tree, 'nope')).toBeNull();
-    expect(findGlow(null, 'glow')).toBeNull();
+  it("returns null when nothing matches", () => {
+    expect(findGlow(tree, "nope")).toBeNull();
+    expect(findGlow(null, "glow")).toBeNull();
   });
 
-  it('a named group resolves to its first mesh', () => {
-    const t = { name: 'lamp', children: [{ name: 'glow', children: [{ name: 'glow_1', isMesh: true, children: [] }] }] };
-    expect(findGlow(t, 'glow').name).toBe('glow_1');
+  it("a named group resolves to its first mesh", () => {
+    const t = {
+      name: "lamp",
+      children: [
+        {
+          name: "glow",
+          children: [{ name: "glow_1", isMesh: true, children: [] }],
+        },
+      ],
+    };
+    expect(findGlow(t, "glow").name).toBe("glow_1");
   });
 
-  it('the node itself can be the glow mesh', () => {
-    const t = { name: 'glow', isMesh: true, children: [] };
-    expect(findGlow(t, 'glow')).toBe(t);
+  it("the node itself can be the glow mesh", () => {
+    const t = { name: "glow", isMesh: true, children: [] };
+    expect(findGlow(t, "glow")).toBe(t);
   });
 });
 
-describe('types', () => {
-  it('has the registry with defaults', () => {
-    for (const k of ['light', 'light_strip', 'mower', 'dock', 'ev_charger', 'climate', 'generic']) {
-      expect(typeof TYPES[k].prepare).toBe('function');
-      expect(typeof TYPES[k].update).toBe('function');
-      expect(TYPES[k].defaults).toHaveProperty('tap_action');
+describe("types", () => {
+  it("has the registry with defaults", () => {
+    for (const k of [
+      "light",
+      "light_strip",
+      "mower",
+      "dock",
+      "ev_charger",
+      "climate",
+      "generic",
+    ]) {
+      expect(typeof TYPES[k].prepare).toBe("function");
+      expect(typeof TYPES[k].update).toBe("function");
+      expect(TYPES[k].defaults).toHaveProperty("tap_action");
     }
-    expect(TYPES.light.defaults).toEqual({ tap_action: { action: 'toggle' }, hold_action: { action: 'popup' }, popup: ['toggle', 'brightness', 'color'] });
-    expect(typeOf('nonsense')).toBe(TYPES.generic);
+    expect(TYPES.light.defaults).toEqual({
+      tap_action: { action: "toggle" },
+      hold_action: { action: "popup" },
+      popup: ["toggle", "brightness", "color"],
+    });
+    expect(typeOf("nonsense")).toBe(TYPES.generic);
   });
 
   const lamp = () => {
     const root = new THREE.Group();
     const node = new THREE.Group();
     node.position.set(2, 1, 0);
-    const mat = new THREE.MeshStandardMaterial({ emissive: 0x333333, emissiveIntensity: 1 });
+    const mat = new THREE.MeshStandardMaterial({
+      emissive: 0x333333,
+      emissiveIntensity: 1,
+    });
     const glow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), mat);
-    glow.name = 'glow';
+    glow.name = "glow";
     glow.position.set(0, 0.5, 0);
     node.add(glow);
     root.add(node);
     return { root, node, glow, mat };
   };
 
-  it('light: clones the glow material, starts dark, anchors at the glow centre', () => {
+  it("light: clones the glow material, starts dark, anchors at the glow centre", () => {
     const { root, node, glow, mat } = lamp();
-    const obj = { id: 'l1', type: 'light', node, glow: null, hints: {} };
+    const obj = { id: "l1", type: "light", node, glow: null, hints: {} };
     const part = TYPES.light.prepare(obj, { root });
     expect(glow.material).not.toBe(mat);
     expect(glow.material.emissive.getHex()).toBe(0);
@@ -104,30 +201,53 @@ describe('types', () => {
     expect(glow.material).toBe(mat);
   });
 
-  it('light: a large glow mesh (a shade) gets a lower emissive intensity than a small bulb', () => {
+  it("light: a large glow mesh (a shade) gets a lower emissive intensity than a small bulb", () => {
     const { root, node, glow } = lamp();
-    const big = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), new THREE.MeshStandardMaterial());
-    big.name = 'shade';
+    const big = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 8, 6),
+      new THREE.MeshStandardMaterial(),
+    );
+    big.name = "shade";
     node.add(big);
-    const on = { state: 'on', attributes: { brightness: 255 } };
-    const small = TYPES.light.prepare({ id: 's', type: 'light', node, hints: {} }, { root });
-    const large = TYPES.light.prepare({ id: 'b', type: 'light', node, glow: 'shade', hints: {} }, { root });
+    const on = { state: "on", attributes: { brightness: 255 } };
+    const small = TYPES.light.prepare(
+      { id: "s", type: "light", node, hints: {} },
+      { root },
+    );
+    const large = TYPES.light.prepare(
+      { id: "b", type: "light", node, glow: "shade", hints: {} },
+      { root },
+    );
     TYPES.light.update(small, { lit: true, source: on });
     TYPES.light.update(large, { lit: true, source: on });
     expect(glow.material.emissiveIntensity).toBe(3);
-    expect(big.material.emissiveIntensity).toBeCloseTo(3 * Math.pow(0.12 / 0.5, 0.7), 3);
+    expect(big.material.emissiveIntensity).toBeCloseTo(
+      3 * Math.pow(0.12 / 0.5, 0.7),
+      3,
+    );
   });
 
-  it('light: hints.offset moves the anchor in the model frame', () => {
+  it("light: hints.offset moves the anchor in the model frame", () => {
     const { root, node } = lamp();
-    const part = TYPES.light.prepare({ id: 'l', type: 'light', node, hints: { offset: [0, 0, 0.12] } }, { root });
-    expect(part.anchor.toArray().map((v) => +v.toFixed(3))).toEqual([2, 1.5, 0.12]);
+    const part = TYPES.light.prepare(
+      { id: "l", type: "light", node, hints: { offset: [0, 0, 0.12] } },
+      { root },
+    );
+    expect(part.anchor.toArray().map((v) => +v.toFixed(3))).toEqual([
+      2, 1.5, 0.12,
+    ]);
   });
 
-  it('light: update sets emissive from level and colour', () => {
+  it("light: update sets emissive from level and colour", () => {
     const { root, node, glow } = lamp();
-    const part = TYPES.light.prepare({ id: 'l', type: 'light', node, hints: {} }, { root });
-    const on = { state: 'on', attributes: { brightness: 255, rgb_color: [255, 0, 0] } };
+    const part = TYPES.light.prepare(
+      { id: "l", type: "light", node, hints: {} },
+      { root },
+    );
+    const on = {
+      state: "on",
+      attributes: { brightness: 255, rgb_color: [255, 0, 0] },
+    };
     let r = TYPES.light.update(part, { lit: true, source: on });
     expect(r).toEqual({ lit: true, level: 1, color: [255, 0, 0] });
     expect(glow.material.emissiveIntensity).toBe(3);
@@ -140,24 +260,41 @@ describe('types', () => {
     expect(r.level).toBe(1);
   });
 
-  it('light without a glow mesh: anchor at the node bounding-box centre, no material', () => {
+  it("light without a glow mesh: anchor at the node bounding-box centre, no material", () => {
     const root = new THREE.Group();
-    const node = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+    const node = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial(),
+    );
     node.position.set(0, 2, 0);
     root.add(node);
-    const part = TYPES.light.prepare({ id: 'x', type: 'light', node, hints: {} }, { root });
+    const part = TYPES.light.prepare(
+      { id: "x", type: "light", node, hints: {} },
+      { root },
+    );
     expect(part.glow).toBeNull();
     expect(part.anchor.toArray()).toEqual([0, 2, 0]);
-    expect(TYPES.light.update(part, { lit: true, source: null }).lit).toBe(true);
+    expect(TYPES.light.update(part, { lit: true, source: null }).lit).toBe(
+      true,
+    );
   });
 
-  it('two objects sharing one glow mesh: one clone, strongest owner wins, original back after the last owner', () => {
+  it("two objects sharing one glow mesh: one clone, strongest owner wins, original back after the last owner", () => {
     const { root, node, glow, mat } = lamp();
-    const a = TYPES.light.prepare({ id: 'a', type: 'light', node, hints: {} }, { root });
+    const a = TYPES.light.prepare(
+      { id: "a", type: "light", node, hints: {} },
+      { root },
+    );
     const clone = glow.material;
-    const b = TYPES.light.prepare({ id: 'b', type: 'light', node, hints: {} }, { root });
+    const b = TYPES.light.prepare(
+      { id: "b", type: "light", node, hints: {} },
+      { root },
+    );
     expect(glow.material).toBe(clone); // cloned once per mesh
-    const on = (bri, rgb) => ({ lit: true, source: { state: 'on', attributes: { brightness: bri, rgb_color: rgb } } });
+    const on = (bri, rgb) => ({
+      lit: true,
+      source: { state: "on", attributes: { brightness: bri, rgb_color: rgb } },
+    });
     TYPES.light.update(a, on(255, [255, 0, 0]));
     TYPES.light.update(b, on(51, [0, 0, 255]));
     expect(clone.emissiveIntensity).toBeCloseTo(3);
@@ -169,7 +306,7 @@ describe('types', () => {
     expect(clone.emissiveIntensity).toBe(0);
     TYPES.light.update(b, on(255, [0, 255, 0]));
     let disposed = 0;
-    clone.addEventListener('dispose', () => disposed++);
+    clone.addEventListener("dispose", () => disposed++);
     TYPES.light.dispose(a);
     expect(glow.material).toBe(clone); // b still owns it
     expect(clone.emissive.g).toBeCloseTo(1);
@@ -180,130 +317,227 @@ describe('types', () => {
     expect(disposed).toBe(1);
   });
 
-  it('light_strip pools only with an explicit hints.max', () => {
+  it("light_strip pools only with an explicit hints.max", () => {
     const { root, node } = lamp();
-    expect(TYPES.light_strip.prepare({ id: 's', node, hints: {} }, { root }).pool).toBe(false);
-    expect(TYPES.light_strip.prepare({ id: 's', node, hints: { max: 3 } }, { root }).pool).toBe(true);
+    expect(
+      TYPES.light_strip.prepare({ id: "s", node, hints: {} }, { root }).pool,
+    ).toBe(false);
+    expect(
+      TYPES.light_strip.prepare({ id: "s", node, hints: { max: 3 } }, { root })
+        .pool,
+    ).toBe(true);
   });
 
-  it('generic: no visual change', () => {
+  it("generic: no visual change", () => {
     const { root, node, glow, mat } = lamp();
-    const part = TYPES.generic.prepare({ id: 'g', node, hints: {} }, { root });
+    const part = TYPES.generic.prepare({ id: "g", node, hints: {} }, { root });
     expect(glow.material).toBe(mat);
     expect(part.pool).toBe(false);
-    expect(TYPES.generic.update(part, { lit: true, source: null }).lit).toBe(false);
+    expect(TYPES.generic.update(part, { lit: true, source: null }).lit).toBe(
+      false,
+    );
   });
 });
 
-describe('statusColor', () => {
-  it('mower: mowing green, returning amber, error red, rest dim', () => {
-    expect(statusColor('mower', 'mowing')).toEqual([76, 175, 80]);
-    expect(statusColor('mower', 'returning')).toEqual([255, 179, 0]);
-    expect(statusColor('mower', 'error')).toEqual([244, 67, 54]);
-    expect(statusColor('mower', 'cleaning')).toEqual([76, 175, 80]); // vacuum
-    for (const s of ['docked', 'paused', 'unavailable', '', null, undefined, 'toString']) expect(statusColor('mower', s)).toBeNull();
+describe("statusColor", () => {
+  it("mower: mowing green, returning amber, error red, rest dim", () => {
+    expect(statusColor("mower", "mowing")).toEqual([76, 175, 80]);
+    expect(statusColor("mower", "returning")).toEqual([255, 179, 0]);
+    expect(statusColor("mower", "error")).toEqual([244, 67, 54]);
+    expect(statusColor("mower", "cleaning")).toEqual([76, 175, 80]); // vacuum
+    for (const s of [
+      "docked",
+      "paused",
+      "unavailable",
+      "",
+      null,
+      undefined,
+      "toString",
+    ])
+      expect(statusColor("mower", s)).toBeNull();
   });
-  it('ev_charger: charging green, ready / available blue, error red, else null', () => {
-    expect(statusColor('ev_charger', 'charging')).toEqual([76, 175, 80]);
-    expect(statusColor('ev_charger', 'ready')).toEqual([33, 150, 243]);
-    expect(statusColor('ev_charger', 'available')).toEqual([33, 150, 243]);
-    expect(statusColor('ev_charger', 'error')).toEqual([244, 67, 54]);
-    expect(statusColor('ev_charger', 'off')).toBeNull();
+  it("ev_charger: charging green, ready / available blue, error red, else null", () => {
+    expect(statusColor("ev_charger", "charging")).toEqual([76, 175, 80]);
+    expect(statusColor("ev_charger", "ready")).toEqual([33, 150, 243]);
+    expect(statusColor("ev_charger", "available")).toEqual([33, 150, 243]);
+    expect(statusColor("ev_charger", "error")).toEqual([244, 67, 54]);
+    expect(statusColor("ev_charger", "off")).toBeNull();
   });
-  it('dock is green only while docked; climate by hvac_action', () => {
-    expect(statusColor('dock', 'docked')).toEqual([76, 175, 80]);
-    expect(statusColor('dock', 'mowing')).toBeNull();
-    expect(statusColor('climate', 'heating')).toEqual([255, 120, 60]);
-    expect(statusColor('climate', 'cooling')).toEqual([80, 160, 255]);
-    expect(statusColor('climate', 'idle')).toBeNull();
-    expect(statusColor('light', 'on')).toBeNull();
+  it("dock is green only while docked; climate by hvac_action", () => {
+    expect(statusColor("dock", "docked")).toEqual([76, 175, 80]);
+    expect(statusColor("dock", "mowing")).toBeNull();
+    expect(statusColor("climate", "heating")).toEqual([255, 120, 60]);
+    expect(statusColor("climate", "cooling")).toEqual([80, 160, 255]);
+    expect(statusColor("climate", "idle")).toBeNull();
+    expect(statusColor("light", "on")).toBeNull();
   });
-  it('returns a copy', () => {
-    statusColor('mower', 'mowing')[0] = 0;
-    expect(statusColor('mower', 'mowing')[0]).toBe(76);
+  it("returns a copy", () => {
+    statusColor("mower", "mowing")[0] = 0;
+    expect(statusColor("mower", "mowing")[0]).toBe(76);
   });
 });
 
-describe('objectLabel', () => {
+describe("objectLabel", () => {
   const st = (state, attributes = {}) => ({ state, attributes });
-  it('charger charging shows the power attribute with unit', () => {
-    expect(objectLabel('ev_charger', { 'sensor.ev': st('charging', { power: 7.2 }) }, 'sensor.ev')).toBe('7.2 kW');
-    expect(objectLabel('ev_charger', { 'sensor.ev': st('charging', { charging_power: 3.7, power_unit: 'kW' }) }, 'sensor.ev')).toBe('3.7 kW');
+  it("charger charging shows the power attribute with unit", () => {
+    expect(
+      objectLabel(
+        "ev_charger",
+        { "sensor.ev": st("charging", { power: 7.2 }) },
+        "sensor.ev",
+      ),
+    ).toBe("7.2 kW");
+    expect(
+      objectLabel(
+        "ev_charger",
+        {
+          "sensor.ev": st("charging", {
+            charging_power: 3.7,
+            power_unit: "kW",
+          }),
+        },
+        "sensor.ev",
+      ),
+    ).toBe("3.7 kW");
   });
-  it('charger falls back to a power sensor next to the entity', () => {
-    const states = { 'sensor.ev': st('charging'), 'sensor.ev_power': st('7200', { unit_of_measurement: 'W' }) };
-    expect(objectLabel('ev_charger', states, 'sensor.ev')).toBe('7200 W');
+  it("charger falls back to a power sensor next to the entity", () => {
+    const states = {
+      "sensor.ev": st("charging"),
+      "sensor.ev_power": st("7200", { unit_of_measurement: "W" }),
+    };
+    expect(objectLabel("ev_charger", states, "sensor.ev")).toBe("7200 W");
   });
-  it('charger not charging or no power: null', () => {
-    expect(objectLabel('ev_charger', { 'sensor.ev': st('ready', { power: 7.2 }) }, 'sensor.ev')).toBeNull();
-    expect(objectLabel('ev_charger', { 'sensor.ev': st('charging') }, 'sensor.ev')).toBeNull();
+  it("charger not charging or no power: null", () => {
+    expect(
+      objectLabel(
+        "ev_charger",
+        { "sensor.ev": st("ready", { power: 7.2 }) },
+        "sensor.ev",
+      ),
+    ).toBeNull();
+    expect(
+      objectLabel("ev_charger", { "sensor.ev": st("charging") }, "sensor.ev"),
+    ).toBeNull();
   });
-  it('climate shows current_temperature', () => {
-    expect(objectLabel('climate', { 'climate.x': st('heat', { current_temperature: 21.5 }) }, 'climate.x')).toBe('21.5 \u00b0C');
-    expect(objectLabel('climate', { 'climate.x': st('heat', { current_temperature: 70, temperature_unit: '\u00b0F' }) }, 'climate.x')).toBe('70 \u00b0F');
-    expect(objectLabel('climate', { 'climate.x': st('heat') }, 'climate.x')).toBeNull();
+  it("climate shows current_temperature", () => {
+    expect(
+      objectLabel(
+        "climate",
+        { "climate.x": st("heat", { current_temperature: 21.5 }) },
+        "climate.x",
+      ),
+    ).toBe("21.5 \u00b0C");
+    expect(
+      objectLabel(
+        "climate",
+        {
+          "climate.x": st("heat", {
+            current_temperature: 70,
+            temperature_unit: "\u00b0F",
+          }),
+        },
+        "climate.x",
+      ),
+    ).toBe("70 \u00b0F");
+    expect(
+      objectLabel("climate", { "climate.x": st("heat") }, "climate.x"),
+    ).toBeNull();
   });
-  it('missing entity or other types: null', () => {
-    expect(objectLabel('climate', {}, 'climate.x')).toBeNull();
-    expect(objectLabel('climate', {}, null)).toBeNull();
-    expect(objectLabel('mower', { 'lawn_mower.m': st('mowing') }, 'lawn_mower.m')).toBeNull();
+  it("missing entity or other types: null", () => {
+    expect(objectLabel("climate", {}, "climate.x")).toBeNull();
+    expect(objectLabel("climate", {}, null)).toBeNull();
+    expect(
+      objectLabel("mower", { "lawn_mower.m": st("mowing") }, "lawn_mower.m"),
+    ).toBeNull();
   });
 });
 
-describe('cover', () => {
-  it('gathers a curtain to hints.min when open and keeps the modelled pose without a position', () => {
-    expect(coverPose({}, 0)).toEqual({ axis: 'x', scale: 1 });
-    expect(coverPose({ axis: 'z', min: 0.2 }, 100)).toEqual({ axis: 'z', scale: 0.2 });
+describe("cover", () => {
+  it("gathers a curtain to hints.min when open and keeps the modelled pose without a position", () => {
+    expect(coverPose({}, 0)).toEqual({ axis: "x", scale: 1 });
+    expect(coverPose({ axis: "z", min: 0.2 }, 100)).toEqual({
+      axis: "z",
+      scale: 0.2,
+    });
     expect(coverPose({ min: 0.2 }, 50).scale).toBeCloseTo(0.6);
-    expect(coverPose({}, '150')).toEqual({ axis: 'x', scale: 0.15 });
+    expect(coverPose({}, "150")).toEqual({ axis: "x", scale: 0.15 });
     expect(coverPose({}, undefined)).toBeNull();
-    expect(coverPose({}, 'unknown')).toBeNull();
+    expect(coverPose({}, "unknown")).toBeNull();
   });
-  it('lifts a desk top between hints.range', () => {
-    expect(coverPose({ motion: 'lift', range: [-0.1, 0.5] }, 0)).toEqual({ lift: -0.1 });
-    expect(coverPose({ motion: 'lift', range: [-0.1, 0.5] }, 50).lift).toBeCloseTo(0.2);
-    expect(coverPose({ motion: 'lift', range: 'x' }, 50)).toEqual({ lift: 0 });
+  it("lifts a desk top between hints.range", () => {
+    expect(coverPose({ motion: "lift", range: [-0.1, 0.5] }, 0)).toEqual({
+      lift: -0.1,
+    });
+    expect(
+      coverPose({ motion: "lift", range: [-0.1, 0.5] }, 50).lift,
+    ).toBeCloseTo(0.2);
+    expect(coverPose({ motion: "lift", range: "x" }, 50)).toEqual({ lift: 0 });
   });
-  it('moves the part named moving and restores it on dispose', () => {
+  it("moves the part named moving and restores it on dispose", () => {
     const root = new THREE.Group();
     const node = new THREE.Group();
     const top = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1));
-    top.name = 'moving';
+    top.name = "moving";
     top.position.set(0, 0.7, 0);
     node.add(top);
     root.add(node);
     const curtain = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 0.1));
     root.add(curtain);
-    const desk = TYPES.cover.prepare({ node, hints: { motion: 'lift', range: [0, 0.5] } }, { root });
-    const states = { 'cover.desk': { state: 'open', attributes: { current_position: 100 } } };
-    TYPES.cover.update(desk, {}, { entity: 'cover.desk', states });
+    const desk = TYPES.cover.prepare(
+      { node, hints: { motion: "lift", range: [0, 0.5] } },
+      { root },
+    );
+    const states = {
+      "cover.desk": { state: "open", attributes: { current_position: 100 } },
+    };
+    TYPES.cover.update(desk, {}, { entity: "cover.desk", states });
     expect(top.position.y).toBeCloseTo(1.2);
     const c = TYPES.cover.prepare({ node: curtain, hints: {} }, { root });
-    TYPES.cover.update(c, {}, { entity: 'cover.c', states: { 'cover.c': { state: 'open', attributes: { current_position: 100 } } } });
+    TYPES.cover.update(
+      c,
+      {},
+      {
+        entity: "cover.c",
+        states: {
+          "cover.c": { state: "open", attributes: { current_position: 100 } },
+        },
+      },
+    );
     expect(curtain.scale.x).toBeCloseTo(0.15);
     TYPES.cover.dispose(desk);
     TYPES.cover.dispose(c);
     expect(top.position.y).toBeCloseTo(0.7);
     expect(curtain.scale.x).toBe(1);
-    expect(typeOf('cover').defaults.tap_action).toEqual({ action: 'toggle' });
+    expect(typeOf("cover").defaults.tap_action).toEqual({ action: "toggle" });
   });
 });
 
-describe('cover mounts', () => {
-  it('reports a move once and an object on the moving part gets a new anchor', () => {
+describe("cover mounts", () => {
+  it("reports a move once and an object on the moving part gets a new anchor", () => {
     const root = new THREE.Group();
     const desk = new THREE.Group();
     const top = new THREE.Group();
-    top.name = 'desk_moving';
+    top.name = "desk_moving";
     desk.add(top);
     root.add(desk);
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1));
     lamp.position.set(0, 0.9, 0);
     top.add(lamp);
-    const part = TYPES.cover.prepare({ node: desk, hints: { part: 'desk_moving', motion: 'lift', range: [0, 0.5] } }, { root });
+    const part = TYPES.cover.prepare(
+      {
+        node: desk,
+        hints: { part: "desk_moving", motion: "lift", range: [0, 0.5] },
+      },
+      { root },
+    );
     const lampPart = TYPES.light.prepare({ node: lamp, hints: {} }, { root });
     expect(lampPart.anchor.y).toBeCloseTo(0.9);
-    const ctx = { entity: 'cover.d', states: { 'cover.d': { state: 'open', attributes: { current_position: 100 } } } };
+    const ctx = {
+      entity: "cover.d",
+      states: {
+        "cover.d": { state: "open", attributes: { current_position: 100 } },
+      },
+    };
     expect(TYPES.cover.update(part, {}, ctx).moved).toBe(true);
     expect(TYPES.cover.update(part, {}, ctx).moved).toBeUndefined();
     reanchor(lampPart, root);
@@ -313,27 +547,55 @@ describe('cover mounts', () => {
   });
 });
 
-describe('curtain on a bent rail', () => {
-  it('measures and walks the rail', () => {
-    const r = railOf([[0, 0], [2, 0], [2, 1]]);
+describe("curtain on a bent rail", () => {
+  it("measures and walks the rail", () => {
+    const r = railOf([
+      [0, 0],
+      [2, 0],
+      [2, 1],
+    ]);
     expect(r.total).toBeCloseTo(3);
     expect(railAt(r, 2.5)).toMatchObject({ x: 2, z: 0.5, dx: 0, dz: 1 });
     expect(railAt(r, 9)).toMatchObject({ x: 2, z: 1 });
     expect(railDistance(r, 1, 0.1)).toBeCloseTo(1);
     expect(railDistance(r, 2.1, 0.6)).toBeCloseTo(2.6);
     expect(railOf([[0, 0]])).toBeNull();
-    expect(railOf('x')).toBeNull();
+    expect(railOf("x")).toBeNull();
   });
-  it('slides pleats towards the start and turns them with the rail', () => {
-    const root = new THREE.Group(), node = new THREE.Group(), moving = new THREE.Group();
-    moving.name = 'moving';
+  it("slides pleats towards the start and turns them with the rail", () => {
+    const root = new THREE.Group(),
+      node = new THREE.Group(),
+      moving = new THREE.Group();
+    moving.name = "moving";
     node.add(moving);
     root.add(node);
     const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2, 0.04));
     pleat.position.set(2.05, 1, 0.8); // on the bent leg, 0.05 off the rail
     moving.add(pleat);
-    const part = TYPES.cover.prepare({ node, hints: { path: [[0, 0], [2, 0], [2, 1]], min: 0.5 } }, { root });
-    TYPES.cover.update(part, {}, { entity: 'cover.c', states: { 'cover.c': { state: 'open', attributes: { current_position: 100 } } } });
+    const part = TYPES.cover.prepare(
+      {
+        node,
+        hints: {
+          path: [
+            [0, 0],
+            [2, 0],
+            [2, 1],
+          ],
+          min: 0.5,
+        },
+      },
+      { root },
+    );
+    TYPES.cover.update(
+      part,
+      {},
+      {
+        entity: "cover.c",
+        states: {
+          "cover.c": { state: "open", attributes: { current_position: 100 } },
+        },
+      },
+    );
     // 2.8 m along -> 1.4 m, on the straight leg; the 0.05 offset turns from +x to -z
     expect(pleat.position.x).toBeCloseTo(1.4);
     expect(pleat.position.z).toBeCloseTo(-0.05);

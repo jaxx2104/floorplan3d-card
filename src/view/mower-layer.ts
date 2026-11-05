@@ -2,16 +2,20 @@
 // mower map overlay, the warning sprite, the status chip and the driven track. Shown with the
 // outdoors when a model is loaded.
 
-import * as THREE from 'three';
-import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { outdoorShown } from '../views.ts';
-import { GroundCache } from '../surface.ts';
-import { planToWorld } from './core.ts';
-import type { FloorplanView, MapImageResult } from '../view.ts';
+import * as THREE from "three";
+import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { outdoorShown } from "../views.ts";
+import { GroundCache } from "../surface.ts";
+import { planToWorld } from "./core.ts";
+import type { FloorplanView, MapImageResult } from "../view.ts";
 
 type MapPlane = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 /** A loaded map picture: an <img> from TextureLoader or an ImageBitmap from the card (closed when replaced). */
-type MapPicture = (HTMLImageElement | ImageBitmap) & { naturalWidth?: number; naturalHeight?: number; close?: () => void };
+type MapPicture = (HTMLImageElement | ImageBitmap) & {
+  naturalWidth?: number;
+  naturalHeight?: number;
+  close?: () => void;
+};
 /** What the map plane keeps in its userData. */
 interface MapPlaneData {
   sig?: string;
@@ -22,11 +26,19 @@ interface MapPlaneData {
   url?: string;
   rawTex?: THREE.Texture;
   canvasTex?: THREE.CanvasTexture | null;
-  loaded?: { url?: string; image: MapPicture | null; width?: number; height?: number; at: number };
+  loaded?: {
+    url?: string;
+    image: MapPicture | null;
+    width?: number;
+    height?: number;
+    at: number;
+  };
 }
-const mapData = (plane: MapPlane): MapPlaneData => plane.userData as MapPlaneData;
+const mapData = (plane: MapPlane): MapPlaneData =>
+  plane.userData as MapPlaneData;
 /** The size a processed canvas texture was made for. */
-const canvasSize = (t: THREE.CanvasTexture): { w?: number; h?: number } => t.userData as { w?: number; h?: number };
+const canvasSize = (t: THREE.CanvasTexture): { w?: number; h?: number } =>
+  t.userData as { w?: number; h?: number };
 
 /** Mower map overlay (setMapOverlay). */
 export interface MapOverlaySpec {
@@ -41,11 +53,32 @@ export interface MapOverlaySpec {
   hidden?: boolean;
   external?: boolean;
 }
-export interface MowerWarningSpec { kind: 'error' | 'stuck' | string; x: number; y: number; floorId: string }
-export interface MowerChipSpec { kind: string; icon: string; text?: string; x: number; y: number; floorId: string }
-export interface MowerTrackSpec { segments: number[][][]; floorId: string; color?: THREE.ColorRepresentation; width?: number; opacity?: number }
+export interface MowerWarningSpec {
+  kind: "error" | "stuck" | string;
+  x: number;
+  y: number;
+  floorId: string;
+}
+export interface MowerChipSpec {
+  kind: string;
+  icon: string;
+  text?: string;
+  x: number;
+  y: number;
+  floorId: string;
+}
+export interface MowerTrackSpec {
+  segments: number[][][];
+  floorId: string;
+  color?: THREE.ColorRepresentation;
+  width?: number;
+  opacity?: number;
+}
 /** Ground under a plan point: world height and the model level it belongs to. */
-interface GroundHit { y: number; level: string | null }
+interface GroundHit {
+  y: number;
+  level: string | null;
+}
 
 const MOWER_RAY_ABOVE_M = 1.5; // mower ground ray: starts this far over the lawn (overlay ground or floor)
 const MOWER_RAY_M = 4.5; // ... and reaches 3 m below it
@@ -54,9 +87,18 @@ export class MowerLayer {
   view: FloorplanView;
   mapPlane: MapPlane | null;
   _mapSeq: number;
-  warning: { sprite: THREE.Sprite; kind: string; floorId: string; timer: ReturnType<typeof setInterval> } | null;
+  warning: {
+    sprite: THREE.Sprite;
+    kind: string;
+    floorId: string;
+    timer: ReturnType<typeof setInterval>;
+  } | null;
   mowerChip: { obj: CSS2DObject; floorId?: string } | null;
-  mowerTrack: { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; sig: string | null; floorId: string } | null;
+  mowerTrack: {
+    mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+    sig: string | null;
+    floorId: string;
+  } | null;
   _ground: GroundCache<GroundHit>;
   _mowerGround: GroundCache<number>;
   _mapGround: number | null;
@@ -90,7 +132,9 @@ export class MowerLayer {
 
   _groundHit(x: number, y: number): GroundHit | null {
     if (!this.view.model) return null;
-    return this._ground.get(x, y, this.view.model.id, (cx, cy) => this._groundRay(cx, cy));
+    return this._ground.get(x, y, this.view.model.id, (cx, cy) =>
+      this._groundRay(cx, cy),
+    );
   }
 
   // Ground under the mower (marker, model node, warning): a ray down from 1.5 m over the map overlay's
@@ -103,8 +147,12 @@ export class MowerLayer {
     const key = `${this.view.model.id}|${base}`;
     const g = this._mowerGround.get(x, y, key, (cx, cy) => {
       const from = base + MOWER_RAY_ABOVE_M;
-      const hit = this.view.modelLayer.surfaceRays([cx, from, -cy], [[0, -1, 0]], MOWER_RAY_M)[0];
-      return hit ? hit.point[1] : this._groundHit(cx, cy)?.y ?? null;
+      const hit = this.view.modelLayer.surfaceRays(
+        [cx, from, -cy],
+        [[0, -1, 0]],
+        MOWER_RAY_M,
+      )[0];
+      return hit ? hit.point[1] : (this._groundHit(cx, cy)?.y ?? null);
     });
     return g;
   }
@@ -117,17 +165,23 @@ export class MowerLayer {
   _groundRay(x: number, y: number): GroundHit | null {
     const meshes = this.view.modelLayer._surfaceMeshes();
     if (!meshes.length) return null;
-    let top = -Infinity, bottom = Infinity;
+    let top = -Infinity,
+      bottom = Infinity;
     for (const { box } of meshes) {
       if (box.max.y > top) top = box.max.y;
       if (box.min.y < bottom) bottom = box.min.y;
     }
     const from = top + 1;
-    const hit = this.view.modelLayer.surfaceRays([x, from, -y], [[0, -1, 0]], from - bottom + 1)[0];
+    const hit = this.view.modelLayer.surfaceRays(
+      [x, from, -y],
+      [[0, -1, 0]],
+      from - bottom + 1,
+    )[0];
     if (!hit) return null;
     let level = null;
     const levels = this.view.model!.manifest.levels || []; // the surface meshes exist only with a model
-    for (let o: THREE.Object3D | null = hit.object; o && !level; o = o.parent) level = levels.find((l) => l.node === o) || null;
+    for (let o: THREE.Object3D | null = hit.object; o && !level; o = o.parent)
+      level = levels.find((l) => l.node === o) || null;
     return { y: hit.point[1], level: level ? level.id : null };
   }
 
@@ -136,7 +190,12 @@ export class MowerLayer {
   _mowerShows(floorId: string | null | undefined): boolean {
     if (this.view.model) {
       const mv = this.view._modelVisibility;
-      const o = outdoorShown(this.view.model.manifest.levels, mv && mv.index, mv && mv.flags, this._groundLevel);
+      const o = outdoorShown(
+        this.view.model.manifest.levels,
+        mv && mv.index,
+        mv && mv.flags,
+        this._groundLevel,
+      );
       if (o !== null) return o;
     }
     return this.view._shows(floorId);
@@ -164,28 +223,54 @@ export class MowerLayer {
     if (!this.mapPlane) {
       // under objects: depth tested, pulled toward the camera against the lawn, drawn before other transparents
       const mat = new THREE.MeshBasicMaterial({
-        transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide, toneMapped: false,
-        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
       });
-      this.mapPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat);
+      this.mapPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+        mat,
+      );
       this.mapPlane.renderOrder = -1;
       this.mapPlane.visible = false; // until the first image arrives
       this.view.mowerGroup.add(this.mapPlane);
     }
-    const plane = this.mapPlane, u = mapData(plane);
+    const plane = this.mapPlane,
+      u = mapData(plane);
     // per-push calls with the same overlay draw nothing
     const hit = this._groundHit(o.x || 0, o.y || 0); // cached: no ray per update
     const ground = hit ? hit.y : null;
     this._groundLevel = hit ? hit.level : null;
     this._mapGround = ground;
     const off = Number(o.heightOffset) || 0;
-    const sig = [o.url, o.x, o.y, o.rotation, o.width, o.opacity, o.floorId, this.view.floorElevation(o.floorId), this.view._shows(o.floorId), ground, off, !!o.hidden].join('|');
+    const sig = [
+      o.url,
+      o.x,
+      o.y,
+      o.rotation,
+      o.width,
+      o.opacity,
+      o.floorId,
+      this.view.floorElevation(o.floorId),
+      this.view._shows(o.floorId),
+      ground,
+      off,
+      !!o.hidden,
+    ].join("|");
     if (sig === u.sig) return;
     u.sig = sig;
     u.floorId = o.floorId;
     u.hidden = !!o.hidden;
     plane.position.copy(planToWorld(o.x || 0, o.y || 0, 0, 0));
-    plane.position.y = (ground != null ? ground + 0.02 : this.view.floorElevation(o.floorId) + 0.015) + off;
+    plane.position.y =
+      (ground != null
+        ? ground + 0.02
+        : this.view.floorElevation(o.floorId) + 0.015) + off;
     plane.rotation.y = ((o.rotation || 0) * Math.PI) / 180;
     plane.material.opacity = o.opacity ?? 0.6;
     const aspect = u.aspect || 1;
@@ -197,25 +282,35 @@ export class MowerLayer {
     if (u.url !== url) {
       u.url = url;
       // swap textures only once the new image has loaded, so camera refreshes don't flicker
-      new THREE.TextureLoader().load(url, (tex) => {
-        if (u.url !== url || this.mapPlane !== plane) { tex.dispose(); return; }
-        tex.colorSpace = THREE.SRGBColorSpace;
-        const old = u.rawTex;
-        u.rawTex = tex;
-        // the size may change between refreshes: aspect from this picture
-        const img = tex.image as HTMLImageElement; // TextureLoader loads an <img>
-        const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
-        u.aspect = H / W;
-        u.loaded = { url, image: img, at: Date.now() };
-        plane.scale.set(w, 1, w * u.aspect);
-        if (old && old !== tex && plane.material.map === old) { // shown raw: switch now, nothing stale
-          plane.material.map = tex;
-          plane.material.needsUpdate = true;
-        }
-        if (old && old !== tex) old.dispose();
-        this._applyMapImage(plane); // shown once the picture (processed or as loaded) is in place
-        this.view.dirty = true;
-      }, undefined, () => console.warn('floorplan3d: could not load mower map', url));
+      new THREE.TextureLoader().load(
+        url,
+        (tex) => {
+          if (u.url !== url || this.mapPlane !== plane) {
+            tex.dispose();
+            return;
+          }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const old = u.rawTex;
+          u.rawTex = tex;
+          // the size may change between refreshes: aspect from this picture
+          const img = tex.image as HTMLImageElement; // TextureLoader loads an <img>
+          const W = img.naturalWidth || img.width,
+            H = img.naturalHeight || img.height;
+          u.aspect = H / W;
+          u.loaded = { url, image: img, at: Date.now() };
+          plane.scale.set(w, 1, w * u.aspect);
+          if (old && old !== tex && plane.material.map === old) {
+            // shown raw: switch now, nothing stale
+            plane.material.map = tex;
+            plane.material.needsUpdate = true;
+          }
+          if (old && old !== tex) old.dispose();
+          this._applyMapImage(plane); // shown once the picture (processed or as loaded) is in place
+          this.view.dirty = true;
+        },
+        undefined,
+        () => console.warn("floorplan3d: could not load mower map", url),
+      );
     }
     if (plane.material.map) plane.visible = this._mapShown(plane);
     this.view.dirty = true;
@@ -232,26 +327,44 @@ export class MowerLayer {
     const seq = (this._mapSeq = (this._mapSeq || 0) + 1);
     let res: MapImageResult | Promise<MapImageResult> = null;
     try {
-      res = this.view.onMapImage ? this.view.onMapImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height) : null;
+      res = this.view.onMapImage
+        ? this.view.onMapImage(
+            img,
+            img.naturalWidth || img.width,
+            img.naturalHeight || img.height,
+          )
+        : null;
     } catch (e) {
-      console.warn('floorplan3d: could not process the mower map', e);
+      console.warn("floorplan3d: could not process the mower map", e);
     }
     const done = (r: MapImageResult) => {
       if (seq !== this._mapSeq || this.mapPlane !== plane) return;
       this._setMapTexture(plane, r);
     };
-    if (res && typeof (res as Partial<Promise<MapImageResult>>).then === 'function') {
-      (res as Promise<MapImageResult>).then(done, (e) => { console.warn('floorplan3d: could not process the mower map', e); done(null); });
+    if (
+      res &&
+      typeof (res as Partial<Promise<MapImageResult>>).then === "function"
+    ) {
+      (res as Promise<MapImageResult>).then(done, (e) => {
+        console.warn("floorplan3d: could not process the mower map", e);
+        done(null);
+      });
     } else done(res as MapImageResult);
   }
 
   _setMapTexture(plane: MapPlane, res: MapImageResult): void {
     if (res === undefined && plane.material.map) return;
-    const mat = plane.material, u = mapData(plane);
+    const mat = plane.material,
+      u = mapData(plane);
     let next: THREE.Texture | undefined = u.rawTex;
     if (res && res.canvas) {
       let ct = u.canvasTex;
-      if (ct && (ct.image !== res.canvas || canvasSize(ct).w !== res.width || canvasSize(ct).h !== res.height)) {
+      if (
+        ct &&
+        (ct.image !== res.canvas ||
+          canvasSize(ct).w !== res.width ||
+          canvasSize(ct).h !== res.height)
+      ) {
         ct.dispose();
         ct = null;
       }
@@ -276,7 +389,12 @@ export class MowerLayer {
   // processed canvas (w x h) drawn for a picture of natW x natH; changed regions are already drawn into
   // it, so the one reused CanvasTexture is flagged once per batch. loaded: { image (raw picture for the
   // edit-mode pickers) | null, url }.
-  setMapCanvas(canvas: HTMLCanvasElement | OffscreenCanvas, natW: number, natH: number, loaded: { image?: MapPicture | null } | null = null): void {
+  setMapCanvas(
+    canvas: HTMLCanvasElement | OffscreenCanvas,
+    natW: number,
+    natH: number,
+    loaded: { image?: MapPicture | null } | null = null,
+  ): void {
     const plane = this.mapPlane;
     if (!plane || !mapData(plane).external) return;
     const u = mapData(plane);
@@ -286,16 +404,36 @@ export class MowerLayer {
       plane.scale.z = plane.scale.x * aspect;
     }
     const was = u.loaded;
-    if (was && was.image && was.image !== (loaded && loaded.image) && was.image.close) was.image.close();
-    u.loaded = { url: u.url, image: (loaded && loaded.image) || null, width: natW, height: natH, at: Date.now() };
-    this._setMapTexture(plane, { canvas, width: canvas.width, height: canvas.height });
+    if (
+      was &&
+      was.image &&
+      was.image !== (loaded && loaded.image) &&
+      was.image.close
+    )
+      was.image.close();
+    u.loaded = {
+      url: u.url,
+      image: (loaded && loaded.image) || null,
+      width: natW,
+      height: natH,
+      at: Date.now(),
+    };
+    this._setMapTexture(plane, {
+      canvas,
+      width: canvas.width,
+      height: canvas.height,
+    });
     this.view.stats.mapUploads = (this.view.stats.mapUploads || 0) + 1;
   }
 
   // Run the map processing again on the loaded picture (settings changed, no new image).
   reprocessMap(): void {
-    if (this.mapPlane && mapData(this.mapPlane).external) { if (this.view.onMapReprocess) this.view.onMapReprocess(); return; }
-    if (this.mapPlane && mapData(this.mapPlane).loaded) this._applyMapImage(this.mapPlane);
+    if (this.mapPlane && mapData(this.mapPlane).external) {
+      if (this.view.onMapReprocess) this.view.onMapReprocess();
+      return;
+    }
+    if (this.mapPlane && mapData(this.mapPlane).loaded)
+      this._applyMapImage(this.mapPlane);
   }
 
   _mapShown(plane: MapPlane): boolean {
@@ -321,7 +459,12 @@ export class MowerLayer {
     const y = this.mowerHeight(w.x, w.y, w.floorId) + 0.6;
     if (cur && cur.kind === w.kind) {
       const at = cur.sprite.position;
-      if (at.x !== w.x || at.y !== y || at.z !== -w.y || cur.floorId !== w.floorId) {
+      if (
+        at.x !== w.x ||
+        at.y !== y ||
+        at.z !== -w.y ||
+        cur.floorId !== w.floorId
+      ) {
         at.set(w.x, y, -w.y);
         cur.floorId = w.floorId;
         this._warningVisible();
@@ -330,20 +473,37 @@ export class MowerLayer {
       return;
     }
     this.setMowerWarning(null);
-    const c = document.createElement('canvas');
+    const c = document.createElement("canvas");
     c.width = c.height = 128;
-    const g = c.getContext('2d')!; // a fresh 2D canvas context
-    const col = w.kind === 'stuck' ? '#f5b800' : '#e53935';
+    const g = c.getContext("2d")!; // a fresh 2D canvas context
+    const col = w.kind === "stuck" ? "#f5b800" : "#e53935";
     g.beginPath();
-    g.moveTo(64, 10); g.lineTo(122, 112); g.lineTo(6, 112); g.closePath();
-    g.fillStyle = col; g.fill();
-    g.lineWidth = 8; g.lineJoin = 'round'; g.strokeStyle = '#ffffff'; g.stroke();
-    g.fillStyle = w.kind === 'stuck' ? '#3a2e00' : '#ffffff';
-    g.font = 'bold 66px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('!', 64, 80);
+    g.moveTo(64, 10);
+    g.lineTo(122, 112);
+    g.lineTo(6, 112);
+    g.closePath();
+    g.fillStyle = col;
+    g.fill();
+    g.lineWidth = 8;
+    g.lineJoin = "round";
+    g.strokeStyle = "#ffffff";
+    g.stroke();
+    g.fillStyle = w.kind === "stuck" ? "#3a2e00" : "#ffffff";
+    g.font = "bold 66px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("!", 64, 80);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
     sprite.scale.set(0.5, 0.5, 1);
     sprite.renderOrder = 20; // above objects
     sprite.position.set(w.x, y, -w.y);
@@ -366,13 +526,18 @@ export class MowerLayer {
   setMowerChip(c: MowerChipSpec | null | undefined): void {
     const cur = this.mowerChip;
     if (!c) {
-      if (cur) { this.view.mowerGroup.remove(cur.obj); cur.obj.element.remove(); this.mowerChip = null; this.view.dirty = true; }
+      if (cur) {
+        this.view.mowerGroup.remove(cur.obj);
+        cur.obj.element.remove();
+        this.mowerChip = null;
+        this.view.dirty = true;
+      }
       return;
     }
     let obj = cur && cur.obj;
     if (!obj) {
-      const el = document.createElement('div');
-      el.innerHTML = '<ha-icon></ha-icon><span></span>';
+      const el = document.createElement("div");
+      el.innerHTML = "<ha-icon></ha-icon><span></span>";
       obj = new CSS2DObject(el);
       obj.userData.helper = true;
       obj.raycast = () => {};
@@ -381,9 +546,9 @@ export class MowerLayer {
     }
     const el = obj.element;
     el.className = `fp-mower-chip ${c.kind}`;
-    const ic = el.querySelector('ha-icon')!; // the chip's markup is made above
-    if (ic.getAttribute('icon') !== c.icon) ic.setAttribute('icon', c.icon);
-    el.querySelector('span')!.textContent = c.text || '';
+    const ic = el.querySelector("ha-icon")!; // the chip's markup is made above
+    if (ic.getAttribute("icon") !== c.icon) ic.setAttribute("icon", c.icon);
+    el.querySelector("span")!.textContent = c.text || "";
     obj.position.set(c.x, this.mowerHeight(c.x, c.y, c.floorId) + 0.5, -c.y);
     obj.visible = this._mowerShows(c.floorId);
     this.mowerChip!.floorId = c.floorId; // set above when it was missing
@@ -399,7 +564,9 @@ export class MowerLayer {
   // or null. A flat ribbon (one quad per step) 1 cm over the floor, rebuilt only when the points change.
   setMowerTrack(t: MowerTrackSpec | null | undefined): void {
     const cur = this.mowerTrack;
-    const sig = t ? JSON.stringify([t.segments, t.floorId, t.color, t.width, t.opacity]) : null;
+    const sig = t
+      ? JSON.stringify([t.segments, t.floorId, t.color, t.width, t.opacity])
+      : null;
     if (cur && cur.sig === sig) return;
     if (cur) {
       this.view.mowerGroup.remove(cur.mesh);
@@ -409,25 +576,38 @@ export class MowerLayer {
       this.view.dirty = true;
     }
     if (!t || !t.segments || !t.segments.length) return;
-    const y = this.view.floorElevation(t.floorId) + 0.01, half = (t.width || 0.05) / 2;
+    const y = this.view.floorElevation(t.floorId) + 0.01,
+      half = (t.width || 0.05) / 2;
     const pos: number[] = [];
     for (const seg of t.segments) {
       for (let i = 1; i < seg.length; i++) {
-        const [x0, y0] = seg[i - 1], [x1, y1] = seg[i];
+        const [x0, y0] = seg[i - 1],
+          [x1, y1] = seg[i];
         const len = Math.hypot(x1 - x0, y1 - y0);
         if (len < 1e-4) continue;
-        const nx = (-(y1 - y0) / len) * half, ny = ((x1 - x0) / len) * half;
+        const nx = (-(y1 - y0) / len) * half,
+          ny = ((x1 - x0) / len) * half;
         // world (x, h, -y); two triangles per step
-        const a = [x0 + nx, y, -(y0 + ny)], b = [x0 - nx, y, -(y0 - ny)], c = [x1 + nx, y, -(y1 + ny)], d = [x1 - nx, y, -(y1 - ny)];
+        const a = [x0 + nx, y, -(y0 + ny)],
+          b = [x0 - nx, y, -(y0 - ny)],
+          c = [x1 + nx, y, -(y1 + ny)],
+          d = [x1 - nx, y, -(y1 - ny)];
         pos.push(...a, ...b, ...c, ...c, ...b, ...d);
       }
     }
     if (!pos.length) return;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     const mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(t.color || '#4fc3f7'), transparent: true, opacity: t.opacity ?? 0.7,
-      depthWrite: false, side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      color: new THREE.Color(t.color || "#4fc3f7"),
+      transparent: true,
+      opacity: t.opacity ?? 0.7,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = -1;

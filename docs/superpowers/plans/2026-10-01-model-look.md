@@ -37,12 +37,14 @@
 ### Task 1: Visibility rules (pure) and the "only" mode
 
 **Files:**
+
 - Modify: `src/bindings.js` (SHOW list, `resolveLevels` exterior default, `levelFloorOverrides` accepts `only`; add exported `levelVisible`)
 - Modify: `src/view.js` (remove its own `levelVisible` export; import from bindings; callers pass an elevation lookup)
 - Modify: `src/edit-mode.js` (level select gets an "only on <floor>" option per floor)
 - Test: `test/bindings.test.js`, `test/view-model.test.js` (move `levelVisible` tests into bindings tests)
 
 **Interfaces:**
+
 - Produces: `levelVisible(assign: {show, floor} | undefined, visibleFloor: string, elevationOf: (floorId) => number | undefined): boolean`
   - `undefined` assign → `true`; `hidden` → false; `always` → true; `all-only` → `visibleFloor === 'all'`; `only` → `visibleFloor === 'all' || visibleFloor === assign.floor`; `with` → `visibleFloor === 'all' || visibleFloor === assign.floor || (elev(assign.floor) !== undefined && elev(visibleFloor) !== undefined && elev(assign.floor) < elev(visibleFloor))`.
 - `resolveLevels`: exterior default becomes `{ show: 'always', floor: groundFloor, auto: true }` (floor kept so its zones produce rooms); `null` groundFloor → `{ show: 'always', floor: null, auto: true }`. Saved `{ show: 'only', floor }` accepted like `with` (floor must exist, else stale fallback).
@@ -93,9 +95,11 @@ Also update the existing `resolveLevels` expectations: exterior now `{ show: 'al
 ### Task 2: Model look in the view
 
 **Files:**
+
 - Modify: `src/view.js`
 
 **Interfaces:**
+
 - Consumes: Task 1 `levelVisible`.
 - Produces on `FloorplanView`:
   - `setDaylight(day: boolean)` and `this.daylight` (default `true`)
@@ -124,10 +128,12 @@ Also update the existing `resolveLevels` expectations: exterior now `{ show: 'al
 ### Task 3: Card wiring, Day/Night button, headless checks, docs
 
 **Files:**
+
 - Modify: `src/floorplan3d-card.js` (toolbar button, structure flags, `has-model` class, rebuild on edit toggle, CSS)
 - Modify: `scripts/model-check.mjs`, `scripts/edit-check.mjs` (only if needed), `README.md`, `docs/superpowers/specs/2026-10-01-model-contract-design.md` (section 2 defaults), `docs/model-builder-guide.md` (walls/ceiling rule)
 
 **Interfaces:**
+
 - Consumes: Task 2 view API.
 - Produces: toolbar button `button.daynight` (title "Day / night", text ☀ when day, ☾ when night); `this._daylight` (default true).
 

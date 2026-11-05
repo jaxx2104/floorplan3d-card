@@ -3,13 +3,21 @@
 // idle moment under 'still'). The render loop asks idle() on every animation frame no frame was due; a frame
 // that is due calls frameDrawn() first, which ends a running session, so the raster frame replaces the traced
 // image at once.
-import * as THREE from 'three';
-import { stillBudget, stillDone, stillFade, stillHold, STILL_IDLE_MS, type StillBudget, type StillHold } from '../still.ts';
-import { frameInterval, isMesh } from './core.ts';
-import type { FloorplanView } from '../view.ts';
-import type { PathTraceSession, TraceSource } from '../path-tracer.ts';
+import * as THREE from "three";
+import {
+  stillBudget,
+  stillDone,
+  stillFade,
+  stillHold,
+  STILL_IDLE_MS,
+  type StillBudget,
+  type StillHold,
+} from "../still.ts";
+import { frameInterval, isMesh } from "./core.ts";
+import type { FloorplanView } from "../view.ts";
+import type { PathTraceSession, TraceSource } from "../path-tracer.ts";
 
-type Module = typeof import('../path-tracer.ts');
+type Module = typeof import("../path-tracer.ts");
 
 export class StillTrace {
   view: FloorplanView;
@@ -42,7 +50,7 @@ export class StillTrace {
     this.idleMs = STILL_IDLE_MS;
     this.active = false;
     this.done = false;
-    this.hold = 'tier';
+    this.hold = "tier";
     this.budget = stillBudget(!!view.test);
     this.startedAfter = 0;
     this._lastFrameAt = performance.now();
@@ -70,7 +78,7 @@ export class StillTrace {
   sync(): void {
     const v = this.view;
     if (v.look.tier().pathTrace && v.model) return;
-    this.hold = v.look.tier().pathTrace ? 'model' : 'tier';
+    this.hold = v.look.tier().pathTrace ? "model" : "tier";
     if (this.active) v.dirty = true;
     this.active = false;
     this.dispose();
@@ -80,7 +88,10 @@ export class StillTrace {
   setEditing(on: boolean): void {
     if (this.editing === !!on) return;
     this.editing = !!on;
-    if (on && this.active) { this.active = false; this.view.dirty = true; }
+    if (on && this.active) {
+      this.active = false;
+      this.view.dirty = true;
+    }
   }
 
   // An animation frame with no frame due: start a session once idle long enough, else trace a tile of the running
@@ -89,19 +100,35 @@ export class StillTrace {
   idle(now: number): void {
     const v = this.view;
     const tier = v.look.tier().pathTrace;
-    if (!tier && !this.session && !this.active) { this.hold = 'tier'; return; } // standard / high: nothing at all
+    if (!tier && !this.session && !this.active) {
+      this.hold = "tier";
+      return;
+    } // standard / high: nothing at all
     const hold = stillHold({
-      tier, model: !!v.model, onScreen: v.onScreen,
-      visible: typeof document === 'undefined' || document.visibilityState !== 'hidden',
-      editing: this.editing, clipped: this._clipped(), idleFor: this.active ? Infinity : now - this._lastFrameAt, idleMs: this.idleMs,
+      tier,
+      model: !!v.model,
+      onScreen: v.onScreen,
+      visible:
+        typeof document === "undefined" ||
+        document.visibilityState !== "hidden",
+      editing: this.editing,
+      clipped: this._clipped(),
+      idleFor: this.active ? Infinity : now - this._lastFrameAt,
+      idleMs: this.idleMs,
     });
     this.hold = hold;
     if (hold) {
-      if (this.active) { this.active = false; v.dirty = true; } // back to the raster frame
+      if (this.active) {
+        this.active = false;
+        v.dirty = true;
+      } // back to the raster frame
       return;
     }
     if (this.done || this._failed) return;
-    if (!this.active) { this._start(now); return; }
+    if (!this.active) {
+      this._start(now);
+      return;
+    }
     const s = this.session!;
     if (now - this._stepAt < frameInterval(0, v._maxFps)) return; // max_fps: the trace's frames too
     this._stepAt = now;
@@ -110,8 +137,12 @@ export class StillTrace {
     if (!this._tracingAt) this._tracingAt = now;
     v.stats.stillSteps++;
     const fade = stillFade(s.samples, this.budget);
-    if (fade > 0) { s.draw(fade); v.stats.stillDraws++; } // before the fade: nothing drawn, the raster frame stays
-    if (stillDone(s.samples, now - this._tracingAt, this.budget)) this.done = true;
+    if (fade > 0) {
+      s.draw(fade);
+      v.stats.stillDraws++;
+    } // before the fade: nothing drawn, the raster frame stays
+    if (stillDone(s.samples, now - this._tracingAt, this.budget))
+      this.done = true;
   }
 
   _clipped(): boolean {
@@ -125,13 +156,19 @@ export class StillTrace {
     const v = this.view;
     if (!this._mod) {
       if (!this._load) {
-        this._load = import('../path-tracer.ts');
-        this._load.then((m) => { this._mod = m; }, (e: unknown) => this._fail(e)); // the next idle frame starts
+        this._load = import("../path-tracer.ts");
+        this._load.then(
+          (m) => {
+            this._mod = m;
+          },
+          (e: unknown) => this._fail(e),
+        ); // the next idle frame starts
       }
       return;
     }
     try {
-      if (!this.session) this.session = new this._mod.PathTraceSession(v.renderer);
+      if (!this.session)
+        this.session = new this._mod.PathTraceSession(v.renderer);
       const s = this.session;
       v.camera.updateMatrixWorld();
       if (s.prepare(this._source(), v.camera)) v.stats.stillBuilds++;
@@ -152,14 +189,18 @@ export class StillTrace {
 
   // What to trace: the model's visible meshes, the sun, moon and lamp lights, the sky environment.
   _source(): TraceSource {
-    const v = this.view, env = v.look._env, cube = env && env.built && env._cube ? env._cube.texture : null;
+    const v = this.view,
+      env = v.look._env,
+      cube = env && env.built && env._cube ? env._cube.texture : null;
     const skip = (o: THREE.Object3D): boolean => !!o.userData.helper;
     // what the raster frame does not draw: meshes outside the camera's layers (nodes a view hides itself), all
     // materials invisible
     const drop = (o: THREE.Object3D): boolean => {
       if (!isMesh(o)) return false;
       if (!o.layers.test(v.camera.layers)) return true;
-      return ([] as THREE.Material[]).concat(o.material).every((m) => !m || !m.visible);
+      return ([] as THREE.Material[])
+        .concat(o.material)
+        .every((m) => !m || !m.visible);
     };
     return {
       meshes: [v.modelGroup],
@@ -168,7 +209,14 @@ export class StillTrace {
       drop,
       environment: cube,
       environmentIntensity: cube ? v.scene.environmentIntensity : 0,
-      geometryKey: [v.model ? v.model.id : '', v._modelSig(), v.stats.materialSwaps, v._modelVisibility ? [...v._modelVisibility.masks.keys()].map((n) => n.id).join(',') : ''].join('#'),
+      geometryKey: [
+        v.model ? v.model.id : "",
+        v._modelSig(),
+        v.stats.materialSwaps,
+        v._modelVisibility
+          ? [...v._modelVisibility.masks.keys()].map((n) => n.id).join(",")
+          : "",
+      ].join("#"),
       envKey: String(env ? env.builds : 0),
       drawGuide: (material) => this._drawGuide(material, skip),
     };
@@ -176,11 +224,29 @@ export class StillTrace {
 
   // The traced geometry alone (the model's visible, unskipped meshes) with the guide material into the bound target.
   // Meshes the trace drops are not drawn anyway (the camera's layers, invisible materials).
-  _drawGuide(material: THREE.Material, skip: (o: THREE.Object3D) => boolean): void {
-    const v = this.view, s = v.scene, r = v.renderer, hidden: THREE.Object3D[] = [];
-    for (const c of s.children) if (c !== v.modelGroup && c.visible) { c.visible = false; hidden.push(c); }
-    v.modelGroup.traverse((o) => { if (o.visible && skip(o)) { o.visible = false; hidden.push(o); } });
-    const bg = s.background, over = s.overrideMaterial, fog = s.fog, shadow = r.shadowMap.enabled;
+  _drawGuide(
+    material: THREE.Material,
+    skip: (o: THREE.Object3D) => boolean,
+  ): void {
+    const v = this.view,
+      s = v.scene,
+      r = v.renderer,
+      hidden: THREE.Object3D[] = [];
+    for (const c of s.children)
+      if (c !== v.modelGroup && c.visible) {
+        c.visible = false;
+        hidden.push(c);
+      }
+    v.modelGroup.traverse((o) => {
+      if (o.visible && skip(o)) {
+        o.visible = false;
+        hidden.push(o);
+      }
+    });
+    const bg = s.background,
+      over = s.overrideMaterial,
+      fog = s.fog,
+      shadow = r.shadowMap.enabled;
     s.background = null;
     s.overrideMaterial = material;
     s.fog = null;
@@ -199,7 +265,10 @@ export class StillTrace {
   _fail(e: unknown): void {
     this._failed = true;
     this.active = false;
-    console.warn('floorplan3d: render quality still: path tracing is not available here, showing the high tier', e);
+    console.warn(
+      "floorplan3d: render quality still: path tracing is not available here, showing the high tier",
+      e,
+    );
     this.dispose();
     this.view.dirty = true;
   }

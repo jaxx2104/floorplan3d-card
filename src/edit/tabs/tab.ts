@@ -1,9 +1,10 @@
 // Tab definition types: kept apart from index.ts, which imports every tab (no cycle).
 
-import type { EditMode } from '../../edit-mode.ts';
-import type { View } from '../html.ts';
+import type { EditMode } from "../../edit-mode.ts";
+import type { View } from "../html.ts";
 
-export type TabId = 'rooms' | 'devices' | 'objects' | 'mower' | 'views' | 'model' | 'data';
+export type TabId =
+  "rooms" | "devices" | "objects" | "mower" | "views" | "model" | "data";
 
 export interface TabDef {
   id: TabId;

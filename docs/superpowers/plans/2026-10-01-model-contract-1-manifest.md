@@ -28,7 +28,7 @@
 
 1. A model with **no tags at all** (or only legacy `floor:` names) must keep working exactly as v0.1.5: whole model shown, cut at the floor, legacy groups mapped. → Task 1 test "legacy names", Task 5 headless "untagged model".
 2. **Duplicate or invalid ids / malformed outlines** in a hand-made model must not break the card: first id wins, bad outline ignored, errors listed. → Task 1 tests "duplicates", "bad outline".
-3. **Basement + single HA floor**: a model with basement (order -1) and ground (order 0) on an HA with only `floor1` (level 0) must put *ground* on floor1, not the basement. → Task 2 test "order 0 aligns with elevation 0".
+3. **Basement + single HA floor**: a model with basement (order -1) and ground (order 0) on an HA with only `floor1` (level 0) must put _ground_ on floor1, not the basement. → Task 2 test "order 0 aligns with elevation 0".
 4. **HA area or floor deleted after binding**: saved binding pointing at a missing area/floor falls back to defaults, no crash, row shows the problem. → Task 2 tests "stale floor", "stale area".
 5. **Rotated / moved model**: room outlines must follow the alignment sliders so devices stay inside the visible rooms. → Task 2 test "transformPoint rotation", Task 5 headless "rotation moves rooms".
 
@@ -36,29 +36,31 @@
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `src/manifest.js` (new) | Read tags, walk a node tree via an adapter, validate, summarise. No three.js import. |
-| `src/bindings.js` (new) | Pure: migrate legacy bindings, resolve levels/rooms, transform outlines, build model rooms, floor overrides, binding diff. |
-| `tools/check-model.mjs` (new) | CLI validator: parse GLB, manifest, GLB-only checks (mesh size, texture size, file size). Exports `checkGlb(buffer)`. |
-| `src/view.js` (modify) | Keep `model.manifest`; fallback outlines; `setModelLevels`; `pickModel`; `highlightModelNode`; drop `floorNodes` logic. |
-| `src/floorplan3d-card.js` (modify) | Resolve bindings, combine model + drawn rooms, floor overrides, rebuild on manifest/binding change. Drop `modelFloorAssignment`. |
-| `src/edit-mode.js` (modify) | Model tab: levels/rooms tables, report, regeneration summary, click-to-pick; Rooms tab shows model-covered areas. |
-| `src/layout.js` (modify) | Remove `modelFloorMap` (replaced by `resolveLevels`). |
-| `scripts/make-demo-model.mjs`, `demo/house.glb` (modify) | Demo model v2 with tags. |
-| `scripts/model-check.mjs` (modify) | Headless checks for the new flow. |
-| `test/manifest.test.js`, `test/bindings.test.js`, `test/check-model.test.js` (new); `test/layout.test.js` (modify) | Unit tests. |
-| `README.md`, `docs/model-builder-guide.md`, `package.json` (modify) | Docs, `check-model` script. |
+| File                                                                                                               | Responsibility                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `src/manifest.js` (new)                                                                                            | Read tags, walk a node tree via an adapter, validate, summarise. No three.js import.                                             |
+| `src/bindings.js` (new)                                                                                            | Pure: migrate legacy bindings, resolve levels/rooms, transform outlines, build model rooms, floor overrides, binding diff.       |
+| `tools/check-model.mjs` (new)                                                                                      | CLI validator: parse GLB, manifest, GLB-only checks (mesh size, texture size, file size). Exports `checkGlb(buffer)`.            |
+| `src/view.js` (modify)                                                                                             | Keep `model.manifest`; fallback outlines; `setModelLevels`; `pickModel`; `highlightModelNode`; drop `floorNodes` logic.          |
+| `src/floorplan3d-card.js` (modify)                                                                                 | Resolve bindings, combine model + drawn rooms, floor overrides, rebuild on manifest/binding change. Drop `modelFloorAssignment`. |
+| `src/edit-mode.js` (modify)                                                                                        | Model tab: levels/rooms tables, report, regeneration summary, click-to-pick; Rooms tab shows model-covered areas.                |
+| `src/layout.js` (modify)                                                                                           | Remove `modelFloorMap` (replaced by `resolveLevels`).                                                                            |
+| `scripts/make-demo-model.mjs`, `demo/house.glb` (modify)                                                           | Demo model v2 with tags.                                                                                                         |
+| `scripts/model-check.mjs` (modify)                                                                                 | Headless checks for the new flow.                                                                                                |
+| `test/manifest.test.js`, `test/bindings.test.js`, `test/check-model.test.js` (new); `test/layout.test.js` (modify) | Unit tests.                                                                                                                      |
+| `README.md`, `docs/model-builder-guide.md`, `package.json` (modify)                                                | Docs, `check-model` script.                                                                                                      |
 
 ---
 
 ### Task 1: Manifest reader (`src/manifest.js`)
 
 **Files:**
+
 - Create: `src/manifest.js`
 - Test: `test/manifest.test.js`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `KINDS: string[]`, `ROLES: string[]`, `ID_RE: RegExp`
@@ -358,10 +360,12 @@ git commit -m "Manifest reader for fp-tagged models (levels, rooms, zones, objec
 ### Task 2: Bindings (`src/bindings.js`)
 
 **Files:**
+
 - Create: `src/bindings.js`
 - Test: `test/bindings.test.js`
 
 **Interfaces:**
+
 - Consumes: `Level`, `Room` shapes from Task 1.
 - Produces:
   - `levelsFromFloorMap(map: Record<id, string>): Record<id, LevelBinding>` (legacy `floor_map` / YAML `model_floors`)
@@ -671,11 +675,13 @@ git commit -m "Bindings: resolve model levels to HA floors and rooms to areas, m
 ### Task 3: Validator CLI (`tools/check-model.mjs`)
 
 **Files:**
+
 - Create: `tools/check-model.mjs`
 - Test: `test/check-model.test.js`
 - Modify: `package.json` (script `check-model`), `eslint.config.js` (node globals for `tools/*.mjs`)
 
 **Interfaces:**
+
 - Consumes: `buildManifest`, `gltfAdapter`, `summarize` (Task 1).
 - Produces: `checkGlb(buffer: Buffer | Uint8Array): { ok: boolean, errors: string[], warnings: string[], summary, levels: {id, role, order, elevation}[], rooms: {kind, id, level, area}[] }` and the CLI `node tools/check-model.mjs <file.glb> [--json]` (exit 1 when `errors.length`).
 
@@ -961,10 +967,12 @@ git commit -m "tools/check-model.mjs: validate a house model against the builder
 ### Task 4: View — manifest, level visibility, picking
 
 **Files:**
+
 - Modify: `src/view.js` (model load at `setModel` onLoad ~line 210–235; `modelFloors`/`modelFloorGroups`/`setModelFloorMap` ~249–267; `_applyFloorVisibility` ~499–515)
 - Test: `test/view-model.test.js` (new, jsdom-free: exercises the pure helpers exported from view)
 
 **Interfaces:**
+
 - Consumes: `buildManifest`, `threeAdapter` (Task 1).
 - Produces on `FloorplanView`:
   - `this.model = { id, root, manifest }` (no more `floorNodes`)
@@ -1132,12 +1140,14 @@ git commit -m "View: keep the model manifest, level visibility from bindings, pi
 ### Task 5: Card — rooms and floors from the model
 
 **Files:**
+
 - Modify: `src/floorplan3d-card.js` (imports; `_loadModel` ~216–252; remove `modelFloorAssignment`/`_applyModelFloorMap` ~254–266; `_update` ~395–440; `_buildStructure` ~553–583; `_buildMarkers` ~585)
 - Modify: `src/layout.js` (remove `modelFloorMap`), `test/layout.test.js` (remove its `describe('modelFloorMap')` block and import)
 - Modify: `src/storage.js` `normalise` (migrate `model.floor_map`)
 - Test: `test/storage.test.js` (one new case)
 
 **Interfaces:**
+
 - Consumes: Task 2 functions; `view.modelManifest()`, `view.setModelLevels()` (Task 4).
 - Produces on the card (used by Task 6):
   - `modelBindings(): { manifest, levels: <resolveLevels result>, rooms: <resolveRoomAreas result>, diff } | null`
@@ -1292,10 +1302,12 @@ git commit -m "Card: rooms, walls and floor heights from the model's levels and 
 ### Task 6: Model tab — levels, rooms, report, click-to-pick
 
 **Files:**
+
 - Modify: `src/edit-mode.js` (`_modelTab` ~749; remove `_modelFloorsHtml` ~790 and the `md-floor` branch ~952; `_click` ~126; `setModelProps` (create `layout.model` when missing); `_roomsTab` area rows; `_onPanelClick`/`_onPanelChange`)
 - Modify: `src/floorplan3d-card.js` STYLE (row highlight)
 
 **Interfaces:**
+
 - Consumes: `card.modelBindings()`, `card._modelRooms`, `view.pickModel()`, `view.highlightModelNode()` (Tasks 4–5).
 - Produces (UI, `data-*` hooks used by Task 7's headless checks):
   - selects `data-field="md-level" data-id="<levelId>"`, values `floor:<haFloorId>` | `always` | `all-only` | `hidden`
@@ -1318,7 +1330,7 @@ git commit -m "Card: rooms, walls and floor heights from the model's levels and 
 
 - [ ] **Step 2: Render levels, rooms and the report**
 
-Replace the `if (c.model) { return … }` early return in `_modelTab()` so a YAML model gets the note *and* the binding tables:
+Replace the `if (c.model) { return … }` early return in `_modelTab()` so a YAML model gets the note _and_ the binding tables:
 
 ```js
     if (c.model) {
@@ -1492,11 +1504,13 @@ git commit -m "Model tab: assign levels and rooms, report, regeneration notice, 
 ### Task 7: Demo model v2, headless checks, docs
 
 **Files:**
+
 - Modify: `scripts/make-demo-model.mjs`, regenerate `demo/house.glb`
 - Modify: `scripts/model-check.mjs` (replace `modelFloors()` / `modelFloorAssignment()` / `md-floor` checks)
 - Modify: `README.md` (Model section), `docs/model-builder-guide.md` (validator now exists), `package.json` version → `0.2.0`, `custom_components/floorplan3d/manifest.json` version → `0.2.0`, `src/floorplan3d-card.js` `VERSION` → `'0.2.0'`
 
 **Interfaces:**
+
 - Consumes: everything above. Demo HA floors are `ground` (level 0) and `first` (level 1); demo areas include `kitchen`, `living_room`, `garden`, `terrace`.
 
 - [ ] **Step 1: Tag the demo model**

@@ -2,11 +2,16 @@
 // views read from node names / glTF extras. Generic over the node type N: three.js nodes in the card,
 // glTF JSON nodes in tools/check-model.mjs.
 
-import type { PlanPoint, SectionPlaneConfig, TopCamera, ViewCamera } from './layout.ts';
-import type { RenderRecipe } from '../render-recipe.ts';
+import type {
+  PlanPoint,
+  SectionPlaneConfig,
+  TopCamera,
+  ViewCamera,
+} from "./layout.ts";
+import type { RenderRecipe } from "../render-recipe.ts";
 
-export type LevelRole = 'storey' | 'basement' | 'exterior' | 'roof';
-export type ManifestKind = 'level' | 'room' | 'zone' | 'object';
+export type LevelRole = "storey" | "basement" | "exterior" | "roof";
+export type ManifestKind = "level" | "room" | "zone" | "object";
 
 /** Walks any node tree (three.js scene, glTF JSON). */
 export interface ModelAdapter<N> {
@@ -25,11 +30,11 @@ interface ManifestBase<N> {
   label: string;
   node: N;
   path: string;
-  source?: 'extras' | 'name' | 'legacy';
+  source?: "extras" | "name" | "legacy";
 }
 
 export interface ManifestLevel<N = unknown> extends ManifestBase<N> {
-  kind: 'level';
+  kind: "level";
   role: LevelRole;
   order: number | null;
   elevation: number | null;
@@ -45,7 +50,7 @@ export interface ManifestSuggest {
 }
 
 export interface ManifestRoom<N = unknown> extends ManifestBase<N> {
-  kind: 'room' | 'zone';
+  kind: "room" | "zone";
   level: string | null;
   outline: PlanPoint[] | null;
   doors: PlanPoint[];
@@ -55,7 +60,7 @@ export interface ManifestRoom<N = unknown> extends ManifestBase<N> {
 }
 
 export interface ManifestObject<N = unknown> extends ManifestBase<N> {
-  kind: 'object';
+  kind: "object";
   type: string;
   level: string | null;
   room: string | null;
@@ -68,7 +73,8 @@ export interface ManifestObject<N = unknown> extends ManifestBase<N> {
   ui: Record<string, unknown>;
 }
 
-export type ManifestEntry<N = unknown> = ManifestLevel<N> | ManifestRoom<N> | ManifestObject<N>;
+export type ManifestEntry<N = unknown> =
+  ManifestLevel<N> | ManifestRoom<N> | ManifestObject<N>;
 
 export interface ManifestView {
   id: string;

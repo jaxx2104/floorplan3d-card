@@ -2,7 +2,17 @@
   "version": 3,
   "floors": [],
   "rooms": [
-    { "id": "r1", "area_id": "kitchen", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]], "walls": { "thickness": 0.2 } }
+    {
+      "id": "r1",
+      "area_id": "kitchen",
+      "polygon": [
+        [0, 0],
+        [4, 0],
+        [4, 3],
+        [0, 3]
+      ],
+      "walls": { "thickness": 0.2 }
+    }
   ],
   "pins": { "device:a": { "x": 1, "y": 2, "z": 1, "anchor": "ceiling" } },
   "hidden": [],

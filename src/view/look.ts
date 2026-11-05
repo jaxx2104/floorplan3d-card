@@ -3,42 +3,77 @@
 // finish (bokeh / grade), furniture colours and animated screens. The light objects (hemi, sun,
 // moonLight) stay on the view.
 
-import * as THREE from 'three';
-import { paintFurniture } from '../furniture.ts';
-import { screenOn, frameAt, showFrame, setScreenOn } from '../screens.ts';
-import { domeRadius } from '../sky.ts';
-import { mergeRender, normRenderOption, renderTone, QUALITY_TIERS, skyLights, deviceShadowCap, lampShadowSlots, lampMapSize, backgroundColors, backgroundAt, normSurroundLight, surroundLight, normCityLights, cityLitFor, cityLightsOn } from '../render-recipe.ts';
-import { cloudLight } from '../weather.ts';
-import { AmbientOcclusion, normAo } from '../ao.ts';
-import { ScreenFinish, normBokeh, normGrade } from '../finish.ts';
-import { normSway, swayLean } from '../cloud-shadow.ts';
-import { shadowInfo, sunDirection } from '../render-rules.ts';
-import { EnvLight, envSky, envIntensity } from './env-light.ts';
-import { SelectiveBloom } from '../bloom.ts';
-import { ContactShadows, type ContactFloor } from '../contact-shadow.ts';
-import { setTierVariant } from '../cloud-shadow.ts';
-import { pcssFrame } from '../soft-shadow.ts';
-import { measuredElevations } from '../bindings.ts';
-import { classifyMaterial, type MaterialFacts, type MaterialRule } from '../material-class.ts';
-import { materialFacts, setSurface, surfaceOf } from '../physical-materials.ts';
-import { frameInterval, isMesh, type Drawable } from './core.ts';
-import { IndirectLight } from './indirect.ts';
-import type { FloorplanView } from '../view.ts';
-import type { ModelManifest } from './model.ts';
-import type { RenderSettings, RenderOption, QualityTier, DayNight, CityLights } from '../render-recipe.ts';
-import type { SwaySettings } from '../cloud-shadow.ts';
-import type { FinishSettings } from '../finish.ts';
-import type { DepthPrepass } from '../depth-pass.ts';
-import type { Screen } from '../screens.ts';
-import type { HassEntity } from '../types/ha.ts';
-import type { Vec3 } from '../types/layout.ts';
+import * as THREE from "three";
+import { paintFurniture } from "../furniture.ts";
+import { screenOn, frameAt, showFrame, setScreenOn } from "../screens.ts";
+import { domeRadius } from "../sky.ts";
+import {
+  mergeRender,
+  normRenderOption,
+  renderTone,
+  QUALITY_TIERS,
+  skyLights,
+  deviceShadowCap,
+  lampShadowSlots,
+  lampMapSize,
+  backgroundColors,
+  backgroundAt,
+  normSurroundLight,
+  surroundLight,
+  normCityLights,
+  cityLitFor,
+  cityLightsOn,
+} from "../render-recipe.ts";
+import { cloudLight } from "../weather.ts";
+import { AmbientOcclusion, normAo } from "../ao.ts";
+import { ScreenFinish, normBokeh, normGrade } from "../finish.ts";
+import { normSway, swayLean } from "../cloud-shadow.ts";
+import { shadowInfo, sunDirection } from "../render-rules.ts";
+import { EnvLight, envSky, envIntensity } from "./env-light.ts";
+import { SelectiveBloom } from "../bloom.ts";
+import { ContactShadows, type ContactFloor } from "../contact-shadow.ts";
+import { setTierVariant } from "../cloud-shadow.ts";
+import { pcssFrame } from "../soft-shadow.ts";
+import { measuredElevations } from "../bindings.ts";
+import {
+  classifyMaterial,
+  type MaterialFacts,
+  type MaterialRule,
+} from "../material-class.ts";
+import { materialFacts, setSurface, surfaceOf } from "../physical-materials.ts";
+import { frameInterval, isMesh, type Drawable } from "./core.ts";
+import { IndirectLight } from "./indirect.ts";
+import type { FloorplanView } from "../view.ts";
+import type { ModelManifest } from "./model.ts";
+import type {
+  RenderSettings,
+  RenderOption,
+  QualityTier,
+  DayNight,
+  CityLights,
+} from "../render-recipe.ts";
+import type { SwaySettings } from "../cloud-shadow.ts";
+import type { FinishSettings } from "../finish.ts";
+import type { DepthPrepass } from "../depth-pass.ts";
+import type { Screen } from "../screens.ts";
+import type { HassEntity } from "../types/ha.ts";
+import type { Vec3 } from "../types/layout.ts";
 
 /** Sky state: night 0..1, unit vector toward the sun (world) or null, sun strength factor. */
-export interface SkyState { night: number; sunDir?: Vec3 | null; sun?: number }
+export interface SkyState {
+  night: number;
+  sunDir?: Vec3 | null;
+  sun?: number;
+}
 
 const TONE: Record<string, THREE.ToneMapping> = {
-  None: THREE.NoToneMapping, Linear: THREE.LinearToneMapping, Reinhard: THREE.ReinhardToneMapping, Cineon: THREE.CineonToneMapping,
-  ACESFilmic: THREE.ACESFilmicToneMapping, AgX: THREE.AgXToneMapping, Neutral: THREE.NeutralToneMapping,
+  None: THREE.NoToneMapping,
+  Linear: THREE.LinearToneMapping,
+  Reinhard: THREE.ReinhardToneMapping,
+  Cineon: THREE.CineonToneMapping,
+  ACESFilmic: THREE.ACESFilmicToneMapping,
+  AgX: THREE.AgXToneMapping,
+  Neutral: THREE.NeutralToneMapping,
 };
 
 const SHADOW_MESH_M = 30; // untagged models: meshes up to this size make the sun's shadow box
@@ -49,23 +84,26 @@ const SWAY_FRAME_MS = 66;
 export class RenderLook {
   view: FloorplanView;
   render: RenderSettings;
-  renderOption: 'model' | 'default';
+  renderOption: "model" | "default";
   /** card option render, normalised: recipe, quality tier, tone mapping */
   renderOpt: RenderOption;
   _renderWarned: string;
   _env: EnvLight | null;
   _bloom: SelectiveBloom | null;
   _contact: ContactShadows | null;
-  _surfFacts: { model: unknown; facts: Map<THREE.Material, MaterialFacts> } | null;
+  _surfFacts: {
+    model: unknown;
+    facts: Map<THREE.Material, MaterialFacts>;
+  } | null;
   /** per-room light probes and baked lightmaps (quality high) */
   indirect: IndirectLight;
   renderFrom: { keys: number } | null;
   background: DayNight;
-  furniture: 'color' | 'white';
+  furniture: "color" | "white";
   daylight: boolean;
   sky: SkyState;
   _modelLook: boolean;
-  _cityModel: FloorplanView['model'];
+  _cityModel: FloorplanView["model"];
   _city: CityLights | null;
   _sway: SwaySettings | null;
   _swayClock: { at: number } | null;
@@ -86,9 +124,9 @@ export class RenderLook {
     this.view = view;
     // render settings: the card's defaults, replaced by the model's fp.render recipe while one is loaded
     this.render = mergeRender(null);
-    this.renderOption = 'model'; // card option render: model | default (ignore the recipe)
+    this.renderOption = "model"; // card option render: model | default (ignore the recipe)
     this.renderOpt = normRenderOption(null).option; // card option render: recipe, quality, tone_mapping
-    this._renderWarned = ''; // the warnings last logged for the option
+    this._renderWarned = ""; // the warnings last logged for the option
     this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
     this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
     this._contact = null; // ContactShadows while the tier grounds things on the floors (made on first use)
@@ -96,7 +134,7 @@ export class RenderLook {
     this.indirect = new IndirectLight(view); // light probes and lightmaps while the tier asks for them
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
-    this.furniture = 'color'; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
+    this.furniture = "color"; // card option furniture: 'color' (as modelled) | 'white' (each material's extras fp_white)
     this.daylight = true;
     this.sky = { night: 0, sunDir: null, sun: 1 };
     this._modelLook = false; // the renderer has the model look (tone mapping, shadows)
@@ -123,14 +161,19 @@ export class RenderLook {
   // now too (the lamp pool size follows at the next load); quality / tone mapping apply now.
   setRenderOption(opt: unknown): void {
     const { option, warnings } = normRenderOption(opt);
-    const w = warnings.join('; ');
-    if (w && w !== this._renderWarned) console.warn(`floorplan3d: card YAML ${w}`);
+    const w = warnings.join("; ");
+    if (w && w !== this._renderWarned)
+      console.warn(`floorplan3d: card YAML ${w}`);
     this._renderWarned = w;
     const prev = this.renderOpt;
     this.renderOpt = option;
     this.renderOption = option.recipe;
-    const recipe = option.recipe !== prev.recipe, look = option.quality !== prev.quality || option.toneMapping !== prev.toneMapping
-      || JSON.stringify(option.materials || []) !== JSON.stringify(prev.materials || []);
+    const recipe = option.recipe !== prev.recipe,
+      look =
+        option.quality !== prev.quality ||
+        option.toneMapping !== prev.toneMapping ||
+        JSON.stringify(option.materials || []) !==
+          JSON.stringify(prev.materials || []);
     if (!this.view.model || (!recipe && !look)) return;
     if (recipe) {
       this._useRecipe(this.view.model.manifest);
@@ -146,38 +189,59 @@ export class RenderLook {
 
   // Pixel ratio: 1 in test mode, else the device's up to the recipe's pixelRatioMax.
   _pixelRatio(): number {
-    return this.view.test ? 1 : Math.min(window.devicePixelRatio || 1, this.render.pixelRatioMax);
+    return this.view.test
+      ? 1
+      : Math.min(window.devicePixelRatio || 1, this.render.pixelRatioMax);
   }
 
   // Lamp shadow maps this device affords: { max, mapSize } (see deviceShadowCap).
   shadowCap(): { max: number; mapSize: number } {
-    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    return deviceShadowCap({ touch, dpr: window.devicePixelRatio || 1, cores: navigator.hardwareConcurrency });
+    const touch =
+      typeof matchMedia === "function" &&
+      matchMedia("(pointer: coarse)").matches;
+    return deviceShadowCap({
+      touch,
+      dpr: window.devicePixelRatio || 1,
+      cores: navigator.hardwareConcurrency,
+    });
   }
 
   // Shadow-capable lamp slots for the loaded settings: min(recipe max, device max, texture units - 9).
   lampShadowCount(): number {
-    return lampShadowSlots(this.render.lampShadows.max, this.shadowCap(), this.view.renderer.capabilities.maxTextures);
+    return lampShadowSlots(
+      this.render.lampShadows.max,
+      this.shadowCap(),
+      this.view.renderer.capabilities.maxTextures,
+    );
   }
 
   // The loaded model's recipe (unless render: default) -> this.render; renderer pixel ratio and camera fov / near.
   _useRecipe(manifest: ModelManifest): void {
-    const recipe = this.renderOption === 'default' ? null : manifest.render;
-    this.renderFrom = recipe ? { keys: manifest.renderKeys || Object.keys(recipe).length } : null;
+    const recipe = this.renderOption === "default" ? null : manifest.render;
+    this.renderFrom = recipe
+      ? { keys: manifest.renderKeys || Object.keys(recipe).length }
+      : null;
     this._setRender(mergeRender(recipe));
   }
 
   _setRender(render: RenderSettings): void {
-    render.lampShadows.mapSize = lampMapSize(render.lampShadows.mapSize, this.shadowCap()); // at most 1024 and the device cap
+    render.lampShadows.mapSize = lampMapSize(
+      render.lampShadows.mapSize,
+      this.shadowCap(),
+    ); // at most 1024 and the device cap
     this.render = render;
     const pr = this._pixelRatio();
     if (this.view.renderer.getPixelRatio() !== pr) {
       this.view.renderer.setPixelRatio(pr);
-      if (this.view.size) this.view.cam.resize(this.view.size.w, this.view.size.h);
+      if (this.view.size)
+        this.view.cam.resize(this.view.size.w, this.view.size.h);
       if (this.view.onPixelRatio) this.view.onPixelRatio(pr);
     }
     const cam = this.view.persp;
-    if (cam.fov !== render.camera.fov) { cam.fov = render.camera.fov; cam.updateProjectionMatrix(); }
+    if (cam.fov !== render.camera.fov) {
+      cam.fov = render.camera.fov;
+      cam.updateProjectionMatrix();
+    }
   }
 
   setDaylight(day: unknown): void {
@@ -191,22 +255,36 @@ export class RenderLook {
   // or night entered / left 1 (sun.castShadow stays true, so no shader recompile).
   // shadow: false (time scrubber dragging): lights move now, the sun's shadow map is redrawn at the next
   // setSky with shadow true (the scrubber settled).
-  setSky({ night = 0, sunDir = null, sun = 1 }: Partial<SkyState> = {}, { shadow = true }: { shadow?: boolean } = {}): void {
+  setSky(
+    { night = 0, sunDir = null, sun = 1 }: Partial<SkyState> = {},
+    { shadow = true }: { shadow?: boolean } = {},
+  ): void {
     const old = this.sky;
     this.sky = { night, sunDir, sun };
     this.daylight = night < 0.5;
-    if (!this.view.model) { if (!this.view.modelLayer._modelId) this._applyLook(); return; } // a model on its way applies its look
+    if (!this.view.model) {
+      if (!this.view.modelLayer._modelId) this._applyLook();
+      return;
+    } // a model on its way applies its look
     this._applyLights();
-    const a = old.sunDir, b = sunDir;
-    let moved = (!!a !== !!b);
-    if (a && b) moved = Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) > Math.PI / 180;
+    const a = old.sunDir,
+      b = sunDir;
+    let moved = !!a !== !!b;
+    if (a && b)
+      moved =
+        Math.acos(
+          Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])),
+        ) >
+        Math.PI / 180;
     if (moved) this._fitShadow({ redraw: shadow });
     else if (this._sunStale && shadow) this._sunShadow(); // the sun came up: its map was skipped while it was down
     this.view.dirty = true;
   }
 
   _applyLights(): void {
-    const t = Math.max(0, Math.min(1, this.sky.night)), hemi = this.view.hemi, sun = this.view.sun;
+    const t = Math.max(0, Math.min(1, this.sky.night)),
+      hemi = this.view.hemi,
+      sun = this.view.sun;
     const k = skyLights(this.render, t); // the recipe's day / night colours and intensities
     hemi.color.setHex(k.hemiSky);
     hemi.groundColor.setHex(k.hemiGround);
@@ -214,19 +292,31 @@ export class RenderLook {
     hemi.intensity = k.hemiIntensity * L.hemi * this.tier().hemiScale;
     sun.color.setHex(k.sunColor);
     // cloud shadows on: the sun keeps its clear-sky strength (the patches and the rooms' shade dim it)
-    sun.intensity = k.sunIntensity * (this.sky.sun ?? 1) * (this.view.skyLayer._cloudShadowsOn() ? 1 : L.sun);
+    sun.intensity =
+      k.sunIntensity *
+      (this.sky.sun ?? 1) *
+      (this.view.skyLayer._cloudShadowsOn() ? 1 : L.sun);
     // softer, fainter sun shadow under clouds: uniforms only (radius has no effect with PCFSoftShadowMap)
     sun.shadow.radius = L.shadowRadius;
     sun.shadow.intensity = L.shadowIntensity;
     this.view.skyLayer._applyMoonLight();
     this.view.skyLayer._cloudLook();
     // the city around the house: its sky / ground light outside the rooms, dimmed by clouds like the sky light
-    const out = surroundLight(this._surround, t), U = this.view.skyLayer._cloudU;
+    const out = surroundLight(this._surround, t),
+      U = this.view.skyLayer._cloudU;
     U.fpOutSky.value.setHex(out.sky).multiplyScalar(out.intensity * L.hemi);
-    U.fpOutGround.value.setHex(out.ground).multiplyScalar(out.intensity * L.hemi);
+    U.fpOutGround.value
+      .setHex(out.ground)
+      .multiplyScalar(out.intensity * L.hemi);
     const city = this._city;
     U.fpCity.value = city ? cityLightsOn(t) : 0;
-    if (city) U.fpCityParams.value.set(city.share, city.strength, city.street, city.glass);
+    if (city)
+      U.fpCityParams.value.set(
+        city.share,
+        city.strength,
+        city.street,
+        city.glass,
+      );
     this.view.renderer.setClearColor(backgroundAt(this.background, t), 1);
     if (this._env) this._skyEnv();
     this.indirect.skyChanged(); // baked light follows the sky's brightness
@@ -237,10 +327,17 @@ export class RenderLook {
   _syncEnv(): void {
     const on = !!this.view.model && this.tier().envLight;
     if (!on) {
-      if (this._env) { this._env.dispose(); this._env = null; this.view.dirty = true; }
+      if (this._env) {
+        this._env.dispose();
+        this._env = null;
+        this.view.dirty = true;
+      }
       return;
     }
-    if (!this._env) this._env = new EnvLight(this.view.renderer, this.view.scene, () => { this.view.dirty = true; });
+    if (!this._env)
+      this._env = new EnvLight(this.view.renderer, this.view.scene, () => {
+        this.view.dirty = true;
+      });
     this._skyEnv();
   }
 
@@ -249,23 +346,43 @@ export class RenderLook {
   // update); the shadow variants and material upgrades recompile the model materials that changed (the callers flag
   // every material anyway).
   _syncTierLook(): void {
-    const t = this.tier(), model = this.view.model;
-    if (model && t.bloom && !this._bloom) this._bloom = new SelectiveBloom(this.view.renderer);
-    if (!(model && t.bloom) && this._bloom) { this._bloom.dispose(); this._bloom = null; }
-    if (model && t.contactShadows && !this._contact) this._contact = new ContactShadows(this.view.renderer, this.view.skyLayer._cloudU);
-    if (!(model && t.contactShadows) && this._contact) { this._contact.dispose(); this._contact = null; }
+    const t = this.tier(),
+      model = this.view.model;
+    if (model && t.bloom && !this._bloom)
+      this._bloom = new SelectiveBloom(this.view.renderer);
+    if (!(model && t.bloom) && this._bloom) {
+      this._bloom.dispose();
+      this._bloom = null;
+    }
+    if (model && t.contactShadows && !this._contact)
+      this._contact = new ContactShadows(
+        this.view.renderer,
+        this.view.skyLayer._cloudU,
+      );
+    if (!(model && t.contactShadows) && this._contact) {
+      this._contact.dispose();
+      this._contact = null;
+    }
     if (model) {
-      const variant = { pcss: t.softShadows, contact: t.contactShadows, probe: t.lightProbes || t.bakedLightmaps };
+      const variant = {
+        pcss: t.softShadows,
+        contact: t.contactShadows,
+        probe: t.lightProbes || t.bakedLightmaps,
+      };
       model.root.traverse((o) => {
         if (!isMesh(o)) return;
-        for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) if (m) setTierVariant(m, variant);
+        for (const m of ([] as (THREE.Material | undefined)[]).concat(
+          o.material,
+        ))
+          if (m) setTierVariant(m, variant);
       });
       this._syncSurfaces(t.physicalMaterials);
     }
     this.indirect.sync(); // after the upgrades: a probe applies to the physical materials too
     this.view.still.sync(); // the path tracer (quality still) freed in the other tiers and without a model
     const layer = this.view.objectLayer;
-    if (layer && layer.setPhysical(t.physicalLights)) this.view._objectsInvalid();
+    if (layer && layer.setPhysical(t.physicalLights))
+      this.view._objectsInvalid();
   }
 
   // Physical materials (quality high): glass, floors and fabric upgraded in place (physical-materials.ts), or all
@@ -274,14 +391,26 @@ export class RenderLook {
   // Runs on model load and look changes (tier, rules), never per frame. -> materials changed.
   _syncSurfaces(on: boolean): number {
     const model = this.view.model!; // callers checked view.model
-    if (!this._surfFacts || this._surfFacts.model !== model) this._surfFacts = { model, facts: materialFacts(model.root, model.manifest) };
+    if (!this._surfFacts || this._surfFacts.model !== model)
+      this._surfFacts = {
+        model,
+        facts: materialFacts(model.root, model.manifest),
+      };
     const facts = this._surfFacts.facts;
-    const rules: MaterialRule[] = [...((this.renderOption !== 'default' && model.manifest.render && model.manifest.render.materials) || []), ...(this.renderOpt.materials || [])];
+    const rules: MaterialRule[] = [
+      ...((this.renderOption !== "default" &&
+        model.manifest.render &&
+        model.manifest.render.materials) ||
+        []),
+      ...(this.renderOpt.materials || []),
+    ];
     let n = 0;
     const seen = new Set<THREE.Material>();
     model.root.traverse((o) => {
       if (!isMesh(o)) return;
-      for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) {
+      for (const m of ([] as (THREE.Material | undefined)[]).concat(
+        o.material,
+      )) {
         if (!m || seen.has(m)) continue;
         seen.add(m);
         const f = facts.get(m);
@@ -295,13 +424,23 @@ export class RenderLook {
   }
 
   _skyEnv(): void {
-    const env = this._env!, model = this.view.model;
+    const env = this._env!,
+      model = this.view.model;
     if (!model) return;
-    const t = Math.max(0, Math.min(1, this.sky.night)), moon = this.view.skyLayer.skyBodies.moon, cover = this.view.skyLayer.weather.applied || 0;
-    const sunDir = this.sky.sunDir || sunDirection(model.north, this.view.modelGroup.rotation.y); // as the sun light (_fitShadow)
+    const t = Math.max(0, Math.min(1, this.sky.night)),
+      moon = this.view.skyLayer.skyBodies.moon,
+      cover = this.view.skyLayer.weather.applied || 0;
+    const sunDir =
+      this.sky.sunDir ||
+      sunDirection(model.north, this.view.modelGroup.rotation.y); // as the sun light (_fitShadow)
     const sky = envSky(t, sunDir, moon, cover);
     env.request(sky);
-    this.view.scene.environmentIntensity = envIntensity(t, cover, moon ? moon.illumination : 0, sky.body);
+    this.view.scene.environmentIntensity = envIntensity(
+      t,
+      cover,
+      moon ? moon.illumination : 0,
+      sky.body,
+    );
   }
 
   // Card option city_lights (true or { windows, glow, share, strength, street, glass }): lit windows, lit
@@ -321,27 +460,42 @@ export class RenderLook {
   // plant and something else sways as a whole outside the rooms.
   _cityWindows(): void {
     // per material: lit by the first mesh that asks for it, sways when any of its meshes does
-    const want = new Map<THREE.Material, { lit: 'glow' | 'windows' | null; sway: boolean }>();
+    const want = new Map<
+      THREE.Material,
+      { lit: "glow" | "windows" | null; sway: boolean }
+    >();
     const root = this.view.model!.root; // callers checked view.model
     root.traverse((o) => {
       if (!isMesh(o)) return;
       const info = shadowInfo(o);
       const lit = cityLitFor(info.names, info.layers, this._city);
-      const sway = !!this._sway && this._sway.plants.some((p) => info.names.includes(p) || info.layers.includes(p));
-      for (const m of ([] as (THREE.Material | undefined)[]).concat(o.material)) {
+      const sway =
+        !!this._sway &&
+        this._sway.plants.some(
+          (p) => info.names.includes(p) || info.layers.includes(p),
+        );
+      for (const m of ([] as (THREE.Material | undefined)[]).concat(
+        o.material,
+      )) {
         if (!m || !m.userData.fpCloud) continue;
         const w = want.get(m) || { lit: null, sway: false };
         want.set(m, { lit: w.lit || lit, sway: w.sway || sway });
       }
     });
     for (const [m, { lit, sway }] of want) {
-      if ((m.userData.fpCityLit || null) === lit && !!m.userData.fpSway === sway) continue;
+      if (
+        (m.userData.fpCityLit || null) === lit &&
+        !!m.userData.fpSway === sway
+      )
+        continue;
       m.userData.fpCityLit = lit;
       m.userData.fpSway = sway;
       m.needsUpdate = true;
     }
     const box = new THREE.Box3().setFromObject(root);
-    this.view.skyLayer._cloudU.fpCityGround.value = box.isEmpty() ? 0 : box.min.y;
+    this.view.skyLayer._cloudU.fpCityGround.value = box.isEmpty()
+      ? 0
+      : box.min.y;
   }
 
   // Card option sway (true or { plants, strength }): the plants outside sway in the wind (weather wind_speed),
@@ -355,7 +509,9 @@ export class RenderLook {
     const next = normSway(opt);
     if (JSON.stringify(next) === JSON.stringify(this._sway || null)) return;
     this._sway = next;
-    this.view.skyLayer._cloudU.fpSway.value = next ? swayLean(this.view.skyLayer.weather.wind, next.strength) : 0;
+    this.view.skyLayer._cloudU.fpSway.value = next
+      ? swayLean(this.view.skyLayer.weather.wind, next.strength)
+      : 0;
     if (!this.view.model) return;
     this._cityWindows();
     this.view.dirty = true;
@@ -363,9 +519,19 @@ export class RenderLook {
 
   _stepSway(): void {
     const S = this._swayClock || (this._swayClock = { at: 0 });
-    if (!this._sway || !this.view.model || !this.view.onScreen || this.view.test || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) { S.at = 0; return; }
+    if (
+      !this._sway ||
+      !this.view.model ||
+      !this.view.onScreen ||
+      this.view.test ||
+      (typeof document !== "undefined" && document.visibilityState === "hidden")
+    ) {
+      S.at = 0;
+      return;
+    }
     const now = performance.now();
-    if (S.at && now - S.at < frameInterval(SWAY_FRAME_MS, this.view._maxFps)) return;
+    if (S.at && now - S.at < frameInterval(SWAY_FRAME_MS, this.view._maxFps))
+      return;
     S.at = now;
     this.view.skyLayer._cloudU.fpTime.value = (now / 1000) % 3600;
     this.view.dirty = true;
@@ -384,7 +550,11 @@ export class RenderLook {
   // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
   setAo(opt: unknown): void {
     const next = normAo(opt);
-    if (JSON.stringify(next) === JSON.stringify(this._ao ? this._ao.settings : null)) return;
+    if (
+      JSON.stringify(next) ===
+      JSON.stringify(this._ao ? this._ao.settings : null)
+    )
+      return;
     if (this._ao) this._ao.dispose();
     this._ao = null;
     if (next) {
@@ -406,25 +576,38 @@ export class RenderLook {
 
   _setFinish(opts: Partial<FinishSettings>): void {
     const prev = this._finishOpts || { bokeh: null, grade: null };
-    const next: FinishSettings = { bokeh: opts.bokeh || null, grade: opts.grade || null };
+    const next: FinishSettings = {
+      bokeh: opts.bokeh || null,
+      grade: opts.grade || null,
+    };
     if (JSON.stringify(next) === JSON.stringify(prev)) return;
     this._finishOpts = next;
     if (this._finish) this._finish.dispose();
-    this._finish = next.bokeh || next.grade ? new ScreenFinish(this.view.renderer, next) : null;
+    this._finish =
+      next.bokeh || next.grade
+        ? new ScreenFinish(this.view.renderer, next)
+        : null;
     this.view.dirty = true;
   }
 
   // The box the lens focuses on: the rooms on the visible floors, floor to ceiling (else the house box).
   _focusBox(): THREE.Box3 {
     const box = new THREE.Box3();
-    for (const solid of this.view.skyLayer._roomSolids()) box.setFromPoints(solid.concat(box.isEmpty() ? [] : [box.min.clone(), box.max.clone()]));
+    for (const solid of this.view.skyLayer._roomSolids())
+      box.setFromPoints(
+        solid.concat(box.isEmpty() ? [] : [box.min.clone(), box.max.clone()]),
+      );
     return box;
   }
 
   // Card option background ('#rrggbb' or { day, night }). Re-applied now with a model loaded.
   setBackground(opt: unknown): void {
     const next = backgroundColors(opt);
-    if (next.day === this.background.day && next.night === this.background.night) return;
+    if (
+      next.day === this.background.day &&
+      next.night === this.background.night
+    )
+      return;
     this.background = next;
     if (!this.view.model) return;
     this._applyLights();
@@ -434,7 +617,7 @@ export class RenderLook {
   // Card option furniture: 'white' shows every material that carries extras fp_white ([r, g, b] linear, the
   // model's white look) in that colour instead of its own; anything else ('color', unset) the modelled colour.
   setFurniture(opt: unknown): void {
-    const next = opt === 'white' ? 'white' : 'color';
+    const next = opt === "white" ? "white" : "color";
     if (next === this.furniture) return;
     this.furniture = next;
     if (this._applyFurniture()) this.view.dirty = true;
@@ -448,33 +631,51 @@ export class RenderLook {
 
   _applyScreens(): boolean {
     let changed = false;
-    for (const s of this._screens || []) if (setScreenOn(s, screenOn(s.anim, this._screenStates))) changed = true;
+    for (const s of this._screens || [])
+      if (setScreenOn(s, screenOn(s.anim, this._screenStates))) changed = true;
     return changed;
   }
 
   // Advance the playing screens to the frame for now; only a changed frame asks for a render.
   _stepScreens(): void {
     if (!this._screens || !this._screens.length || !this.view.onScreen) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    )
+      return;
     const t = performance.now() / 1000;
-    for (const s of this._screens) if (s.on && showFrame(s, frameAt(s.anim, t))) this.view.dirty = true;
+    for (const s of this._screens)
+      if (s.on && showFrame(s, frameAt(s.anim, t))) this.view.dirty = true;
   }
 
   _applyFurniture(): boolean {
-    return !!this.view.model && paintFurniture(this.view.model.root, this.furniture === 'white') > 0;
+    return (
+      !!this.view.model &&
+      paintFurniture(this.view.model.root, this.furniture === "white") > 0
+    );
   }
 
   // Renderer, light and shadow settings for model / no model and day / night.
   _applyLook(): void {
-    const r = this.view.renderer, day = this.view.model ? this.daylight : true, sun = this.view.sun, hemi = this.view.hemi;
+    const r = this.view.renderer,
+      day = this.view.model ? this.daylight : true,
+      sun = this.view.sun,
+      hemi = this.view.hemi;
     this._modelLook = !!this.view.model;
     if (this.view.model) {
-      if (this._cityModel !== this.view.model) { this._cityModel = this.view.model; this._cityWindows(); } // once per model
+      if (this._cityModel !== this.view.model) {
+        this._cityModel = this.view.model;
+        this._cityWindows();
+      } // once per model
       const rd = this.render;
       const tone = renderTone(rd, this.renderOpt); // the recipe's unless the card or its quality tier sets one
       r.toneMapping = TONE[tone.toneMapping] ?? THREE.ACESFilmicToneMapping;
       r.toneMappingExposure = tone.exposure;
-      r.outputColorSpace = rd.outputColorSpace === 'srgb-linear' ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
+      r.outputColorSpace =
+        rd.outputColorSpace === "srgb-linear"
+          ? THREE.LinearSRGBColorSpace
+          : THREE.SRGBColorSpace;
       r.shadowMap.enabled = true;
       r.shadowMap.autoUpdate = false; // re-rendered on demand (needsUpdate), not every frame
       this._shadowDirty();
@@ -484,10 +685,15 @@ export class RenderLook {
       this._applyLights();
       sun.castShadow = true; // stays on (toggling recompiles shaders); night = intensity 0
       sun.shadow.autoUpdate = false; // redrawn only when flagged, and only while the sun is up
-      const sm = this.view.test ? Math.min(512, rd.sun.shadowMapSize) : rd.sun.shadowMapSize;
+      const sm = this.view.test
+        ? Math.min(512, rd.sun.shadowMapSize)
+        : rd.sun.shadowMapSize;
       if (sun.shadow.mapSize.x !== sm) {
         sun.shadow.mapSize.set(sm, sm);
-        if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // re-created at the new size
+        if (sun.shadow.map) {
+          sun.shadow.map.dispose();
+          sun.shadow.map = null;
+        } // re-created at the new size
       }
       sun.shadow.bias = rd.sun.bias;
       sun.shadow.normalBias = rd.sun.normalBias; // against acne on roofs
@@ -514,7 +720,8 @@ export class RenderLook {
     this.view.scene.traverse((obj) => {
       const o = obj as Drawable;
       if (!o.material) return;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material])
+        m.needsUpdate = true;
     });
     this.view.dirty = true;
   }
@@ -528,30 +735,43 @@ export class RenderLook {
     this.view.modelGroup.updateMatrixWorld(true);
     let box = new THREE.Box3();
     for (const l of model.manifest.levels) {
-      if (l.role === 'storey' || l.role === 'basement' || l.role === 'roof') box.union(new THREE.Box3().setFromObject(l.node));
+      if (l.role === "storey" || l.role === "basement" || l.role === "roof")
+        box.union(new THREE.Box3().setFromObject(l.node));
     }
     if (box.isEmpty()) {
       model.root.traverse((o) => {
         if (!isMesh(o)) return;
         const b = new THREE.Box3().setFromObject(o);
-        if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) <= SHADOW_MESH_M) box.union(b);
+        if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) <= SHADOW_MESH_M)
+          box.union(b);
       });
     }
-    if (box.isEmpty()) box = new THREE.Box3().setFromObject(this.view.modelGroup);
+    if (box.isEmpty())
+      box = new THREE.Box3().setFromObject(this.view.modelGroup);
     if (box.isEmpty()) return;
     const ground = Math.min(Math.max(0, box.min.y), box.max.y);
     const hc = box.getCenter(new THREE.Vector3());
-    this._dome = { centre: new THREE.Vector3(hc.x, ground, hc.z), radius: domeRadius(Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2) };
+    this._dome = {
+      centre: new THREE.Vector3(hc.x, ground, hc.z),
+      radius: domeRadius(
+        Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2,
+      ),
+    };
     this.view.skyLayer._placeSkyBodies();
     this._houseBox = box.clone(); // the sky keep-out without room polygons
     const all = new THREE.Box3().setFromObject(this.view.modelGroup); // rain / snow fall down to the model's bottom (not a far-off ground plane)
-    this._modelBottom = all.isEmpty() ? box.min.y : Math.max(all.min.y, box.min.y - 40);
+    this._modelBottom = all.isEmpty()
+      ? box.min.y
+      : Math.max(all.min.y, box.min.y - 40);
     box.expandByScalar(SHADOW_MARGIN_M);
     const centre = box.getCenter(new THREE.Vector3());
     const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
     this._shadowBox = { centre: centre.clone(), radius };
     this.view.skyLayer._applyMoonLight();
-    const dir = new THREE.Vector3(...(this.sky.sunDir || sunDirection(model.north, this.view.modelGroup.rotation.y)));
+    const dir = new THREE.Vector3(
+      ...(this.sky.sunDir ||
+        sunDirection(model.north, this.view.modelGroup.rotation.y)),
+    );
     sun.target.position.copy(centre);
     sun.position.copy(centre).addScaledVector(dir, radius * 2.5);
     const cam = sun.shadow.camera;
@@ -573,7 +793,8 @@ export class RenderLook {
   _shadowDirty(): void {
     if (this._contact) this._contact.stale = true; // rebuilt before the next frame (view loop)
     this._sunShadow();
-    if (this.view.objectLayer) this.view._flagShadows(this.view.objectLayer.shadowsStale());
+    if (this.view.objectLayer)
+      this.view._flagShadows(this.view.objectLayer.shadowsStale());
     this.view.stats.shadow++;
   }
 
@@ -600,15 +821,28 @@ export class RenderLook {
     const model = this.view.model;
     if (!model) return [];
     this.view.modelGroup.updateMatrixWorld(true);
-    const levels = model.manifest.levels, meas = measuredElevations(levels), out: ContactFloor[] = [];
+    const levels = model.manifest.levels,
+      meas = measuredElevations(levels),
+      out: ContactFloor[] = [];
     for (const l of levels) {
-      if (l.role !== 'storey' && l.role !== 'basement') continue;
-      const e = l.elevation !== null && l.elevation !== undefined && Number.isFinite(l.elevation) ? l.elevation : meas[l.id]?.elevation;
+      if (l.role !== "storey" && l.role !== "basement") continue;
+      const e =
+        l.elevation !== null &&
+        l.elevation !== undefined &&
+        Number.isFinite(l.elevation)
+          ? l.elevation
+          : meas[l.id]?.elevation;
       if (e === undefined || !Number.isFinite(e)) continue;
       const box = new THREE.Box3().setFromObject(l.node);
       if (box.isEmpty()) continue;
       const y = model.root.localToWorld(new THREE.Vector3(0, e, 0)).y;
-      out.push({ y, minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+      out.push({
+        y,
+        minX: box.min.x,
+        maxX: box.max.x,
+        minZ: box.min.z,
+        maxZ: box.max.z,
+      });
     }
     return out;
   }

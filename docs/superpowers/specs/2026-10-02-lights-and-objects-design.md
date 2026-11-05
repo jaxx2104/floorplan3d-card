@@ -48,15 +48,15 @@ parts) and `update(state, ctx)` (apply the HA state). `objects/index.js` binds, 
 assigns the light budget and routes taps. Pure logic (chain, colour, intensity, budget, sun) lives in
 plain functions with unit tests.
 
-| type | look | tap / hold (defaults, `fp.ui` overrides) |
-|---|---|---|
-| `light` | glow mesh emissive in the light colour, `emissiveIntensity = bri/255 × 3`; real light per `hints` (budget §3) | toggle / popup (toggle, brightness, color) |
-| `light_strip` | whole glow mesh emissive along its length; no real light unless `hints.max` is set | toggle / popup |
-| `mower` | the model node follows the live position (existing Mower tab calibration), turns to its heading (from movement), status colour on the glow mesh (mowing green, returning amber, error red, docked dim); replaces the mower marker | popup (state, battery, start/dock) / more-info |
-| `dock` | `hints.led` mesh lit when the mower is docked | more-info / more-info |
-| `ev_charger` | LED mesh colour by state (charging green, ready blue, error red, idle dim) + a small label with power when charging | more-info / popup (state, power, energy) |
-| `climate` | a small label with current temperature; glow (if any) warm when heating, cool when cooling | more-info / popup (temperature, mode) |
-| any other | no change in look | more-info / popup (state) |
+| type          | look                                                                                                                                                                                                                              | tap / hold (defaults, `fp.ui` overrides)       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `light`       | glow mesh emissive in the light colour, `emissiveIntensity = bri/255 × 3`; real light per `hints` (budget §3)                                                                                                                     | toggle / popup (toggle, brightness, color)     |
+| `light_strip` | whole glow mesh emissive along its length; no real light unless `hints.max` is set                                                                                                                                                | toggle / popup                                 |
+| `mower`       | the model node follows the live position (existing Mower tab calibration), turns to its heading (from movement), status colour on the glow mesh (mowing green, returning amber, error red, docked dim); replaces the mower marker | popup (state, battery, start/dock) / more-info |
+| `dock`        | `hints.led` mesh lit when the mower is docked                                                                                                                                                                                     | more-info / more-info                          |
+| `ev_charger`  | LED mesh colour by state (charging green, ready blue, error red, idle dim) + a small label with power when charging                                                                                                               | more-info / popup (state, power, energy)       |
+| `climate`     | a small label with current temperature; glow (if any) warm when heating, cool when cooling                                                                                                                                        | more-info / popup (temperature, mode)          |
+| any other     | no change in look                                                                                                                                                                                                                 | more-info / popup (state)                      |
 
 Colour: `rgb_color` → `hs_color` → `color_temp_kelvin` → warm white (h 30, s 50), converted with
 `setRGB(…, SRGBColorSpace)`. Relay lamps (switch.*): fixed warm white, full brightness.

@@ -2,8 +2,8 @@
 // defaults, migrations). Every stored object also keeps fields this card does not know (Rest).
 // Plus the plain geometry / view types the layout readers share.
 
-import type { Infer } from '../schema/core.ts';
-import type * as S from '../schema/layout.ts';
+import type { Infer } from "../schema/core.ts";
+import type * as S from "../schema/layout.ts";
 
 /** Plan point in metres: [x east, y north]. */
 export type PlanPoint = [number, number];
@@ -15,10 +15,10 @@ export type Vec3 = [number, number, number];
 export type RgbColor = [number, number, number] | number[];
 
 /** Colour keying of the map image: overlay.<kind>_colors. */
-export type MapColorKind = 'bg' | 'mowed' | 'nomow';
+export type MapColorKind = "bg" | "mowed" | "nomow";
 
 /** "Light on wall" setting of a lamp or a tag. */
-export type WashDir = 'down' | 'up' | 'both' | 'none';
+export type WashDir = "down" | "up" | "both" | "none";
 
 /** HA-style action ({ action, ... }); the fields depend on the action (see actions.ts). */
 export interface ActionConfig {
@@ -55,7 +55,9 @@ export type LayoutMower = Infer<typeof S.mowerSchema>;
 export type MowerOverlay = Infer<typeof S.overlaySchema>;
 export type MowerImageConfig = Infer<typeof S.mowerImageSchema>;
 export type MowerImage = MowerImageConfig;
-export type MowerCalibrationPoint = NonNullable<LayoutMower['calibration']>[number];
+export type MowerCalibrationPoint = NonNullable<
+  LayoutMower["calibration"]
+>[number];
 export type LayoutModel = Infer<typeof S.modelSchema>;
 export type SavedLevelBinding = Infer<typeof S.levelBindingSchema>;
 export type SavedRoomBinding = Infer<typeof S.roomBindingSchema>;

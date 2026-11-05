@@ -12,9 +12,9 @@
 // Why baked planes rather than the AO pass: AO is a separate opt-in (card option ao) that runs every frame;
 // this is the same few-centimetre grounding at no per-frame cost, also with AO off, and it sees what is
 // hidden from the camera (under a sofa seen from above).
-import * as THREE from 'three';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import type { Drawable } from './view/core.ts';
+import * as THREE from "three";
+import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import type { Drawable } from "./view/core.ts";
 
 /** Storeys (tiles) at most. */
 export const CONTACT_MAX_FLOORS = 4;
@@ -38,12 +38,21 @@ export const CONTACT_TILE_MAX = 1024;
 export const CONTACT_MARGIN_M = 1;
 
 /** A storey to ground: its floor height (world y) and footprint (world x / z bounds). */
-export interface ContactFloor { y: number; minX: number; maxX: number; minZ: number; maxZ: number }
+export interface ContactFloor {
+  y: number;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
 
 // Tile size (px, power of two) for a footprint extent (m).
 export function contactTileSize(extent: number): number {
   const px = Math.max(1, extent) / CONTACT_TEXEL_M;
-  return Math.min(CONTACT_TILE_MAX, Math.max(CONTACT_TILE_MIN, 2 ** Math.ceil(Math.log2(px))));
+  return Math.min(
+    CONTACT_TILE_MAX,
+    Math.max(CONTACT_TILE_MIN, 2 ** Math.ceil(Math.log2(px))),
+  );
 }
 
 // Darkness for a caster h metres above the floor: 1 at the floor, 0 at CONTACT_HEIGHT_M (squared fall-off);
@@ -58,7 +67,9 @@ export function contactDarkness(h: number, frontFacing = true): number {
 // already kept are dropped (a split level would shade itself).
 export function contactFloors(floors: ContactFloor[]): ContactFloor[] {
   const out: ContactFloor[] = [];
-  for (const f of [...floors].filter((f) => Number.isFinite(f.y)).sort((a, b) => a.y - b.y)) {
+  for (const f of [...floors]
+    .filter((f) => Number.isFinite(f.y))
+    .sort((a, b) => a.y - b.y)) {
     if (out.some((o) => Math.abs(o.y - f.y) < CONTACT_HEIGHT_M)) continue;
     out.push(f);
     if (out.length >= CONTACT_MAX_FLOORS) break;
@@ -76,7 +87,12 @@ export interface ContactUniforms {
 export function makeContactUniforms(): ContactUniforms {
   return {
     fpContactMap: { value: null },
-    fpContactM: { value: Array.from({ length: CONTACT_MAX_FLOORS }, () => new THREE.Matrix4()) },
+    fpContactM: {
+      value: Array.from(
+        { length: CONTACT_MAX_FLOORS },
+        () => new THREE.Matrix4(),
+      ),
+    },
     fpContactY: { value: new THREE.Vector4() },
     fpContact: { value: new THREE.Vector2(0, CONTACT_STRENGTH) }, // tiles in use (0: off), strength
   };
@@ -150,7 +166,12 @@ void main() {
   gl_FragColor = vec4( vec3( sum / ws ), 1.0 );
 }`;
 
-type Flags = { isMesh?: boolean; isPoints?: boolean; isLine?: boolean; isSprite?: boolean };
+type Flags = {
+  isMesh?: boolean;
+  isPoints?: boolean;
+  isLine?: boolean;
+  isSprite?: boolean;
+};
 
 export class ContactShadows {
   renderer: THREE.WebGLRenderer;
@@ -174,16 +195,46 @@ export class ContactShadows {
     this.stats = { builds: 0 };
     this.tiles = 0;
     this.size = 0;
-    const opts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false };
-    this.atlas = new THREE.WebGLRenderTarget(1, 1, { ...opts, depthBuffer: true });
-    this.temp = new THREE.WebGLRenderTarget(1, 1, { ...opts, depthBuffer: false });
-    this.caster = new THREE.ShaderMaterial({ vertexShader: CASTER_VERT, fragmentShader: CASTER_FRAG, side: THREE.DoubleSide, uniforms: { floorY: { value: 0 } } });
+    const opts = {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      generateMipmaps: false,
+    };
+    this.atlas = new THREE.WebGLRenderTarget(1, 1, {
+      ...opts,
+      depthBuffer: true,
+    });
+    this.temp = new THREE.WebGLRenderTarget(1, 1, {
+      ...opts,
+      depthBuffer: false,
+    });
+    this.caster = new THREE.ShaderMaterial({
+      vertexShader: CASTER_VERT,
+      fragmentShader: CASTER_FRAG,
+      side: THREE.DoubleSide,
+      uniforms: { floorY: { value: 0 } },
+    });
     this.blur = new THREE.ShaderMaterial({
-      vertexShader: BLUR_VERT, fragmentShader: BLUR_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { tSrc: { value: null }, dir: { value: new THREE.Vector2() }, tile: { value: new THREE.Vector2() }, size: { value: 1 } },
+      vertexShader: BLUR_VERT,
+      fragmentShader: BLUR_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: {
+        tSrc: { value: null },
+        dir: { value: new THREE.Vector2() },
+        tile: { value: new THREE.Vector2() },
+        size: { value: 1 },
+      },
     });
     this.fsQuad = new FullScreenQuad(this.blur);
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, CONTACT_NEAR_M, CONTACT_FAR_M);
+    this.camera = new THREE.OrthographicCamera(
+      -1,
+      1,
+      1,
+      -1,
+      CONTACT_NEAR_M,
+      CONTACT_FAR_M,
+    );
   }
 
   // Off: the materials skip the lookup.
@@ -196,10 +247,18 @@ export class ContactShadows {
   update(scene: THREE.Scene, floors: ContactFloor[]): void {
     this.stale = false;
     const list = contactFloors(floors);
-    if (!list.length) { this.clear(); return; }
+    if (!list.length) {
+      this.clear();
+      return;
+    }
     this.stats.builds++;
-    const r = this.renderer, n = list.length;
-    const size = Math.max(...list.map((f) => contactTileSize(Math.max(f.maxX - f.minX, f.maxZ - f.minZ))));
+    const r = this.renderer,
+      n = list.length;
+    const size = Math.max(
+      ...list.map((f) =>
+        contactTileSize(Math.max(f.maxX - f.minX, f.maxZ - f.minZ)),
+      ),
+    );
     const max = r.capabilities.maxTextureSize || 4096;
     const tile = Math.min(size, 2 ** Math.floor(Math.log2(max / n)));
     if (this.atlas.width !== tile * n || this.atlas.height !== tile) {
@@ -207,33 +266,56 @@ export class ContactShadows {
       this.temp.setSize(tile * n, tile);
     }
     this.size = tile;
-    const swapped: [Drawable, THREE.Material | THREE.Material[] | undefined][] = [], hidden: THREE.Object3D[] = [];
+    const swapped: [Drawable, THREE.Material | THREE.Material[] | undefined][] =
+        [],
+      hidden: THREE.Object3D[] = [];
     scene.traverseVisible((obj) => {
-      const o = obj as Drawable, f = obj as Flags;
+      const o = obj as Drawable,
+        f = obj as Flags;
       if (!(f.isMesh || f.isPoints || f.isLine || f.isSprite)) return;
-      if (!f.isMesh || !obj.castShadow || (o.userData && o.userData.helper)) { o.visible = false; hidden.push(o); return; }
+      if (!f.isMesh || !obj.castShadow || (o.userData && o.userData.helper)) {
+        o.visible = false;
+        hidden.push(o);
+        return;
+      }
       swapped.push([o, o.material]);
       o.material = this.caster;
     });
-    const prevTarget = r.getRenderTarget(), prevAutoClear = r.autoClear, prevShadow = r.shadowMap.needsUpdate;
-    const clear = r.getClearColor(new THREE.Color()), clearAlpha = r.getClearAlpha();
-    const bg = scene.background, env = scene.environment, fog = scene.fog;
+    const prevTarget = r.getRenderTarget(),
+      prevAutoClear = r.autoClear,
+      prevShadow = r.shadowMap.needsUpdate;
+    const clear = r.getClearColor(new THREE.Color()),
+      clearAlpha = r.getClearAlpha();
+    const bg = scene.background,
+      env = scene.environment,
+      fog = scene.fog;
     r.shadowMap.needsUpdate = false; // no shadow pass for this render
     r.autoClear = false;
     r.setClearColor(0x000000, 1);
-    scene.background = null; scene.environment = null; scene.fog = null;
-    const cam = this.camera, U = this.uniforms;
+    scene.background = null;
+    scene.environment = null;
+    scene.fog = null;
+    const cam = this.camera,
+      U = this.uniforms;
     try {
       list.forEach((f, i) => {
-        const cx = (f.minX + f.maxX) / 2, cz = (f.minZ + f.maxZ) / 2;
-        const hx = (f.maxX - f.minX) / 2 + CONTACT_MARGIN_M, hz = (f.maxZ - f.minZ) / 2 + CONTACT_MARGIN_M;
-        cam.left = -hx; cam.right = hx; cam.top = hz; cam.bottom = -hz;
+        const cx = (f.minX + f.maxX) / 2,
+          cz = (f.minZ + f.maxZ) / 2;
+        const hx = (f.maxX - f.minX) / 2 + CONTACT_MARGIN_M,
+          hz = (f.maxZ - f.minZ) / 2 + CONTACT_MARGIN_M;
+        cam.left = -hx;
+        cam.right = hx;
+        cam.top = hz;
+        cam.bottom = -hz;
         cam.position.set(cx, f.y, cz);
         cam.up.set(0, 0, -1);
         cam.lookAt(cx, f.y + 1, cz);
         cam.updateProjectionMatrix();
         cam.updateMatrixWorld();
-        U.fpContactM.value[i].multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+        U.fpContactM.value[i].multiplyMatrices(
+          cam.projectionMatrix,
+          cam.matrixWorldInverse,
+        );
         U.fpContactY.value.setComponent(i, f.y);
         this.caster.uniforms.floorY.value = f.y;
         this._tile(this.atlas, i);
@@ -243,14 +325,19 @@ export class ContactShadows {
     } finally {
       for (const [o, m] of swapped) o.material = m;
       for (const o of hidden) o.visible = true;
-      scene.background = bg; scene.environment = env; scene.fog = fog;
+      scene.background = bg;
+      scene.environment = env;
+      scene.fog = fog;
       r.shadowMap.needsUpdate = prevShadow;
     }
     // two blur rounds: atlas -> temp (x) -> atlas (y)
     const u = this.blur.uniforms;
     u.size.value = tile;
     for (let round = 0; round < 2; round++) {
-      for (const [src, dst, dx, dy] of [[this.atlas, this.temp, 1, 0], [this.temp, this.atlas, 0, 1]] as const) {
+      for (const [src, dst, dx, dy] of [
+        [this.atlas, this.temp, 1, 0],
+        [this.temp, this.atlas, 0, 1],
+      ] as const) {
         u.tSrc.value = src.texture;
         u.dir.value.set(dx, dy).multiplyScalar(round ? 2.5 : 1);
         for (let i = 0; i < n; i++) {

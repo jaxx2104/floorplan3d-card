@@ -7,6 +7,7 @@ Builds on: `2026-10-01-model-contract-design.md` (levels, rooms, bindings) and t
 ## Goal
 
 Make every floor view look the way the user wants without typing metres:
+
 - The floor buttons are **views owned by the house model** (any number: Exterior, Ground floor,
   Attic…), each **linked to HA floors** so HA's own floor structure stays the source of truth for other
   cards and automations. Each view has **element choices**: any part of the model (levels, rooms,
@@ -52,22 +53,24 @@ and never see an elevation field; after a re-export with `fp` tags the same view
 ## 2. Visibility model
 
 ### Selectors
-| selector | matches |
-|---|---|
-| `all` | the whole model |
-| `level:<id>` | a level node (manifest level) |
-| `role:<storey\|basement\|exterior\|roof>` | every level with that role |
-| `room:<id>` / `zone:<id>` | a room or zone node |
-| `object:<id>` | an object node |
-| `type:<type>` | every object of a type |
-| `group:<name>` | every object with that `group` |
-| `layer:<name>` | every node whose `fp.layer` is (or contains) the name |
-| `node:<path>` | a node by path (names from the model root, `/`-separated; `*` matches within one segment, `**` across segments) |
+
+| selector                                  | matches                                                                                                         |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `all`                                     | the whole model                                                                                                 |
+| `level:<id>`                              | a level node (manifest level)                                                                                   |
+| `role:<storey\|basement\|exterior\|roof>` | every level with that role                                                                                      |
+| `room:<id>` / `zone:<id>`                 | a room or zone node                                                                                             |
+| `object:<id>`                             | an object node                                                                                                  |
+| `type:<type>`                             | every object of a type                                                                                          |
+| `group:<name>`                            | every object with that `group`                                                                                  |
+| `layer:<name>`                            | every node whose `fp.layer` is (or contains) the name                                                           |
+| `node:<path>`                             | a node by path (names from the model root, `/`-separated; `*` matches within one segment, `**` across segments) |
 
 Model views use the same selectors in their `show`/`hide` lists.
 Unknown or non-matching selectors are ignored (listed as "not in this model" in the UI).
 
 ### Resolution (per floor view)
+
 1. **Default** visibility per level from the existing rules (`levelVisible`: storeys stack, exterior
    always, roof only in All, plus the level → floor mapping), and today's cut for untagged models when
    the floor's "cut at wall height" is on (default: on for untagged models, off for tagged).
@@ -85,6 +88,7 @@ Markers and glows follow the floor exactly as today (they belong to HA floors, n
 Picking ignores hidden nodes (already the case).
 
 ### Storage
+
 ```json
 "views": {
   "ground": {
@@ -96,11 +100,13 @@ Picking ignores hidden nodes (already the case).
   "night_garden": { "added": true, "label": "Night garden", "rules": [{ "show": "role:exterior" }] }
 }
 ```
+
 `layout.views[viewId]`: `label`, `rules` (appended after the model's), `camera` (world coordinates),
 `floors`, `cut`, `hidden`, `added`. Card YAML `views:` uses the same keys per view id; its `rules` are
 appended last, other keys replace for that card only.
 
 ### Migration
+
 Existing layouts have no views: they get generated views (§1). The level dropdown's show modes (`layout.model.levels[id].show`) become view rules on load:
 `hidden` → `hide level:<id>` on every view; `always` → `show level:<id>` on every view; `all-only` →
 `hide level:<id>` on every floor view; `only` → `hide level:<id>` on floor views above its floor.

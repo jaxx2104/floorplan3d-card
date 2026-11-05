@@ -1,6 +1,6 @@
 // Room outline from a mesh's upward-facing triangles at the clicked height (pick a room from the model).
-import { pointInPolygon, signedArea } from './placement.ts';
-import type { PlanPoint } from './types/layout.ts';
+import { pointInPolygon, signedArea } from "./placement.ts";
+import type { PlanPoint } from "./types/layout.ts";
 
 const COS_UP = Math.cos((25 * Math.PI) / 180);
 const MERGE = 200; // points within 5 mm share a key
@@ -19,27 +19,46 @@ export interface OutlineGrid {
 }
 
 // snapped to 5 cm, rounded to mm
-const snap = (v: number): number => Math.round(Math.round(v / 0.05) * 0.05 * 1000) / 1000;
+const snap = (v: number): number =>
+  Math.round(Math.round(v / 0.05) * 0.05 * 1000) / 1000;
 const snapPoint = ([x, y]: PlanPoint): PlanPoint => [snap(x), snap(y)];
 
-const key = (x: number, z: number): string => Math.round(x * MERGE) + ',' + Math.round(z * MERGE);
+const key = (x: number, z: number): string =>
+  Math.round(x * MERGE) + "," + Math.round(z * MERGE);
 
 export function outlineLoops(tris: Triangles, y: number): PlanPoint[][] {
   const pts = new Map<string, PlanPoint>(); // key -> [x, z]
   const edgeCount = new Map<string, number>(); // undirected key -> count
   const edgeDir = new Map<string, [string, string]>(); // undirected key -> [p, q] as it appeared in a triangle
   for (let i = 0; i + 8 < tris.length; i += 9) {
-    let a = [tris[i], tris[i + 1], tris[i + 2]], b = [tris[i + 3], tris[i + 4], tris[i + 5]], c = [tris[i + 6], tris[i + 7], tris[i + 8]];
-    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    let a = [tris[i], tris[i + 1], tris[i + 2]],
+      b = [tris[i + 3], tris[i + 4], tris[i + 5]],
+      c = [tris[i + 6], tris[i + 7], tris[i + 8]];
+    const ux = b[0] - a[0],
+      uy = b[1] - a[1],
+      uz = b[2] - a[2],
+      vx = c[0] - a[0],
+      vy = c[1] - a[1],
+      vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy,
+      ny = uz * vx - ux * vz,
+      nz = ux * vy - uy * vx;
     const len = Math.hypot(nx, ny, nz);
     if (!len || Math.abs(ny / len) < COS_UP) continue;
     if (Math.abs((a[1] + b[1] + c[1]) / 3 - y) > 0.05) continue;
     // Normalize winding: flip triangle if normal points down
     if (ny < 0) [b, c] = [c, b];
-    const ks = [a, b, c].map((p) => { const k = key(p[0], p[2]); pts.set(k, [p[0], p[2]]); return k; });
-    for (const [p, q] of [[ks[0], ks[1]], [ks[1], ks[2]], [ks[2], ks[0]]] as [string, string][]) {
-      const e = p < q ? p + '|' + q : q + '|' + p;
+    const ks = [a, b, c].map((p) => {
+      const k = key(p[0], p[2]);
+      pts.set(k, [p[0], p[2]]);
+      return k;
+    });
+    for (const [p, q] of [
+      [ks[0], ks[1]],
+      [ks[1], ks[2]],
+      [ks[2], ks[0]],
+    ] as [string, string][]) {
+      const e = p < q ? p + "|" + q : q + "|" + p;
       edgeCount.set(e, (edgeCount.get(e) || 0) + 1);
       // Store direction as it appears in the triangle
       edgeDir.set(e, [p, q]);
@@ -74,7 +93,8 @@ export function outlineLoops(tris: Triangles, y: number): PlanPoint[][] {
       } else if (loop.length > 1) {
         // Pinch vertex: pick edge with smallest signed turning angle (most clockwise)
         // every edge end is a registered point
-        const [px, pz] = pts.get(p)!, [qx, qz] = pts.get(q)!;
+        const [px, pz] = pts.get(p)!,
+          [qx, qz] = pts.get(q)!;
         const incoming = [qx - px, qz - pz];
         next = nexts.reduce((best, i) => {
           const [, qNext] = boundaryEdges[i];
@@ -97,24 +117,41 @@ export function outlineLoops(tris: Triangles, y: number): PlanPoint[][] {
       if (next === startIdx && loop.length > 2) break;
       edgeIdx = next;
     }
-    if (loop.length >= 3) loops.push(loop.map((k): PlanPoint => { const [x, z] = pts.get(k)!; return [x, -z]; }));
+    if (loop.length >= 3)
+      loops.push(
+        loop.map((k): PlanPoint => {
+          const [x, z] = pts.get(k)!;
+          return [x, -z];
+        }),
+      );
   }
   return loops.map(finishLoopLocal).filter((l): l is PlanPoint[] => !!l);
 }
 
 // the smallest loop around the point (a merged mesh can span several rooms), else the largest loop whose box (+10 cm) holds it
-export function pickLoop(loops: PlanPoint[][], target: [number, number]): PlanPoint[] | null {
+export function pickLoop(
+  loops: PlanPoint[][],
+  target: [number, number],
+): PlanPoint[] | null {
   const area = (l: PlanPoint[]) => Math.abs(signedArea(l));
-  let candidates = loops.filter((l) => pointInPolygon(target, l)).sort((a, b) => area(a) - area(b));
+  let candidates = loops
+    .filter((l) => pointInPolygon(target, l))
+    .sort((a, b) => area(a) - area(b));
   if (!candidates.length) {
-    const near = (l: PlanPoint[]) => l.some(([x]) => x <= target[0] + 0.1) && l.some(([x]) => x >= target[0] - 0.1)
-      && l.some(([, y]) => y <= target[1] + 0.1) && l.some(([, y]) => y >= target[1] - 0.1);
+    const near = (l: PlanPoint[]) =>
+      l.some(([x]) => x <= target[0] + 0.1) &&
+      l.some(([x]) => x >= target[0] - 0.1) &&
+      l.some(([, y]) => y <= target[1] + 0.1) &&
+      l.some(([, y]) => y >= target[1] - 0.1);
     candidates = loops.filter(near).sort((a, b) => area(b) - area(a));
   }
   return candidates.length ? candidates[0] : null;
 }
 
-export function outlineFromTriangles(tris: Triangles, hit: Hit): PlanPoint[] | null {
+export function outlineFromTriangles(
+  tris: Triangles,
+  hit: Hit,
+): PlanPoint[] | null {
   return pickLoop(outlineLoops(tris, hit[1]), [hit[0], -hit[2]]);
 }
 
@@ -122,10 +159,15 @@ export function outlineFromTriangles(tris: Triangles, hit: Hit): PlanPoint[] | n
 function finishLoopLocal(simplified: PlanPoint[]): PlanPoint[] | null {
   const simp: PlanPoint[] = [];
   for (let i = 0; i < simplified.length; i++) {
-    const p = simp.length ? simp[simp.length - 1] : simplified[simplified.length - 1];
-    const c = simplified[i], n = simplified[(i + 1) % simplified.length];
+    const p = simp.length
+      ? simp[simp.length - 1]
+      : simplified[simplified.length - 1];
+    const c = simplified[i],
+      n = simplified[(i + 1) % simplified.length];
     if (Math.hypot(c[0] - p[0], c[1] - p[1]) < 1e-6) continue;
-    const dx = n[0] - p[0], dy = n[1] - p[1], l = Math.hypot(dx, dy) || 1;
+    const dx = n[0] - p[0],
+      dy = n[1] - p[1],
+      l = Math.hypot(dx, dy) || 1;
     if (Math.abs((c[0] - p[0]) * dy - (c[1] - p[1]) * dx) / l < 0.02) continue; // collinear
     simp.push(c);
   }
@@ -141,40 +183,72 @@ function finishLoopLocal(simplified: PlanPoint[]): PlanPoint[] | null {
   return out.length >= 3 ? out : null;
 }
 
-
 // Dense meshes: rasterise the up-facing triangles at the hit height onto a grid, flood-fill from the hit
 // cell and walk the region's boundary. Same 25 degree / 0.05 m filters as outlineFromTriangles.
-export function rasterGrid(tris: Triangles, yLevel: number, { cell = 0.02 }: { cell?: number } = {}): OutlineGrid | null {
+export function rasterGrid(
+  tris: Triangles,
+  yLevel: number,
+  { cell = 0.02 }: { cell?: number } = {},
+): OutlineGrid | null {
   const keep: number[] = [];
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
   for (let i = 0; i + 8 < tris.length; i += 9) {
-    const ux = tris[i + 3] - tris[i], uy = tris[i + 4] - tris[i + 1], uz = tris[i + 5] - tris[i + 2];
-    const vx = tris[i + 6] - tris[i], vy = tris[i + 7] - tris[i + 1], vz = tris[i + 8] - tris[i + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const ux = tris[i + 3] - tris[i],
+      uy = tris[i + 4] - tris[i + 1],
+      uz = tris[i + 5] - tris[i + 2];
+    const vx = tris[i + 6] - tris[i],
+      vy = tris[i + 7] - tris[i + 1],
+      vz = tris[i + 8] - tris[i + 2];
+    const nx = uy * vz - uz * vy,
+      ny = uz * vx - ux * vz,
+      nz = ux * vy - uy * vx;
     const len = Math.hypot(nx, ny, nz);
     if (!len || Math.abs(ny / len) < COS_UP) continue;
-    if (Math.abs((tris[i + 1] + tris[i + 4] + tris[i + 7]) / 3 - yLevel) > 0.05) continue;
+    if (Math.abs((tris[i + 1] + tris[i + 4] + tris[i + 7]) / 3 - yLevel) > 0.05)
+      continue;
     keep.push(i);
     for (const o of [0, 3, 6]) {
-      const x = tris[i + o], y = -tris[i + o + 2];
-      if (x < x0) x0 = x; if (x > x1) x1 = x;
-      if (y < y0) y0 = y; if (y > y1) y1 = y;
+      const x = tris[i + o],
+        y = -tris[i + o + 2];
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
     }
   }
   if (!keep.length) return null;
   const MAX = 4000;
   let c = cell;
   c = Math.max(c, (x1 - x0) / MAX, (y1 - y0) / MAX);
-  const W = Math.max(1, Math.ceil((x1 - x0) / c)), H = Math.max(1, Math.ceil((y1 - y0) / c));
+  const W = Math.max(1, Math.ceil((x1 - x0) / c)),
+    H = Math.max(1, Math.ceil((y1 - y0) / c));
   const grid = new Uint8Array(W * H);
   const clampI = (v: number, n: number) => Math.max(0, Math.min(n - 1, v));
   for (const i of keep) {
-    const ax = tris[i], ay = -tris[i + 2], bx = tris[i + 3], by = -tris[i + 5], cx = tris[i + 6], cy = -tris[i + 8];
+    const ax = tris[i],
+      ay = -tris[i + 2],
+      bx = tris[i + 3],
+      by = -tris[i + 5],
+      cx = tris[i + 6],
+      cy = -tris[i + 8];
     const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-    const ci = (x: number) => clampI(Math.floor((x - x0) / c), W), cj = (y: number) => clampI(Math.floor((y - y0) / c), H);
-    for (const [px, py] of [[ax, ay], [bx, by], [cx, cy], [(ax + bx + cx) / 3, (ay + by + cy) / 3]]) grid[cj(py) * W + ci(px)] = 1;
+    const ci = (x: number) => clampI(Math.floor((x - x0) / c), W),
+      cj = (y: number) => clampI(Math.floor((y - y0) / c), H);
+    for (const [px, py] of [
+      [ax, ay],
+      [bx, by],
+      [cx, cy],
+      [(ax + bx + cx) / 3, (ay + by + cy) / 3],
+    ])
+      grid[cj(py) * W + ci(px)] = 1;
     if (Math.abs(d) < 1e-12) continue;
-    const ia = ci(Math.min(ax, bx, cx)), ib = ci(Math.max(ax, bx, cx)), ja = cj(Math.min(ay, by, cy)), jb = cj(Math.max(ay, by, cy));
+    const ia = ci(Math.min(ax, bx, cx)),
+      ib = ci(Math.max(ax, bx, cx)),
+      ja = cj(Math.min(ay, by, cy)),
+      jb = cj(Math.max(ay, by, cy));
     for (let j = ja; j <= jb; j++) {
       const py = y0 + (j + 0.5) * c;
       for (let ii = ia; ii <= ib; ii++) {
@@ -191,13 +265,18 @@ export function rasterGrid(tris: Triangles, yLevel: number, { cell = 0.02 }: { c
 // flood fill from the hit cell (or a filled cell within 2 cells of it), then walk the region boundary
 export function outlineFromGrid(g: OutlineGrid, hit: Hit): PlanPoint[] | null {
   const { grid, W, H, x0, y0, c } = g;
-  const hx = Math.floor((hit[0] - x0) / c), hy = Math.floor((-hit[2] - y0) / c);
+  const hx = Math.floor((hit[0] - x0) / c),
+    hy = Math.floor((-hit[2] - y0) / c);
   let start = -1;
   for (let r = 0; r <= 2 && start < 0; r++) {
     for (let dj = -r; dj <= r && start < 0; dj++) {
       for (let di = -r; di <= r; di++) {
-        const i = hx + di, j = hy + dj;
-        if (i >= 0 && j >= 0 && i < W && j < H && grid[j * W + i]) { start = j * W + i; break; }
+        const i = hx + di,
+          j = hy + dj;
+        if (i >= 0 && j >= 0 && i < W && j < H && grid[j * W + i]) {
+          start = j * W + i;
+          break;
+        }
       }
     }
   }
@@ -208,16 +287,34 @@ export function outlineFromGrid(g: OutlineGrid, hit: Hit): PlanPoint[] | null {
   stack[sp++] = start;
   reg[start] = 1;
   while (sp) {
-    const p = stack[--sp], i = p % W, j = (p - i) / W;
-    if (i > 0 && grid[p - 1] && !reg[p - 1]) { reg[p - 1] = 1; stack[sp++] = p - 1; }
-    if (i < W - 1 && grid[p + 1] && !reg[p + 1]) { reg[p + 1] = 1; stack[sp++] = p + 1; }
-    if (j > 0 && grid[p - W] && !reg[p - W]) { reg[p - W] = 1; stack[sp++] = p - W; }
-    if (j < H - 1 && grid[p + W] && !reg[p + W]) { reg[p + W] = 1; stack[sp++] = p + W; }
+    const p = stack[--sp],
+      i = p % W,
+      j = (p - i) / W;
+    if (i > 0 && grid[p - 1] && !reg[p - 1]) {
+      reg[p - 1] = 1;
+      stack[sp++] = p - 1;
+    }
+    if (i < W - 1 && grid[p + 1] && !reg[p + 1]) {
+      reg[p + 1] = 1;
+      stack[sp++] = p + 1;
+    }
+    if (j > 0 && grid[p - W] && !reg[p - W]) {
+      reg[p - W] = 1;
+      stack[sp++] = p - W;
+    }
+    if (j < H - 1 && grid[p + W] && !reg[p + W]) {
+      reg[p + W] = 1;
+      stack[sp++] = p + W;
+    }
   }
   // boundary edges with the region on their left (counter-clockwise outer loops)
   const V = W + 1;
   const out = new Map<number, number[]>(); // start vertex -> [end vertices]
-  const add = (a: number, b: number) => { const l = out.get(a); if (l) l.push(b); else out.set(a, [b]); };
+  const add = (a: number, b: number) => {
+    const l = out.get(a);
+    if (l) l.push(b);
+    else out.set(a, [b]);
+  };
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
       if (!reg[j * W + i]) continue;
@@ -228,7 +325,8 @@ export function outlineFromGrid(g: OutlineGrid, hit: Hit): PlanPoint[] | null {
       if (i === 0 || !reg[j * W + i - 1]) add(v + V, v);
     }
   }
-  let best: PlanPoint[] | null = null, bestArea = 0;
+  let best: PlanPoint[] | null = null,
+    bestArea = 0;
   for (const [s0, starts] of out) {
     if (!starts.length) continue;
     const loop: number[] = [];
@@ -240,15 +338,25 @@ export function outlineFromGrid(g: OutlineGrid, hit: Hit): PlanPoint[] | null {
       cur = l.pop()!; // non-empty
       if (cur === s0) break;
     }
-    const pts = loop.map((v): PlanPoint => [x0 + (v % V) * c, y0 + Math.floor(v / V) * c]);
+    const pts = loop.map((v): PlanPoint => [
+      x0 + (v % V) * c,
+      y0 + Math.floor(v / V) * c,
+    ]);
     const a = pts.length >= 3 ? signedArea(pts) : 0;
-    if (a > bestArea) { bestArea = a; best = pts; }
+    if (a > bestArea) {
+      bestArea = a;
+      best = pts;
+    }
   }
   if (!best) return null;
   return finishLoop(best, 0.03);
 }
 
-export function outlineFromRaster(tris: Triangles, hit: Hit, opts?: { cell?: number }): PlanPoint[] | null {
+export function outlineFromRaster(
+  tris: Triangles,
+  hit: Hit,
+  opts?: { cell?: number },
+): PlanPoint[] | null {
   const g = rasterGrid(tris, hit[1], opts);
   return g ? outlineFromGrid(g, hit) : null;
 }
@@ -256,29 +364,55 @@ export function outlineFromRaster(tris: Triangles, hit: Hit, opts?: { cell?: num
 // merge exactly collinear points, Douglas-Peucker, snap to 5 cm, drop repeats
 function finishLoop(poly: PlanPoint[], tol: number): PlanPoint[] | null {
   let p = poly.filter((c, i) => {
-    const a = poly[(i + poly.length - 1) % poly.length], b = poly[(i + 1) % poly.length];
-    return Math.abs((c[0] - a[0]) * (b[1] - c[1]) - (c[1] - a[1]) * (b[0] - c[0])) > 1e-9;
+    const a = poly[(i + poly.length - 1) % poly.length],
+      b = poly[(i + 1) % poly.length];
+    return (
+      Math.abs((c[0] - a[0]) * (b[1] - c[1]) - (c[1] - a[1]) * (b[0] - c[0])) >
+      1e-9
+    );
   });
   if (p.length < 3) return null;
-  let far = 0, fd = -1;
-  for (let i = 1; i < p.length; i++) { const d = Math.hypot(p[i][0] - p[0][0], p[i][1] - p[0][1]); if (d > fd) { fd = d; far = i; } }
+  let far = 0,
+    fd = -1;
+  for (let i = 1; i < p.length; i++) {
+    const d = Math.hypot(p[i][0] - p[0][0], p[i][1] - p[0][1]);
+    if (d > fd) {
+      fd = d;
+      far = i;
+    }
+  }
   const rdp = (pts: PlanPoint[]): PlanPoint[] => {
     const keepIdx: boolean[] = new Array(pts.length).fill(false);
     keepIdx[0] = keepIdx[pts.length - 1] = true;
     const st: [number, number][] = [[0, pts.length - 1]];
     while (st.length) {
       const [a, b] = st.pop()!; // non-empty
-      const dx = pts[b][0] - pts[a][0], dy = pts[b][1] - pts[a][1], l = Math.hypot(dx, dy) || 1;
-      let m = -1, md = tol;
+      const dx = pts[b][0] - pts[a][0],
+        dy = pts[b][1] - pts[a][1],
+        l = Math.hypot(dx, dy) || 1;
+      let m = -1,
+        md = tol;
       for (let i = a + 1; i < b; i++) {
-        const d = Math.abs((pts[i][0] - pts[a][0]) * dy - (pts[i][1] - pts[a][1]) * dx) / l;
-        if (d > md) { md = d; m = i; }
+        const d =
+          Math.abs(
+            (pts[i][0] - pts[a][0]) * dy - (pts[i][1] - pts[a][1]) * dx,
+          ) / l;
+        if (d > md) {
+          md = d;
+          m = i;
+        }
       }
-      if (m >= 0) { keepIdx[m] = true; st.push([a, m], [m, b]); }
+      if (m >= 0) {
+        keepIdx[m] = true;
+        st.push([a, m], [m, b]);
+      }
     }
     return pts.filter((_, i) => keepIdx[i]);
   };
-  p = [...rdp(p.slice(0, far + 1)).slice(0, -1), ...rdp([...p.slice(far), p[0]]).slice(0, -1)];
+  p = [
+    ...rdp(p.slice(0, far + 1)).slice(0, -1),
+    ...rdp([...p.slice(far), p[0]]).slice(0, -1),
+  ];
   const snapped = p.map(snapPoint);
   const res: PlanPoint[] = [];
   for (let i = 0; i < snapped.length; i++) {

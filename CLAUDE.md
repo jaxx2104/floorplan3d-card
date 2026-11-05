@@ -6,6 +6,7 @@ by device type, with mouse-drag for exact placement. Plus Sunseeker robot mower 
 position and map overlay.
 
 ## Stack
+
 - Vanilla custom element, Three.js 0.169, Bun.build bundle -> `dist/floorplan3d-card.js`
 - Toolchain: bun (a dated canary pinned in mise.toml) for install, lint (`bun lint`, .oxlintrc.json),
   format (`bun fmt`), type check (`bun check`), tests (`bun test`, happy-dom) and build
@@ -21,6 +22,7 @@ position and map overlay.
   --divider-color, --state-light-active-color). Light and dark themes must both look right.
 
 ## Already written (src/)
+
 - `placement.js` — polygon geometry, type rules (domain/device_class -> anchor + height),
   `autoPlace(room, markers, roomHeight)`. Anchors: center (ceiling grid), wall, corner, door.
 - `registry.js` — builds markers from `hass.entities` / `hass.devices` / `hass.areas` /
@@ -35,11 +37,13 @@ position and map overlay.
 Review these, fix bugs, add unit tests (bun test) for placement + mower math.
 
 ## Coordinates
+
 Plan metres: x = east, y = north, z = height above floor. Three.js world:
 `(x, floorElevation + z, -y)` so north is up in top view. Wall box rotation.y = atan2(dy, dx).
 Floor shape: ShapeGeometry rotated -90° about X.
 
 ## Layout data (stored, not in YAML)
+
 ```json
 { "version": 1,
   "floors": [{ "id": "ground", "name": "Ground floor", "elevation": 0, "height": 2.7 }],
@@ -52,10 +56,12 @@ Floor shape: ShapeGeometry rotated -90° about X.
              "overlay": { "entity": "image.mower_map", "x": 0, "y": 0, "rotation": 0, "width": 30,
                           "opacity": 0.6, "refresh": 10 } } }
 ```
+
 Floors auto-sync from HA floors (`hass.floors`, elevation = level * 3). Room floor defaults to
 the area's floor_id.
 
 ## Card YAML (minimal)
+
 ```yaml
 type: custom:floorplan3d-card
 layout_key: default      # storage key
@@ -69,7 +75,9 @@ model_scale: 1
 ```
 
 ## Behaviour
+
 View mode:
+
 - Floor chips (each floor + All), 3D / Top view toggle, edit button (admins only).
 - Marker tap: toggle for light/switch/fan/input_boolean, otherwise more-info.
   Long-press (500 ms): more-info (`hass-more-info` event, bubbles + composed).
@@ -77,6 +85,7 @@ View mode:
 - Marker shows secondary sensor value (e.g. temperature) when the device has one.
 
 Edit mode (side panel, tabs Rooms / Devices / Mower / Data):
+
 - Rooms: list every HA area with status (room drawn / missing) and a Draw button. Draw =
   click corners on the plan, snap 0.05 m and to existing vertices within 0.25 m (shared walls),
   close by clicking first point or Enter, Esc cancels. Select room -> drag vertex handles,
@@ -94,6 +103,7 @@ Edit mode (side panel, tabs Rooms / Devices / Mower / Data):
 - Remove CSS2D elements from the DOM on dispose (removing the object does not remove the element).
 
 ## Sunseeker
+
 Integration: HACS "Sunseeker robotic mower" (github.com/Sdahl1234/Sunseeker-lawn-mower).
 Wireless models expose a Map image entity, a Live map camera entity, a Work region sensor and
 a Mower position (GPS derived from map coordinates). Inspect the real entities in your HA
@@ -101,12 +111,14 @@ a Mower position (GPS derived from map coordinates). Inspect the real entities i
 iiseppi/sunseeker_local_control (MQTT).
 
 ## Companion integration
+
 `custom_components/floorplan3d/`: manifest.json, `__init__.py` with `async_setup` (enabled by
 `floorplan3d:` in configuration.yaml), `homeassistant.helpers.storage.Store` (key
 `floorplan3d.layouts`), websocket commands `floorplan3d/layout/get` {key} and
 `floorplan3d/layout/set` {key, layout} (set requires admin).
 
 ## Repo / delivery
+
 - GitHub (`origin`) is the main remote; HACS installs it as an Integration from release
   `floorplan3d.zip` (integration with the card bundled; it registers the card via
   add_extra_js_url). Manual: copy `custom_components/floorplan3d/` after `bun run build`.
@@ -121,6 +133,7 @@ iiseppi/sunseeker_local_control (MQTT).
   moving in a circle) for testing without HA. Verify with a headless browser screenshot.
 
 ## Order of work
+
 1. Scaffold (package.json, bun build / test / lint / check, TypeScript), tests for existing modules.
 2. Card: scene, floors, rooms, walls, markers, glow, view mode. Demo page.
 3. Edit mode: room drawing/editing, marker drag + pins, storage.

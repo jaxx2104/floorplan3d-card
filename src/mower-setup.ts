@@ -1,6 +1,6 @@
-import { colorList } from './mower-image.ts';
-import type { HassEntity } from './types/ha.ts';
-import type { LayoutMower, MowerOverlay } from './types/layout.ts';
+import { colorList } from "./mower-image.ts";
+import type { HassEntity } from "./types/ha.ts";
+import type { LayoutMower, MowerOverlay } from "./types/layout.ts";
 
 // Mower tab setup checklist (pure). Each row: { id, label, ok, optional, target } where target is
 // the CSS selector of the control that fixes it.
@@ -22,9 +22,14 @@ export interface SetupAuto {
 }
 
 export function overlayAligned(o: MowerOverlay | null | undefined): boolean {
-  if (!o || !o.entity || !(Number(o.width ?? DEFAULT_OV.width) > 0)) return false;
+  if (!o || !o.entity || !(Number(o.width ?? DEFAULT_OV.width) > 0))
+    return false;
   if (o.aligned) return true;
-  return (Number(o.x) || 0) !== DEFAULT_OV.x || (Number(o.y) || 0) !== DEFAULT_OV.y || Number(o.width ?? DEFAULT_OV.width) !== DEFAULT_OV.width;
+  return (
+    (Number(o.x) || 0) !== DEFAULT_OV.x ||
+    (Number(o.y) || 0) !== DEFAULT_OV.y ||
+    Number(o.width ?? DEFAULT_OV.width) !== DEFAULT_OV.width
+  );
 }
 
 // m: layout.mower; states: hass.states; found: true when the last position reading / detection worked;
@@ -37,20 +42,67 @@ export function setupChecklist(
 ): { rows: SetupRow[]; complete: boolean } {
   const m: LayoutMower = mower || {};
   const o = m.overlay || null;
-  const image = m.source === 'image';
+  const image = m.source === "image";
   const rows: SetupRow[] = [
-    { id: 'entity', label: 'Entity', ok: !!(m.entity && states[m.entity]), target: '[name="mower-entity"]' },
-    { id: 'map', label: 'Map image', ok: !!(o && o.entity && states[o.entity]), target: '[name="ov-entity"]' },
-    { id: 'aligned', label: 'Aligned', ok: overlayAligned(o), target: o && o.entity ? '[name="ov-align"]' : '[name="ov-entity"]' },
+    {
+      id: "entity",
+      label: "Entity",
+      ok: !!(m.entity && states[m.entity]),
+      target: '[name="mower-entity"]',
+    },
+    {
+      id: "map",
+      label: "Map image",
+      ok: !!(o && o.entity && states[o.entity]),
+      target: '[name="ov-entity"]',
+    },
+    {
+      id: "aligned",
+      label: "Aligned",
+      ok: overlayAligned(o),
+      target: o && o.entity ? '[name="ov-align"]' : '[name="ov-entity"]',
+    },
   ];
   if (auto) {
-    rows.push({ id: 'static', label: auto.mismatch ? "Static map doesn't match the live map" : 'Static map', ok: !!auto.static && !auto.mismatch, target: '[name="mower-static"]' });
-    rows.push({ id: 'picture', label: 'Mower picture', ok: !!auto.picture, optional: true, target: '[name="mower-picture"]' });
-  } else if (image) rows.push({ id: 'color', label: 'Mower colour', ok: colorList(m.image).length > 0, target: '[name="img-pick"]' });
-  rows.push({ id: 'found', label: 'Found', ok: !!found, target: '.mower-live' });
+    rows.push({
+      id: "static",
+      label: auto.mismatch
+        ? "Static map doesn't match the live map"
+        : "Static map",
+      ok: !!auto.static && !auto.mismatch,
+      target: '[name="mower-static"]',
+    });
+    rows.push({
+      id: "picture",
+      label: "Mower picture",
+      ok: !!auto.picture,
+      optional: true,
+      target: '[name="mower-picture"]',
+    });
+  } else if (image)
+    rows.push({
+      id: "color",
+      label: "Mower colour",
+      ok: colorList(m.image).length > 0,
+      target: '[name="img-pick"]',
+    });
+  rows.push({
+    id: "found",
+    label: "Found",
+    ok: !!found,
+    target: ".mower-live",
+  });
   if (!auto) {
-    rows.push({ id: 'mowed', label: 'Mowed colour', ok: colorList(o, 'mowed').length > 0, optional: true,
-      target: o && o.entity ? '[name="map-pick"][data-kind="mowed"]' : '[name="ov-entity"]' });
+    rows.push({
+      id: "mowed",
+      label: "Mowed colour",
+      ok: colorList(o, "mowed").length > 0,
+      optional: true,
+      target:
+        o && o.entity
+          ? '[name="map-pick"][data-kind="mowed"]'
+          : '[name="ov-entity"]',
+    });
   }
   return { rows, complete: rows.every((r) => r.optional || r.ok) };
 }

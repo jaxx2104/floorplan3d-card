@@ -22,69 +22,31 @@
         "id": "r1",
         "area_id": "living_room",
         "polygon": [
-          [
-            0,
-            0
-          ],
-          [
-            5,
-            0
-          ],
-          [
-            5,
-            5
-          ],
-          [
-            0,
-            5
-          ]
+          [0, 0],
+          [5, 0],
+          [5, 5],
+          [0, 5]
         ],
-        "doors": [
-          [
-            5,
-            2.5
-          ]
-        ]
+        "doors": [[5, 2.5]]
       },
       {
         "id": "r2",
         "area_id": null,
         "floor_id": "attic",
         "polygon": [
-          [
-            0,
-            0
-          ],
-          [
-            5,
-            0
-          ],
-          [
-            5,
-            4.5
-          ]
+          [0, 0],
+          [5, 0],
+          [5, 4.5]
         ]
       },
       {
         "id": "r3",
         "area_id": "terrace",
         "polygon": [
-          [
-            0,
-            -3
-          ],
-          [
-            5,
-            -3
-          ],
-          [
-            5,
-            0
-          ],
-          [
-            0,
-            0
-          ]
+          [0, -3],
+          [5, -3],
+          [5, 0],
+          [0, 0]
         ],
         "outdoor": true,
         "doors": []
@@ -116,16 +78,10 @@
         "floor_id": "attic",
         "on_model": true,
         "attach": "lamp_desk",
-        "offset": [
-          0,
-          0.25,
-          0
-        ]
+        "offset": [0, 0.25, 0]
       }
     },
-    "hidden": [
-      "device:router"
-    ],
+    "hidden": ["device:router"],
     "tags": {
       "facade": {
         "entity": "switch.facade"
@@ -145,17 +101,12 @@
         "hidden": true
       },
       "tv": {
-        "tags": [
-          "media",
-          "living"
-        ],
+        "tags": ["media", "living"],
         "ui": {
           "tap_action": {
             "action": "more-info"
           },
-          "popup": [
-            "toggle"
-          ]
+          "popup": ["toggle"]
         }
       }
     },
@@ -164,11 +115,7 @@
       "name": "house.glb",
       "size": 1843200,
       "uploaded": "2025-03-14T18:22:05.120Z",
-      "position": [
-        0,
-        0,
-        0
-      ],
+      "position": [0, 0, 0],
       "rotation": 0,
       "scale": 1,
       "opacity": 1,
@@ -204,13 +151,7 @@
         "entity": "camera.sunseeker_live_map",
         "tolerance": 40,
         "min_pixels": 4,
-        "colors": [
-          [
-            255,
-            59,
-            48
-          ]
-        ]
+        "colors": [[255, 59, 48]]
       },
       "overlay": {
         "entity": "image.sunseeker_map",
@@ -220,30 +161,12 @@
         "width": 9,
         "opacity": 0.55,
         "refresh": 10,
-        "nomow_colors": [
-          [
-            140,
-            140,
-            140
-          ]
-        ],
+        "nomow_colors": [[140, 140, 140]],
         "bg_tolerance": 30,
         "zone": null,
         "aligned": true,
-        "bg_colors": [
-          [
-            47,
-            93,
-            44
-          ]
-        ],
-        "mowed_colors": [
-          [
-            127,
-            194,
-            111
-          ]
-        ]
+        "bg_colors": [[47, 93, 44]],
+        "mowed_colors": [[127, 194, 111]]
       }
     },
     "views": {
@@ -254,16 +177,8 @@
           }
         ],
         "camera": {
-          "position": [
-            6,
-            12,
-            14
-          ],
-          "target": [
-            6,
-            0,
-            -4.5
-          ]
+          "position": [6, 12, 14],
+          "target": [6, 0, -4.5]
         }
       },
       "view_1": {
@@ -279,34 +194,21 @@
           }
         ],
         "camera_top": {
-          "center": [
-            6,
-            4.5
-          ],
+          "center": [6, 4.5],
           "zoom": 1.4
         },
         "section": {
-          "normal": [
-            0,
-            0,
-            -1
-          ],
+          "normal": [0, 0, -1],
           "constant": 2
         },
-        "floors": [
-          "ground"
-        ],
+        "floors": ["ground"],
         "cut": true
       },
       "all": {
         "hidden": true
       }
     },
-    "view_order": [
-      "view_1",
-      "level0",
-      "all"
-    ],
+    "view_order": ["view_1", "level0", "all"],
     "badges": {
       "integration": true,
       "battery": false

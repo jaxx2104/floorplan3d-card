@@ -3,13 +3,23 @@
 // model materials shade the directional lights - sun, moon - by world x/z; lamps are untouched),
 // never inside the rooms (a mask of the room footprints, from the floor up), where the sun gets the
 // average dimming instead. Uniforms only after the one-time material patch.
-import * as THREE from 'three';
-import { PCSS_HEAD, pcssDirectional } from './soft-shadow.ts';
-import { CONTACT_HEAD, CONTACT_BODY, makeContactUniforms, type ContactUniforms } from './contact-shadow.ts';
-import { GLASS_FRESNEL } from './physical-materials.ts';
-import { PROBE_HEAD, PROBE_BODY, makeProbeUniforms, type ProbeUniforms } from './light-probes.ts';
+import * as THREE from "three";
+import { PCSS_HEAD, pcssDirectional } from "./soft-shadow.ts";
+import {
+  CONTACT_HEAD,
+  CONTACT_BODY,
+  makeContactUniforms,
+  type ContactUniforms,
+} from "./contact-shadow.ts";
+import { GLASS_FRESNEL } from "./physical-materials.ts";
+import {
+  PROBE_HEAD,
+  PROBE_BODY,
+  makeProbeUniforms,
+  type ProbeUniforms,
+} from "./light-probes.ts";
 
-import type { PlanPoint } from './types/layout.ts';
+import type { PlanPoint } from "./types/layout.ts";
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -24,9 +34,16 @@ export const CLOUD_UMBRA = 0.1;
 // shade (higher = fewer patches), strength: how much of the direct light a cloud takes, roomShade:
 // the direct light in the rooms (no patches there: the average dimming, cloudLight's sun factor) }.
 // With the shadows on, the sun itself stays at its clear-sky strength: sunny gaps between the patches.
-export function cloudShadowParams(coverage: unknown, roomShade: unknown = 1): { cover: number; strength: number; roomShade: number } {
+export function cloudShadowParams(
+  coverage: unknown,
+  roomShade: unknown = 1,
+): { cover: number; strength: number; roomShade: number } {
   const c = clamp01((Number(coverage) || 0) / 100);
-  return { cover: 1 - c, strength: c > 0 ? 1 - CLOUD_UMBRA : 0, roomShade: c > 0 ? clamp01(Number(roomShade)) : 1 };
+  return {
+    cover: 1 - c,
+    strength: c > 0 ? 1 - CLOUD_UMBRA : 0,
+    roomShade: c > 0 ? clamp01(Number(roomShade)) : 1,
+  };
 }
 
 // Pattern offset (tiles) after t seconds of wind.
@@ -37,17 +54,35 @@ export function cloudShadowOffset(t: unknown): [number, number] {
 
 // Room mask frame: the x/z bounds (card world: x, -y) of the room polygons plus a margin, as
 // { minX, minZ, sizeX, sizeZ }, or null without rooms.
-export interface RoomMaskFrame { minX: number; minZ: number; sizeX: number; sizeZ: number }
-export function roomMaskFrame(polygons: PlanPoint[][] | null | undefined, margin = 0.3): RoomMaskFrame | null {
-  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+export interface RoomMaskFrame {
+  minX: number;
+  minZ: number;
+  sizeX: number;
+  sizeZ: number;
+}
+export function roomMaskFrame(
+  polygons: PlanPoint[][] | null | undefined,
+  margin = 0.3,
+): RoomMaskFrame | null {
+  let minX = Infinity,
+    minZ = Infinity,
+    maxX = -Infinity,
+    maxZ = -Infinity;
   for (const poly of polygons || []) {
     for (const [x, y] of poly) {
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      minZ = Math.min(minZ, -y); maxZ = Math.max(maxZ, -y);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, -y);
+      maxZ = Math.max(maxZ, -y);
     }
   }
   if (!Number.isFinite(minX)) return null;
-  return { minX: minX - margin, minZ: minZ - margin, sizeX: maxX - minX + 2 * margin, sizeZ: maxZ - minZ + 2 * margin };
+  return {
+    minX: minX - margin,
+    minZ: minZ - margin,
+    sizeX: maxX - minX + 2 * margin,
+    sizeZ: maxZ - minZ + 2 * margin,
+  };
 }
 
 // Uniforms shared by every patched material (the soft-shadow and contact-shadow ones too).
@@ -106,7 +141,7 @@ export function makeCloudUniforms(): CloudUniforms {
 // Height (m above the site's ground) where the sway reaches its full lean; below it grows with the square.
 export const SWAY_HEIGHT_M = 8;
 
-const VERT_HEAD = 'varying vec3 vFpCloudW;\n';
+const VERT_HEAD = "varying vec3 vFpCloudW;\n";
 // plants sway in world x / z with the wind (two waves and a steady lean), more the higher they reach, never in
 // the rooms (indoor plants share materials with the ones outside); the parts of a plant move together
 const SWAY_HEAD = `
@@ -179,7 +214,7 @@ float fpCloudShade() {
 }
 `;
 // directional lights only (sun, moon): the shade multiplies their colour before the shading model
-const DIR_INFO = 'getDirectionalLightInfo( directionalLight, directLight );';
+const DIR_INFO = "getDirectionalLightInfo( directionalLight, directLight );";
 export function shadeDirectional(chunk: string): string | null {
   if (!chunk.includes(DIR_INFO)) return null;
   return `float fpShade = fpCloudShade();\n${chunk.replace(DIR_INFO, `${DIR_INFO}\n\t\tdirectLight.color *= fpShade;`)}`;
@@ -235,19 +270,52 @@ if ( fpCity > 0.0 ) {
 `;
 
 // Lit materials only (the ones with direct light to shade).
-export const shadable = (m: THREE.Material | null | undefined): m is THREE.MeshStandardMaterial | THREE.MeshLambertMaterial | THREE.MeshPhongMaterial => {
-  const f = m as { isMeshStandardMaterial?: boolean; isMeshLambertMaterial?: boolean; isMeshPhongMaterial?: boolean } | null | undefined;
-  return !!(f && (f.isMeshStandardMaterial || f.isMeshLambertMaterial || f.isMeshPhongMaterial));
+export const shadable = (
+  m: THREE.Material | null | undefined,
+): m is
+  | THREE.MeshStandardMaterial
+  | THREE.MeshLambertMaterial
+  | THREE.MeshPhongMaterial => {
+  const f = m as
+    | {
+        isMeshStandardMaterial?: boolean;
+        isMeshLambertMaterial?: boolean;
+        isMeshPhongMaterial?: boolean;
+      }
+    | null
+    | undefined;
+  return !!(
+    f &&
+    (f.isMeshStandardMaterial ||
+      f.isMeshLambertMaterial ||
+      f.isMeshPhongMaterial)
+  );
 };
 
 // Program cache key part of the quality tier's shader variants: '' in standard (its programs untouched).
-export const tierKey = (mat: THREE.Material): string => `${mat.userData.fpPcss ? 'p' : ''}${mat.userData.fpContact ? 'c' : ''}${mat.userData.fpGlass ? 'g' : ''}${mat.userData.fpProbe ? 'l' : ''}`;
+export const tierKey = (mat: THREE.Material): string =>
+  `${mat.userData.fpPcss ? "p" : ""}${mat.userData.fpContact ? "c" : ""}${mat.userData.fpGlass ? "g" : ""}${mat.userData.fpProbe ? "l" : ""}`;
 
 // Quality tier shader variants of a patched material: soft sun shadows, contact shadows, room light probes (lit
 // standard / physical materials only). -> true when they changed (the material then recompiles).
-export function setTierVariant(mat: THREE.Material, { pcss, contact, probe = false }: { pcss: boolean; contact: boolean; probe?: boolean }): boolean {
-  const pr = probe && !!(mat as Partial<THREE.MeshStandardMaterial>).isMeshStandardMaterial;
-  if (!mat.userData.fpCloud || (!!mat.userData.fpPcss === pcss && !!mat.userData.fpContact === contact && !!mat.userData.fpProbe === pr)) return false;
+export function setTierVariant(
+  mat: THREE.Material,
+  {
+    pcss,
+    contact,
+    probe = false,
+  }: { pcss: boolean; contact: boolean; probe?: boolean },
+): boolean {
+  const pr =
+    probe &&
+    !!(mat as Partial<THREE.MeshStandardMaterial>).isMeshStandardMaterial;
+  if (
+    !mat.userData.fpCloud ||
+    (!!mat.userData.fpPcss === pcss &&
+      !!mat.userData.fpContact === contact &&
+      !!mat.userData.fpProbe === pr)
+  )
+    return false;
   mat.userData.fpPcss = pcss;
   mat.userData.fpContact = contact;
   if (pr) mat.userData.fpProbe = true;
@@ -257,7 +325,10 @@ export function setTierVariant(mat: THREE.Material, { pcss, contact, probe = fal
 }
 
 // Patch a material once (shader compiled with the shade; later changes are uniforms only).
-export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): boolean {
+export function patchCloudShadow(
+  mat: THREE.Material,
+  uniforms: CloudUniforms,
+): boolean {
   if (!shadable(mat) || mat.userData.fpCloud) return false;
   mat.userData.fpCloud = true;
   const prev = mat.onBeforeCompile;
@@ -266,28 +337,72 @@ export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): 
     Object.assign(sh.uniforms, uniforms);
     const sway = !!mat.userData.fpSway;
     let vs = sh.vertexShader;
-    if (sway) vs = SWAY_HEAD + vs.replace('#include <begin_vertex>', `#include <begin_vertex>${SWAY_BODY}`);
-    sh.vertexShader = VERT_HEAD + vs.replace('#include <project_vertex>', `#include <project_vertex>${VERT_BODY}`);
+    if (sway)
+      vs =
+        SWAY_HEAD +
+        vs.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>${SWAY_BODY}`,
+        );
+    sh.vertexShader =
+      VERT_HEAD +
+      vs.replace(
+        "#include <project_vertex>",
+        `#include <project_vertex>${VERT_BODY}`,
+      );
     let begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
-    const city = mat.userData.fpCityLit, head = city === 'windows' ? '#define FP_WINDOWS\n' : city === 'glow' ? '#define FP_GLOW\n' : '';
+    const city = mat.userData.fpCityLit,
+      head =
+        city === "windows"
+          ? "#define FP_WINDOWS\n"
+          : city === "glow"
+            ? "#define FP_GLOW\n"
+            : "";
     let fs = sh.fragmentShader;
     // quality high: soft sun shadows (PCSS), contact shadows, thin glass; standard compiles none of them (and keeps its cache key)
     const pcss = mat.userData.fpPcss ? pcssDirectional(begin) : null;
     if (pcss) {
       begin = pcss;
-      fs = fs.replace('#include <shadowmap_pars_fragment>', `#include <shadowmap_pars_fragment>${PCSS_HEAD}`);
+      fs = fs.replace(
+        "#include <shadowmap_pars_fragment>",
+        `#include <shadowmap_pars_fragment>${PCSS_HEAD}`,
+      );
     }
-    if (mat.userData.fpContact) fs = fs.replace('#include <aomap_fragment>', `#include <aomap_fragment>${CONTACT_BODY}`);
-    if (mat.userData.fpGlass) fs = fs.replace('#include <opaque_fragment>', `${GLASS_FRESNEL}#include <opaque_fragment>`); // thin glass (physical-materials.ts)
-    if (mat.userData.fpProbe) { // room light probes / baked lightmaps (light-probes.ts)
-      fs = fs.replace('#include <lights_pars_begin>', `#include <lights_pars_begin>${PROBE_HEAD}`)
-        .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>${PROBE_BODY}`);
+    if (mat.userData.fpContact)
+      fs = fs.replace(
+        "#include <aomap_fragment>",
+        `#include <aomap_fragment>${CONTACT_BODY}`,
+      );
+    if (mat.userData.fpGlass)
+      fs = fs.replace(
+        "#include <opaque_fragment>",
+        `${GLASS_FRESNEL}#include <opaque_fragment>`,
+      ); // thin glass (physical-materials.ts)
+    if (mat.userData.fpProbe) {
+      // room light probes / baked lightmaps (light-probes.ts)
+      fs = fs
+        .replace(
+          "#include <lights_pars_begin>",
+          `#include <lights_pars_begin>${PROBE_HEAD}`,
+        )
+        .replace(
+          "#include <lights_fragment_maps>",
+          `#include <lights_fragment_maps>${PROBE_BODY}`,
+        );
     }
-    sh.fragmentShader = head + FRAG_HEAD + (mat.userData.fpContact ? CONTACT_HEAD : '') + fs.replace('#include <lights_fragment_begin>', begin + OUT_LIGHT + CITY_LIGHTS);
+    sh.fragmentShader =
+      head +
+      FRAG_HEAD +
+      (mat.userData.fpContact ? CONTACT_HEAD : "") +
+      fs.replace(
+        "#include <lights_fragment_begin>",
+        begin + OUT_LIGHT + CITY_LIGHTS,
+      );
   };
   const key = mat.customProgramCacheKey;
-  mat.customProgramCacheKey = () => `${key ? key.call(mat) : ''}|fpcloud${mat.userData.fpCityLit || ''}${mat.userData.fpSway ? 's' : ''}${tierKey(mat)}`;
+  mat.customProgramCacheKey = () =>
+    `${key ? key.call(mat) : ""}|fpcloud${mat.userData.fpCityLit || ""}${mat.userData.fpSway ? "s" : ""}${tierKey(mat)}`;
   mat.needsUpdate = true;
   return true;
 }
@@ -297,27 +412,42 @@ export function patchCloudShadow(mat: THREE.Material, uniforms: CloudUniforms): 
 let pattern: THREE.CanvasTexture | null = null;
 export function cloudPattern(): THREE.CanvasTexture {
   if (pattern) return pattern;
-  const n = 256, c = document.createElement('canvas');
+  const n = 256,
+    c = document.createElement("canvas");
   c.width = c.height = n;
-  const g = c.getContext('2d');
+  const g = c.getContext("2d");
   if (g) {
-    g.fillStyle = '#000';
+    g.fillStyle = "#000";
     g.fillRect(0, 0, n, n);
     let seed = 1234567;
-    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const rnd = () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
     for (let i = 0; i < 40; i++) {
-      const x = rnd() * n, y = rnd() * n, r = 14 + rnd() * 34, a = 0.35 + rnd() * 0.4;
+      const x = rnd() * n,
+        y = rnd() * n,
+        r = 14 + rnd() * 34,
+        a = 0.35 + rnd() * 0.4;
       for (const dx of [-n, 0, n]) {
         for (const dy of [-n, 0, n]) {
-          const grad = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+          const grad = g.createRadialGradient(
+            x + dx,
+            y + dy,
+            0,
+            x + dx,
+            y + dy,
+            r,
+          );
           grad.addColorStop(0, `rgba(255,255,255,${a})`);
-          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          grad.addColorStop(1, "rgba(255,255,255,0)");
           g.fillStyle = grad;
           g.fillRect(x + dx - r, y + dy - r, 2 * r, 2 * r);
         }
       }
     }
-    const img = g.getImageData(0, 0, n, n), d = img.data;
+    const img = g.getImageData(0, 0, n, n),
+      d = img.data;
     equalize(d);
     g.putImageData(img, 0, 0);
   }
@@ -329,29 +459,43 @@ export function cloudPattern(): THREE.CanvasTexture {
 
 // Histogram equalization of the red channel of RGBA pixels (in place; g, b follow, alpha 255).
 export function equalize(d: Uint8ClampedArray | number[]): void {
-  const count: number[] = new Array(256).fill(0), n = d.length / 4;
+  const count: number[] = new Array(256).fill(0),
+    n = d.length / 4;
   for (let i = 0; i < d.length; i += 4) count[d[i]]++;
   const map: number[] = new Array(256);
   let below = 0;
-  for (let v = 0; v < 256; v++) { map[v] = Math.round(((below + count[v] / 2) / n) * 255); below += count[v]; }
-  for (let i = 0; i < d.length; i += 4) { const v = map[d[i]]; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  for (let v = 0; v < 256; v++) {
+    map[v] = Math.round(((below + count[v] / 2) / n) * 255);
+    below += count[v];
+  }
+  for (let i = 0; i < d.length; i += 4) {
+    const v = map[d[i]];
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
 }
 
 // Room mask texture (red = room) for a frame from roomMaskFrame: the polygons filled, edges a little
 // soft. Returns a CanvasTexture (dispose it when replaced).
-export function roomMaskTexture(polygons: PlanPoint[][], frame: RoomMaskFrame | null, px = 256): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
+export function roomMaskTexture(
+  polygons: PlanPoint[][],
+  frame: RoomMaskFrame | null,
+  px = 256,
+): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
   c.width = c.height = px;
-  const g = c.getContext('2d');
+  const g = c.getContext("2d");
   if (g && frame) {
-    g.fillStyle = '#000';
+    g.fillStyle = "#000";
     g.fillRect(0, 0, px, px);
-    g.fillStyle = '#fff';
+    g.fillStyle = "#fff";
     for (const poly of polygons) {
       g.beginPath();
       poly.forEach(([x, y], i) => {
-        const u = ((x - frame.minX) / frame.sizeX) * px, v = ((-y - frame.minZ) / frame.sizeZ) * px;
-        if (i) g.lineTo(u, v); else g.moveTo(u, v);
+        const u = ((x - frame.minX) / frame.sizeX) * px,
+          v = ((-y - frame.minZ) / frame.sizeZ) * px;
+        if (i) g.lineTo(u, v);
+        else g.moveTo(u, v);
       });
       g.closePath();
       g.fill();
@@ -365,18 +509,37 @@ export function roomMaskTexture(polygons: PlanPoint[][], frame: RoomMaskFrame | 
 }
 
 // Card option sway: true | { plants: [mesh / material names or layers that sway], strength } -> settings or null.
-export const SWAY_DEFAULTS = Object.freeze({ plants: Object.freeze(['decoration']), strength: 1 });
-export interface SwaySettings { plants: string[]; strength: number }
+export const SWAY_DEFAULTS = Object.freeze({
+  plants: Object.freeze(["decoration"]),
+  strength: 1,
+});
+export interface SwaySettings {
+  plants: string[];
+  strength: number;
+}
 export function normSway(opt: unknown): SwaySettings | null {
   if (!opt) return null;
-  const o = opt === true ? {} : typeof opt === 'object' ? (opt as { strength?: unknown; plants?: unknown }) : null;
+  const o =
+    opt === true
+      ? {}
+      : typeof opt === "object"
+        ? (opt as { strength?: unknown; plants?: unknown })
+        : null;
   if (!o) return null;
   const v = Number(o.strength);
-  const strength = o.strength === undefined || !Number.isFinite(v) ? SWAY_DEFAULTS.strength : Math.min(5, Math.max(0, v));
-  const plants = o.plants === undefined ? [...SWAY_DEFAULTS.plants]
-    : ([] as unknown[]).concat(o.plants).filter((x): x is string => typeof x === 'string' && !!x);
+  const strength =
+    o.strength === undefined || !Number.isFinite(v)
+      ? SWAY_DEFAULTS.strength
+      : Math.min(5, Math.max(0, v));
+  const plants =
+    o.plants === undefined
+      ? [...SWAY_DEFAULTS.plants]
+      : ([] as unknown[])
+          .concat(o.plants)
+          .filter((x): x is string => typeof x === "string" && !!x);
   return strength > 0 && plants.length ? { plants, strength } : null;
 }
 
 // Lean (m at SWAY_HEIGHT_M) for a wind speed (m/s): a breath in calm air, at most 0.6 m in a gale.
-export const swayLean = (wind: unknown, strength = 1): number => strength * Math.min(0.6, 0.08 + 0.04 * Math.max(0, Number(wind) || 0));
+export const swayLean = (wind: unknown, strength = 1): number =>
+  strength * Math.min(0.6, 0.08 + 0.04 * Math.max(0, Number(wind) || 0));

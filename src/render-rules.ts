@@ -1,13 +1,14 @@
 // Pure render decisions for the model view (shadows, depth range, ghosting, picking, occlusion, sun).
 // Kept free of three.js objects so they can be unit tested.
 
-import type { Vec3 } from './types/layout.ts';
+import type { Vec3 } from "./types/layout.ts";
 
 // glass / glazing / pane(s) as a word (underscores, digits and spaces separate words), or "window"
 // unless it is a window frame or sill. Panel, fiberglass and the like don't count.
-export const GLASS_RE = /(?<![a-z])(glass|glazing|panes?)(?![a-z])|window(?![_ ]?(frame|sill))/i;
+export const GLASS_RE =
+  /(?<![a-z])(glass|glazing|panes?)(?![a-z])|window(?![_ ]?(frame|sill))/i;
 export const OVERLAY_RE = /decal|edging|overlay/i;
-const NO_CAST_LAYERS = ['terrain', 'floor', 'decal', 'label'];
+const NO_CAST_LAYERS = ["terrain", "floor", "decal", "label"];
 const FLAT_M = 0.02; // thinner than this in y and wider than 5x that: a flat sheet
 const ON_FLOOR_M = 0.05; // a flat sheet this close to a floor / the terrain is an overlay
 
@@ -41,26 +42,35 @@ export interface ShadowInfo extends ShadowGeo {
   transmission?: number;
 }
 
-const hasLayer = (layers: string[] | undefined, l: string): boolean => (layers || []).some((x) => String(x).toLowerCase() === l);
-const matsOf = (o: NodeLike): MaterialLike[] => (Array.isArray(o.material) ? o.material : o.material ? [o.material] : []);
+const hasLayer = (layers: string[] | undefined, l: string): boolean =>
+  (layers || []).some((x) => String(x).toLowerCase() === l);
+const matsOf = (o: NodeLike): MaterialLike[] =>
+  Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
 
 // Shadow facts of a mesh-like node: its own name + material names (not its ancestors' names: a group
 // "Windows" holds frames too), fp.layer of the node and its ancestors, material state, plus
 // geo: { size: [x, y, z], bottom: min y, floors: [floor / terrain heights] }.
-export function shadowInfo(o: NodeLike, geo: ShadowGeo = {}): ShadowInfo & { names: string[]; layers: string[] } {
+export function shadowInfo(
+  o: NodeLike,
+  geo: ShadowGeo = {},
+): ShadowInfo & { names: string[]; layers: string[] } {
   const mats = matsOf(o);
   const layers: string[] = [];
   for (let p: NodeLike | null | undefined = o; p; p = p.parent) {
     const l: unknown = p.userData && p.userData.fp && p.userData.fp.layer;
     if (Array.isArray(l)) layers.push(...l.map(String));
-    else if (typeof l === 'string') layers.push(l);
+    else if (typeof l === "string") layers.push(l);
   }
   return {
-    names: [o.name, ...mats.map((m) => m.name)].filter((n): n is string => typeof n === 'string' && !!n),
+    names: [o.name, ...mats.map((m) => m.name)].filter(
+      (n): n is string => typeof n === "string" && !!n,
+    ),
     layers,
     transparent: mats.some((m) => !!m.transparent),
     opacity: mats.length ? Math.min(...mats.map((m) => m.opacity ?? 1)) : 1,
-    transmission: mats.length ? Math.max(...mats.map((m) => m.transmission || 0)) : 0,
+    transmission: mats.length
+      ? Math.max(...mats.map((m) => m.transmission || 0))
+      : 0,
     ...geo,
   };
 }
@@ -68,27 +78,56 @@ export function shadowInfo(o: NodeLike, geo: ShadowGeo = {}): ShadowInfo & { nam
 // m: shadowInfo(...). Glass, ground layers and flat sheets lying on a floor cast no shadow.
 export function castsShadow(m: ShadowInfo): boolean {
   const layers = (m.layers || []).map((x) => String(x).toLowerCase());
-  if (layers.some((l) => NO_CAST_LAYERS.includes(l) || l.includes('glass'))) return false;
-  if (m.transparent || (Number.isFinite(m.opacity) && m.opacity! < 0.99) || m.transmission! > 0) return false;
-  if ((m.names || []).some((n) => GLASS_RE.test(n || ''))) return false;
+  if (layers.some((l) => NO_CAST_LAYERS.includes(l) || l.includes("glass")))
+    return false;
+  if (
+    m.transparent ||
+    (Number.isFinite(m.opacity) && m.opacity! < 0.99) ||
+    m.transmission! > 0
+  )
+    return false;
+  if ((m.names || []).some((n) => GLASS_RE.test(n || ""))) return false;
   const s = m.size;
   const flat = s && s[1] < FLAT_M && Math.max(s[0], s[2]) > FLAT_M * 5;
-  if (flat && Number.isFinite(m.bottom) && (m.floors || []).some((f) => Math.abs(m.bottom! - f) <= ON_FLOOR_M)) return false;
+  if (
+    flat &&
+    Number.isFinite(m.bottom) &&
+    (m.floors || []).some((f) => Math.abs(m.bottom! - f) <= ON_FLOOR_M)
+  )
+    return false;
   return true;
 }
 
 // Decals / edging lying on another surface: pulled forward in depth (polygonOffset).
 export function isCoplanarOverlay(m: ShadowInfo): boolean {
-  return hasLayer(m.layers, 'decal') || hasLayer(m.layers, 'edging') || (m.names || []).some((n) => OVERLAY_RE.test(n || ''));
+  return (
+    hasLayer(m.layers, "decal") ||
+    hasLayer(m.layers, "edging") ||
+    (m.names || []).some((n) => OVERLAY_RE.test(n || ""))
+  );
 }
 
 // Camera depth range. Distances from the camera: target (orbit pivot), house (the house box, 0 inside),
 // centre (centre of the whole model's bounding sphere, terrain included) and that sphere's radius
 // (capped at 300 m). Near shrinks when the camera is close to the house even with a far pivot.
 export const MAX_SCENE_RADIUS = 300;
-export interface DepthRange { near: number; far: number }
-export function depthRange({ target, house = target, centre = target, radius, ortho = false }:
-  { target: number; house?: number; centre?: number; radius?: number; ortho?: boolean }): DepthRange {
+export interface DepthRange {
+  near: number;
+  far: number;
+}
+export function depthRange({
+  target,
+  house = target,
+  centre = target,
+  radius,
+  ortho = false,
+}: {
+  target: number;
+  house?: number;
+  centre?: number;
+  radius?: number;
+  ortho?: boolean;
+}): DepthRange {
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
   const r = Math.min(Math.max(radius || 0, 0), MAX_SCENE_RADIUS);
   return {
@@ -97,22 +136,37 @@ export function depthRange({ target, house = target, centre = target, radius, or
   };
 }
 
-export const depthChanged = (a: DepthRange | null | undefined, b: DepthRange): boolean =>
-  !a || Math.abs(a.near - b.near) > a.near * 0.01 || Math.abs(a.far - b.far) > a.far * 0.01;
+export const depthChanged = (
+  a: DepthRange | null | undefined,
+  b: DepthRange,
+): boolean =>
+  !a ||
+  Math.abs(a.near - b.near) > a.near * 0.01 ||
+  Math.abs(a.far - b.far) > a.far * 0.01;
 
 export const OCCLUSION_MARGIN = 0.3;
 // hitDistance: nearest model hit along camera->marker (null = none); markerDistance: camera->marker
-export const isOccluded = (hitDistance: number | null | undefined, markerDistance: number, margin = OCCLUSION_MARGIN): boolean =>
-  hitDistance !== null && hitDistance !== undefined && hitDistance < markerDistance - margin;
+export const isOccluded = (
+  hitDistance: number | null | undefined,
+  markerDistance: number,
+  margin = OCCLUSION_MARGIN,
+): boolean =>
+  hitDistance !== null &&
+  hitDistance !== undefined &&
+  hitDistance < markerDistance - margin;
 
 // Unit vector towards the sun (card world). north: degrees of the model's fp.north or null for the
 // default; azimuth = north + 0.35 rad at ~42° elevation, turned with the model's rotation (rad, about y).
-export function sunDirection(north: number | null | undefined, modelRotation = 0): Vec3 {
+export function sunDirection(
+  north: number | null | undefined,
+  modelRotation = 0,
+): Vec3 {
   let v: Vec3;
   if (Number.isFinite(north)) {
     const a = (north! * Math.PI) / 180 + 0.35;
     v = [-Math.sin(a) * 38, 34, Math.cos(a) * 38];
-    const c = Math.cos(modelRotation), s = Math.sin(modelRotation);
+    const c = Math.cos(modelRotation),
+      s = Math.sin(modelRotation);
     v = [v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c];
   } else {
     v = [-0.4, 1, 0.35];
@@ -139,18 +193,28 @@ export interface GhostSettings {
 // Ghosted (< 1): blended but depth writes kept, so overlapping parts don't vanish. (Alpha hash was
 // tried: it dithers visibly on the card's transparent canvas, e.g. at the demo's 0.95.)
 // null = leave as is (originally transparent materials such as glass).
-export function ghostMaterial(ud: GhostState, opacity: number): GhostSettings | null {
+export function ghostMaterial(
+  ud: GhostState,
+  opacity: number,
+): GhostSettings | null {
   if (ud.wasTransparent) return null;
   const ghost = opacity < 1;
   return {
-    transparent: ghost, alphaHash: false, depthWrite: ghost ? true : ud.baseDepthWrite !== false,
-    opacity: ghost ? opacity : ud.baseOpacity ?? 1, alphaToCoverage: false,
+    transparent: ghost,
+    alphaHash: false,
+    depthWrite: ghost ? true : ud.baseDepthWrite !== false,
+    opacity: ghost ? opacity : (ud.baseOpacity ?? 1),
+    alphaToCoverage: false,
   };
 }
 
 // Model pick candidate: a mesh, not a helper, not see-through glass.
-export const pickable = (o: { isMesh?: boolean; helper?: boolean; transparent?: boolean; opacity: number }): boolean =>
-  !!o.isMesh && !o.helper && !(o.transparent && o.opacity < 0.6);
+export const pickable = (o: {
+  isMesh?: boolean;
+  helper?: boolean;
+  transparent?: boolean;
+  opacity: number;
+}): boolean => !!o.isMesh && !o.helper && !(o.transparent && o.opacity < 0.6);
 
 /** A flat sheet candidate of coplanarWinners. */
 export interface SheetBox<Id = unknown> {
@@ -168,17 +232,33 @@ export interface SheetBox<Id = unknown> {
 export const COPLANAR = { FLAT_THIN: 0.01, BOX_TOL: 0.02, PLANE_TOL: 0.005 };
 export function coplanarWinners<Id>(items: SheetBox<Id>[]): Set<Id> {
   const { FLAT_THIN, BOX_TOL, PLANE_TOL } = COPLANAR;
-  const flat = items.filter((i) => i.max[1] - i.min[1] < FLAT_THIN && i.max[0] - i.min[0] > BOX_TOL && i.max[2] - i.min[2] > BOX_TOL)
+  const flat = items
+    .filter(
+      (i) =>
+        i.max[1] - i.min[1] < FLAT_THIN &&
+        i.max[0] - i.min[0] > BOX_TOL &&
+        i.max[2] - i.min[2] > BOX_TOL,
+    )
     .sort((a, b) => a.min[0] - b.min[0]);
   const win = new Set<Id>();
   for (let i = 0; i < flat.length; i++) {
     const a = flat[i];
-    for (let j = i + 1; j < flat.length && flat[j].min[0] - a.min[0] <= BOX_TOL; j++) {
+    for (
+      let j = i + 1;
+      j < flat.length && flat[j].min[0] - a.min[0] <= BOX_TOL;
+      j++
+    ) {
       const b = flat[j];
       if (!!a.textured === !!b.textured) continue;
-      const near = (k: number) => Math.abs(a.min[k] - b.min[k]) <= BOX_TOL && Math.abs(a.max[k] - b.max[k]) <= BOX_TOL;
+      const near = (k: number) =>
+        Math.abs(a.min[k] - b.min[k]) <= BOX_TOL &&
+        Math.abs(a.max[k] - b.max[k]) <= BOX_TOL;
       if (!near(0) || !near(2)) continue;
-      if (Math.abs((a.min[1] + a.max[1]) / 2 - (b.min[1] + b.max[1]) / 2) > PLANE_TOL) continue;
+      if (
+        Math.abs((a.min[1] + a.max[1]) / 2 - (b.min[1] + b.max[1]) / 2) >
+        PLANE_TOL
+      )
+        continue;
       win.add((a.textured ? a : b).id);
     }
   }

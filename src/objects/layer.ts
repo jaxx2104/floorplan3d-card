@@ -5,28 +5,59 @@
 // shown only with a model and `lights` not off (hiding it drops the lights from the shaders).
 // Shadow maps are rendered per light (shadow.autoUpdate = false): only lit shadow slots whose
 // fixture or position changed, or all lit ones when the casters changed (shadowsStale).
-import * as THREE from 'three';
-import { chainState, lightBudget, controllersOf, budgetGroup } from './logic.ts';
-import { typeOf, reanchor } from './types.ts';
-import { badTargets, aimPoint, aimsUp } from './aim.ts';
-import { dockFrontAxis, dockPose } from '../mower-track.ts';
-import { lampIntensity } from '../photometry.ts';
-import { WashLayer, resolveWash, washSize, placeWashes, washOpacity, clearOfWall, washSetting } from './wash.ts';
-import type { SurfaceRaySource, WashKind, WashMesh, WashPlacement } from './wash.ts';
-import type { BasePart, ModelObject, MowerPose, ObjectType, ObjectViewHost, TypeResult } from './types.ts';
-import type { BadTarget } from './aim.ts';
-import type { BudgetFixture, ChainState, ObjectBinding } from './logic.ts';
-import type { HassEntity } from '../types/ha.ts';
-import type { LayoutObject, LayoutTag } from '../types/layout.ts';
-import type { Manifest } from '../types/manifest.ts';
-import type { LampShadowSetting, RenderSettings } from '../render-recipe.ts';
+import * as THREE from "three";
+import {
+  chainState,
+  lightBudget,
+  controllersOf,
+  budgetGroup,
+} from "./logic.ts";
+import { typeOf, reanchor } from "./types.ts";
+import { badTargets, aimPoint, aimsUp } from "./aim.ts";
+import { dockFrontAxis, dockPose } from "../mower-track.ts";
+import { lampIntensity } from "../photometry.ts";
+import {
+  WashLayer,
+  resolveWash,
+  washSize,
+  placeWashes,
+  washOpacity,
+  clearOfWall,
+  washSetting,
+} from "./wash.ts";
+import type {
+  SurfaceRaySource,
+  WashKind,
+  WashMesh,
+  WashPlacement,
+} from "./wash.ts";
+import type {
+  BasePart,
+  ModelObject,
+  MowerPose,
+  ObjectType,
+  ObjectViewHost,
+  TypeResult,
+} from "./types.ts";
+import type { BadTarget } from "./aim.ts";
+import type { BudgetFixture, ChainState, ObjectBinding } from "./logic.ts";
+import type { HassEntity } from "../types/ha.ts";
+import type { LayoutObject, LayoutTag } from "../types/layout.ts";
+import type { Manifest } from "../types/manifest.ts";
+import type { LampShadowSetting, RenderSettings } from "../render-recipe.ts";
 
-type LampShadows = Pick<LampShadowSetting, 'mapSize' | 'bias' | 'normalBias' | 'radius'>;
+type LampShadows = Pick<
+  LampShadowSetting,
+  "mapSize" | "bias" | "normalBias" | "radius"
+>;
 
 /** What the layer needs from the view (a narrow interface: tests pass a fake view). */
-export interface ObjectLayerHost extends ObjectViewHost, Partial<SurfaceRaySource> {
+export interface ObjectLayerHost
+  extends ObjectViewHost, Partial<SurfaceRaySource> {
   objectsGroup: THREE.Object3D;
-  render?: Partial<Pick<RenderSettings, 'glowIntensityPerBrightness' | 'lampShadows'>> | null;
+  render?: Partial<
+    Pick<RenderSettings, "glowIntensityPerBrightness" | "lampShadows">
+  > | null;
   test?: { drift: boolean } | boolean | null;
   modelClip?: THREE.Plane | null;
   objectLayer?: ObjectLayer | null;
@@ -38,7 +69,7 @@ export interface ObjectLayerHost extends ObjectViewHost, Partial<SurfaceRaySourc
 /** A loaded model as the layer sees it. */
 export interface LayerModel {
   root: THREE.Object3D;
-  manifest: Pick<Manifest<THREE.Object3D | null>, 'levels' | 'objects'>;
+  manifest: Pick<Manifest<THREE.Object3D | null>, "levels" | "objects">;
 }
 
 type Wall = { point: number[]; normal: number[] } | null;
@@ -51,24 +82,44 @@ interface PartEntry {
   result: TypeResult | null;
   inputs: (HassEntity | null | undefined)[] | null;
   ents?: (string | null | undefined)[];
-  wash?: { meshes: WashMesh[]; sig: string | null; placements: (WashPlacement | null | undefined)[] };
+  wash?: {
+    meshes: WashMesh[];
+    sig: string | null;
+    placements: (WashPlacement | null | undefined)[];
+  };
   wallHit?: { sig: string; hit: Wall } | null;
 }
 type PoolLight = THREE.PointLight | THREE.SpotLight;
-interface Slot { light: PoolLight; shadow: boolean; factor: number }
+interface Slot {
+  light: PoolLight;
+  shadow: boolean;
+  factor: number;
+}
 type Bindings = Map<string, ObjectBinding>;
 type Groups = Record<string, LayoutTag>;
-export interface WashConfig { objects?: Record<string, LayoutObject>; tags?: Record<string, LayoutTag | null | undefined> }
-export interface LayerUpdateCtx { visibleLevel?: (levelId: string | null) => boolean; lightsOn?: boolean; [key: string]: unknown }
+export interface WashConfig {
+  objects?: Record<string, LayoutObject>;
+  tags?: Record<string, LayoutTag | null | undefined>;
+}
+export interface LayerUpdateCtx {
+  visibleLevel?: (levelId: string | null) => boolean;
+  lightsOn?: boolean;
+  [key: string]: unknown;
+}
 
-const WASH_TYPES = new Set(['light', 'light_strip']);
+const WASH_TYPES = new Set(["light", "light_strip"]);
 const WASH_SLICE_MS = 8; // wash placements (ray casts) per pass; the rest follow in the next task
 
-const FREE_POINTS = 4, SPOTS = 4;
+const FREE_POINTS = 4,
+  SPOTS = 4;
 const DEG = Math.PI / 180;
 
-const shown = (node: THREE.Object3D | null): boolean => { for (let n = node; n; n = n.parent) if (!n.visible) return false; return true; };
-const colorKey = (c: readonly number[] | null | undefined): string => (c ? c.join(',') : '');
+const shown = (node: THREE.Object3D | null): boolean => {
+  for (let n = node; n; n = n.parent) if (!n.visible) return false;
+  return true;
+};
+const colorKey = (c: readonly number[] | null | undefined): string =>
+  c ? c.join(",") : "";
 
 export class ObjectLayer {
   view: ObjectLayerHost;
@@ -84,7 +135,12 @@ export class ObjectLayer {
   _budgetSig: string | null;
   _slots: Map<string, Slot>;
   _placeSig: string | null;
-  stats: { updates: number; evaluated: number; budget: number; shadowRequests: number };
+  stats: {
+    updates: number;
+    evaluated: number;
+    budget: number;
+    shadowRequests: number;
+  };
   _nShadow!: number; // set by _buildPool in the constructor
   _shadowKeys!: (string | null)[]; // set by _buildPool in the constructor
   _keepLights?: boolean;
@@ -107,7 +163,10 @@ export class ObjectLayer {
     this.pool = { points: [], spots: [] };
     this._buildPool(view.lampShadowCount ? view.lampShadowCount() : 4);
     // wall washes for every lit lamp (shared materials, compiled once; see wash.js)
-    this.washes = new WashLayer(view.objectsGroup, view.modelClip ? [view.modelClip] : null);
+    this.washes = new WashLayer(
+      view.objectsGroup,
+      view.modelClip ? [view.modelClip] : null,
+    );
     this._washSig = null;
     view.objectsGroup.visible = false; // objects (and their lights) only while a model is loaded
     group.visible = false;
@@ -127,11 +186,14 @@ export class ObjectLayer {
   // shadow count changes (at a model load); lamp shadow map size / bias from the view's render settings.
   _buildPool(shadows: number): void {
     const group = this.lights;
-    if (this.pool.points.length && shadows === this._nShadow) { this._shadowLook(); return; }
+    if (this.pool.points.length && shadows === this._nShadow) {
+      this._shadowLook();
+      return;
+    }
     for (const l of [...this.pool.points, ...this.pool.spots] as PoolLight[]) {
       if (l.shadow && l.shadow.map) l.shadow.map.dispose();
       group.remove(l);
-      if ('target' in l && l.target) group.remove(l.target);
+      if ("target" in l && l.target) group.remove(l.target);
       l.dispose();
     }
     if (this._slots) this._slots.clear();
@@ -158,12 +220,21 @@ export class ObjectLayer {
 
   // Lamp shadow settings (render recipe lampShadows); a new map size drops the old map (re-created on demand).
   _shadowLook(): void {
-    const ls: LampShadows = (this.view.render && this.view.render.lampShadows) || { mapSize: 512, bias: -0.004, normalBias: 0, radius: 1 };
+    const ls: LampShadows = (this.view.render &&
+      this.view.render.lampShadows) || {
+      mapSize: 512,
+      bias: -0.004,
+      normalBias: 0,
+      radius: 1,
+    };
     const sm = this.view.test ? Math.min(256, ls.mapSize) : ls.mapSize; // headless test mode: smaller lamp shadow maps
     for (const l of this.pool.points.slice(0, this._nShadow)) {
       if (l.shadow.mapSize.x !== sm) {
         l.shadow.mapSize.set(sm, sm);
-        if (l.shadow.map) { l.shadow.map.dispose(); l.shadow.map = null; }
+        if (l.shadow.map) {
+          l.shadow.map.dispose();
+          l.shadow.map = null;
+        }
       }
       l.shadow.bias = ls.bias;
       l.shadow.normalBias = ls.normalBias;
@@ -177,11 +248,18 @@ export class ObjectLayer {
 
   // keepLights: another model replaces this one (a reload), so the pool stays in the scene meanwhile
   // (dark): dropping it and adding it back would compile every lit shader twice.
-  setModel(model: LayerModel | null | undefined, { keepLights = false } = {}): void {
+  setModel(
+    model: LayerModel | null | undefined,
+    { keepLights = false } = {},
+  ): void {
     this._keepLights = !model && keepLights;
     if (model && this.model === model) return;
     if (this._dimNode) this._applyDim(this._dimNode, false);
-    if (this._dimMats) { for (const d of this._dimMats.values()) d.dispose(); this._dimMats = null; this._dimNode = null; }
+    if (this._dimMats) {
+      for (const d of this._dimMats.values()) d.dispose();
+      this._dimMats = null;
+      this._dimNode = null;
+    }
     for (const p of this.parts.values()) p.type.dispose(p.part);
     this.parts.clear();
     this.washes.clear();
@@ -193,16 +271,30 @@ export class ObjectLayer {
     this._budgetSig = null;
     this._placeSig = null;
     this._poseSig = null;
-    if (model) this._buildPool(this.view.lampShadowCount ? this.view.lampShadowCount() : this._nShadow);
+    if (model)
+      this._buildPool(
+        this.view.lampShadowCount ? this.view.lampShadowCount() : this._nShadow,
+      );
     this._shadowKeys.fill(null);
     if (model) {
-      const ctx = { root: model.root, view: this.view, levels: model.manifest.levels || [] };
+      const ctx = {
+        root: model.root,
+        view: this.view,
+        levels: model.manifest.levels || [],
+      };
       for (const obj of model.manifest.objects || []) {
         const type = typeOf(obj.type);
         try {
-          this.parts.set(obj.id, { obj, type, part: type.prepare(obj, ctx), chain: null, result: null, inputs: null });
+          this.parts.set(obj.id, {
+            obj,
+            type,
+            part: type.prepare(obj, ctx),
+            chain: null,
+            result: null,
+            inputs: null,
+          });
         } catch (e) {
-          console.warn('floorplan3d: object', obj.id, e);
+          console.warn("floorplan3d: object", obj.id, e);
         }
       }
     }
@@ -216,17 +308,35 @@ export class ObjectLayer {
   // Spot aim points (model root frame), once per model: hints.target unless it is too far from the lamp or
   // shared within its group (see aim.js), else straight up for uplights / down. badTargets: id -> reason.
   _aimSpots(): void {
-    const spots: { id: string; group: string | null; pos: number[]; target: number[] | null; distance: number; up: boolean; targetOk: boolean }[] = [];
+    const spots: {
+      id: string;
+      group: string | null;
+      pos: number[];
+      target: number[] | null;
+      distance: number;
+      up: boolean;
+      targetOk: boolean;
+    }[] = [];
     for (const [id, p] of this.parts) {
       const h = p.part.hints;
-      if (!p.part.pool || !h || h.beam !== 'spot' || !p.part.anchor) continue;
-      spots.push({ id, group: p.obj.group, pos: p.part.anchor.toArray(), target: h.target, distance: h.distance,
-        up: h.up || aimsUp(p.obj), targetOk: !!(p.obj.hints && p.obj.hints.target_ok === true) });
+      if (!p.part.pool || !h || h.beam !== "spot" || !p.part.anchor) continue;
+      spots.push({
+        id,
+        group: p.obj.group,
+        pos: p.part.anchor.toArray(),
+        target: h.target,
+        distance: h.distance,
+        up: h.up || aimsUp(p.obj),
+        targetOk: !!(p.obj.hints && p.obj.hints.target_ok === true),
+      });
     }
     this.badTargets = badTargets(spots);
     for (const s of spots) {
       const p = this.parts.get(s.id)!; // spots come from this.parts
-      const [x, y, z] = aimPoint(s.pos, s.target, { bad: this.badTargets.has(s.id), up: s.up });
+      const [x, y, z] = aimPoint(s.pos, s.target, {
+        bad: this.badTargets.has(s.id),
+        up: s.up,
+      });
       p.part.aim = new THREE.Vector3(x, y, z);
     }
   }
@@ -243,7 +353,8 @@ export class ObjectLayer {
   _mower(): { id: string; p: PartEntry; entity: string } | null {
     for (const [id, p] of this.parts) {
       const b = this.bindings.get(id);
-      if (p.obj.type === 'mower' && b && b.entity && !b.hidden) return { id, p, entity: b.entity };
+      if (p.obj.type === "mower" && b && b.entity && !b.hidden)
+        return { id, p, entity: b.entity };
     }
     return null;
   }
@@ -254,7 +365,9 @@ export class ObjectLayer {
     const best = this._dock();
     if (!best) return null;
     // _dock: only with a model, only docks with a node
-    const { p } = best, root = this.model!.root, node = p.obj.node!;
+    const { p } = best,
+      root = this.model!.root,
+      node = p.obj.node!;
     root.updateWorldMatrix(true, false);
     node.updateWorldMatrix(true, false);
     const q = node.getWorldQuaternion(new THREE.Quaternion());
@@ -270,7 +383,7 @@ export class ObjectLayer {
     const mw = this._mower();
     let best: { id: string; p: PartEntry; score: number } | null = null;
     for (const [id, p] of this.parts) {
-      if (p.obj.type !== 'dock' || !p.obj.node) continue;
+      if (p.obj.type !== "dock" || !p.obj.node) continue;
       const b = this.bindings.get(id);
       if (b && b.hidden) continue;
       const score = mw && b && b.entity === mw.entity ? 2 : 1;
@@ -303,14 +416,18 @@ export class ObjectLayer {
   setMowerDim(on: boolean): void {
     const m = this._mower();
     const node = m && m.p.obj.node;
-    if (this._dimNode && this._dimNode !== node) this._applyDim(this._dimNode, false);
+    if (this._dimNode && this._dimNode !== node)
+      this._applyDim(this._dimNode, false);
     this._dimNode = on ? node : null;
     if (node) this._applyDim(node, !!on);
   }
 
   _applyDim(node: THREE.Object3D, on: boolean): void {
     const cache = (this._dimMats = this._dimMats || new Map());
-    type DimMat = THREE.Material & { color?: THREE.Color; emissive?: THREE.Color };
+    type DimMat = THREE.Material & {
+      color?: THREE.Color;
+      emissive?: THREE.Color;
+    };
     const dim = (mat: THREE.Material): THREE.Material => {
       let d = cache.get(mat);
       if (!d) {
@@ -329,8 +446,18 @@ export class ObjectLayer {
     node.traverse((n) => {
       if (!(n as THREE.Mesh).isMesh) return;
       const o = n as THREE.Mesh;
-      if (on && !o.userData.fpUndim) { o.userData.fpUndim = o.material; o.material = Array.isArray(o.material) ? o.material.map(dim) : dim(o.material); changed = true; }
-      if (!on && o.userData.fpUndim) { o.material = o.userData.fpUndim as THREE.Material | THREE.Material[]; delete o.userData.fpUndim; changed = true; }
+      if (on && !o.userData.fpUndim) {
+        o.userData.fpUndim = o.material;
+        o.material = Array.isArray(o.material)
+          ? o.material.map(dim)
+          : dim(o.material);
+        changed = true;
+      }
+      if (!on && o.userData.fpUndim) {
+        o.material = o.userData.fpUndim as THREE.Material | THREE.Material[];
+        delete o.userData.fpUndim;
+        changed = true;
+      }
     });
     if (changed) this.view.markDirty();
   }
@@ -338,9 +465,31 @@ export class ObjectLayer {
   // { x, y, floorId, heading } (plan metres, radians ccw from east) or null: moves the mower node.
   // Unchanged poses do nothing (no matrix work, no frame).
   setMowerPose(pose: MowerPose | null | undefined): void {
-    const next: MowerPose | null = pose ? { x: pose.x, y: pose.y, floorId: pose.floorId, heading: pose.heading, ground: typeof pose.ground === 'number' && Number.isFinite(pose.ground) ? pose.ground : null } : null;
-    const a = this._pose, b = next;
-    if (a === b || (a && b && a.x === b.x && a.y === b.y && a.floorId === b.floorId && Object.is(a.heading, b.heading) && a.ground === b.ground)) return;
+    const next: MowerPose | null = pose
+      ? {
+          x: pose.x,
+          y: pose.y,
+          floorId: pose.floorId,
+          heading: pose.heading,
+          ground:
+            typeof pose.ground === "number" && Number.isFinite(pose.ground)
+              ? pose.ground
+              : null,
+        }
+      : null;
+    const a = this._pose,
+      b = next;
+    if (
+      a === b ||
+      (a &&
+        b &&
+        a.x === b.x &&
+        a.y === b.y &&
+        a.floorId === b.floorId &&
+        Object.is(a.heading, b.heading) &&
+        a.ground === b.ground)
+    )
+      return;
     this._pose = next;
     this._applyPose();
     this.view.markDirty();
@@ -349,7 +498,9 @@ export class ObjectLayer {
   _applyPose(): void {
     if (!this.model) return;
     this.model.root.updateWorldMatrix(true, false);
-    const sig = this.model.root.matrixWorld.elements.map((v) => v.toFixed(5)).join();
+    const sig = this.model.root.matrixWorld.elements
+      .map((v) => v.toFixed(5))
+      .join();
     const moved = this._poseSig && sig !== this._poseSig;
     this._poseSig = sig;
     for (const p of this.parts.values()) {
@@ -361,8 +512,17 @@ export class ObjectLayer {
 
   // washCfg: { objects: layout.objects, tags: tag settings (all, not only those with a controller) } for
   // the "Light on wall" settings (object > tag > model).
-  setBindings(bindings: Bindings | null | undefined, groups: Groups | null | undefined, washCfg: WashConfig | null = null): void {
-    if (bindings === this.bindings && groups === this.groups && washCfg === this.washCfg) return;
+  setBindings(
+    bindings: Bindings | null | undefined,
+    groups: Groups | null | undefined,
+    washCfg: WashConfig | null = null,
+  ): void {
+    if (
+      bindings === this.bindings &&
+      groups === this.groups &&
+      washCfg === this.washCfg
+    )
+      return;
     this.bindings = bindings || new Map();
     this.groups = groups || {};
     this.washCfg = washCfg;
@@ -394,34 +554,72 @@ export class ObjectLayer {
     for (const [id, p] of this.parts) {
       const binding = this.bindings.get(id);
       const hidden = !!(binding && binding.hidden); // hidden = ignored as a control: dark, no pool light
-      const ctrls = hidden ? [] : controllersOf(p.obj, binding, this.groups).map((c) => c.entity);
+      const ctrls = hidden
+        ? []
+        : controllersOf(p.obj, binding, this.groups).map((c) => c.entity);
       const own = binding && binding.entity;
       // extra inputs a type reads (e.g. the charger's power sensor), so its look follows them too
       const extra = !hidden && own && p.type.inputs ? p.type.inputs(own) : [];
-      const ents: (string | null | undefined)[] = hidden ? [] : [own, ...ctrls, p.obj.type === 'dock' ? mowerEntity : null, ...extra];
+      const ents: (string | null | undefined)[] = hidden
+        ? []
+        : [own, ...ctrls, p.obj.type === "dock" ? mowerEntity : null, ...extra];
       // HA replaces a state object when it changes: same objects, nothing to do
       const inputs = ents.map((e) => (e ? states[e] : null));
-      if (!p.inputs || inputs.length !== p.inputs.length || inputs.some((x, i) => x !== p.inputs![i]) || ents.some((e, i) => e !== p.ents![i])) { // ents is set with inputs
+      if (
+        !p.inputs ||
+        inputs.length !== p.inputs.length ||
+        inputs.some((x, i) => x !== p.inputs![i]) ||
+        ents.some((e, i) => e !== p.ents![i])
+      ) {
+        // ents is set with inputs
         const prev = p.result;
         p.inputs = inputs;
         p.ents = ents;
         this.stats.evaluated++;
         // a hidden object's chain has no controllers (as before: the field was missing)
-        p.chain = hidden ? { lit: false, unavailable: false, source: null, entities: [], reason: null } as unknown as ChainState
+        p.chain = hidden
+          ? ({
+              lit: false,
+              unavailable: false,
+              source: null,
+              entities: [],
+              reason: null,
+            } as unknown as ChainState)
           : chainState(p.obj, binding, this.groups, states);
-        p.result = p.type.update(p.part, p.chain, { ...ctx, states, entity: hidden ? null : (binding && binding.entity) || null, mowerEntity, physical: this.physical });
+        p.result = p.type.update(p.part, p.chain, {
+          ...ctx,
+          states,
+          entity: hidden ? null : (binding && binding.entity) || null,
+          mowerEntity,
+          physical: this.physical,
+        });
         changed = true;
         if (p.result.moved && p.part.moving) movedParts.push(p.part.moving);
-        if (prev && (prev.level !== p.result.level || colorKey(prev.color) !== colorKey(p.result.color))) recolour.push(id);
+        if (
+          prev &&
+          (prev.level !== p.result.level ||
+            colorKey(prev.color) !== colorKey(p.result.color))
+        )
+          recolour.push(id);
       }
-      if (p.part.label) p.part.label.visible = !!p.part.text && !hidden && visibleLevel(p.obj.level) && shown(p.obj.node);
+      if (p.part.label)
+        p.part.label.visible =
+          !!p.part.text &&
+          !hidden &&
+          visibleLevel(p.obj.level) &&
+          shown(p.obj.node);
       if (!p.part.pool || hidden) continue;
       const h = p.part.hints;
       // p.result: evaluated above (inputs start null)
       fixtures.push({
-        id, lit: lightsOn && !!p.result!.lit, visible: visibleLevel(p.obj.level) && shown(p.obj.node),
-        group: budgetGroup(p.obj, binding, this.groups), max: h.max, beam: h.beam, castShadow: h.castShadow,
-        wash: h.beam !== 'spot' && this._setWash(id),
+        id,
+        lit: lightsOn && !!p.result!.lit,
+        visible: visibleLevel(p.obj.level) && shown(p.obj.node),
+        group: budgetGroup(p.obj, binding, this.groups),
+        max: h.max,
+        beam: h.beam,
+        castShadow: h.castShadow,
+        wash: h.beam !== "spot" && this._setWash(id),
       });
     }
     if (movedParts.length) this._reanchorUnder(movedParts);
@@ -432,9 +630,16 @@ export class ObjectLayer {
     if (this._pose && placeSig !== this._poseSig) this._applyPose(); // the model was re-aligned
     if (placeSig !== this._labelSig) {
       this._labelSig = placeSig;
-      for (const p of this.parts.values()) if (p.type.relayout) p.type.relayout(p.part);
+      for (const p of this.parts.values())
+        if (p.type.relayout) p.type.relayout(p.part);
     }
-    const sig = placeSig + '|' + fixtures.filter((f) => f.lit && f.visible).map((f) => f.id).join();
+    const sig =
+      placeSig +
+      "|" +
+      fixtures
+        .filter((f) => f.lit && f.visible)
+        .map((f) => f.id)
+        .join();
     if (sig !== this._budgetSig) {
       this._budgetSig = sig;
       const before = this._slotSig();
@@ -447,7 +652,10 @@ export class ObjectLayer {
         if (key && key !== this._shadowKeys[i]) redraw.push(l);
         this._shadowKeys[i] = key;
       });
-      if (redraw.length) { this.stats.shadowRequests++; this.view.requestShadowUpdate(redraw); }
+      if (redraw.length) {
+        this.stats.shadowRequests++;
+        this.view.requestShadowUpdate(redraw);
+      }
       if (before !== this._slotSig()) changed = true;
     } else {
       // colour / brightness only: shadow maps depend on light positions, so no redraw
@@ -473,69 +681,140 @@ export class ObjectLayer {
   // group evenly (lightBudget, fixture.wash).
   _setWash(id: string): boolean {
     const r = this._washOf(id);
-    return !!r && r.set && r.kind !== 'none';
+    return !!r && r.set && r.kind !== "none";
   }
 
   // { kind, set: true when the object or one of its tags has a setting } or null.
   _washOf(id: string): { kind: WashKind; set: boolean } | null {
     const p = this.parts.get(id);
     if (!p) return null;
-    const cfg: WashConfig = this.washCfg || {}, b = this.bindings.get(id), tagCfg = cfg.tags || {};
-    const own = cfg.objects && cfg.objects[id] ? cfg.objects[id].wash : undefined;
-    const tags = b && Array.isArray(b.tags) ? b.tags : p.obj.group ? [p.obj.group] : [];
-    const set = !!washSetting(own) || tags.some((t) => Object.hasOwn(tagCfg, t) && !!tagCfg[t] && !!washSetting(tagCfg[t]!.wash));
+    const cfg: WashConfig = this.washCfg || {},
+      b = this.bindings.get(id),
+      tagCfg = cfg.tags || {};
+    const own =
+      cfg.objects && cfg.objects[id] ? cfg.objects[id].wash : undefined;
+    const tags =
+      b && Array.isArray(b.tags) ? b.tags : p.obj.group ? [p.obj.group] : [];
+    const set =
+      !!washSetting(own) ||
+      tags.some(
+        (t) =>
+          Object.hasOwn(tagCfg, t) &&
+          !!tagCfg[t] &&
+          !!washSetting(tagCfg[t]!.wash),
+      );
     return { kind: resolveWash(p.obj.hints, own, tags, tagCfg), set };
   }
 
   // The wall next to a lamp (world hit, facing the lamp) or null; cast once per model placement.
   _wallOf(p: PartEntry, a: THREE.Vector3, placeSig: string): Wall {
     if (!this.view.surfaceRays) return null;
-    if (!p.wallHit || p.wallHit.sig !== placeSig) p.wallHit = { sig: placeSig, hit: WashLayer.wall(this.view as SurfaceRaySource, a) }; // surfaceRays checked above
+    if (!p.wallHit || p.wallHit.sig !== placeSig)
+      p.wallHit = {
+        sig: placeSig,
+        hit: WashLayer.wall(this.view as SurfaceRaySource, a),
+      }; // surfaceRays checked above
     return p.wallHit.hit;
   }
 
   _updateWashes(placeSig: string, fixtures: readonly BudgetFixture[]): boolean {
     const vis = new Map(fixtures.map((f) => [f.id, f.lit && f.visible]));
-    const want: { id: string; p: PartEntry; on: boolean; kind: WashKind }[] = [];
+    const want: { id: string; p: PartEntry; on: boolean; kind: WashKind }[] =
+      [];
     for (const [id, p] of this.parts) {
       if (!WASH_TYPES.has(p.obj.type)) continue;
       const { kind, set } = this._washOf(id)!; // id is a part
       if (!(p.part.pool || (p.obj.hints && p.obj.hints.beam) || set)) {
-        if (p.wash) for (const m of p.wash.meshes) this.washes.paint(m, [0, 0, 0], 0); // opacity 0: colour unused
+        if (p.wash)
+          for (const m of p.wash.meshes) this.washes.paint(m, [0, 0, 0], 0); // opacity 0: colour unused
         continue;
       }
-      const on = kind !== 'none' && (vis.has(id) ? vis.get(id)! : !!(this._lightsOn && p.result && p.result.lit && shown(p.obj.node)));
+      const on =
+        kind !== "none" &&
+        (vis.has(id)
+          ? vis.get(id)!
+          : !!(
+              this._lightsOn &&
+              p.result &&
+              p.result.lit &&
+              shown(p.obj.node)
+            ));
       want.push({ id, p, on, kind });
     }
-    const sig = placeSig + '|' + want.map(({ id, p, on, kind }) => (on ? `${id}:${kind}:${p.result!.level}:${colorKey(p.result!.color)}:${this._slots.has(id) ? 1 : 0}` : '')).join(';');
+    const sig =
+      placeSig +
+      "|" +
+      want
+        .map(({ id, p, on, kind }) =>
+          on
+            ? `${id}:${kind}:${p.result!.level}:${colorKey(p.result!.color)}:${this._slots.has(id) ? 1 : 0}`
+            : "",
+        )
+        .join(";");
     if (sig === this._washSig) return false;
     const t0 = performance.now();
-    let pending = false, changed = false;
+    let pending = false,
+      changed = false;
     const root = this.model!.root; // only called with a model
     // on: the part has a result (lit)
     for (const { id, p, on, kind } of want) {
       if (!on) {
-        if (p.wash) for (const m of p.wash.meshes) if (m.visible) { this.washes.paint(m, [0, 0, 0], 0); changed = true; } // opacity 0: colour unused
+        if (p.wash)
+          for (const m of p.wash.meshes)
+            if (m.visible) {
+              this.washes.paint(m, [0, 0, 0], 0);
+              changed = true;
+            } // opacity 0: colour unused
         continue;
       }
-      const wsig = placeSig + '|' + kind;
+      const wsig = placeSig + "|" + kind;
       if (!p.wash || p.wash.sig !== wsig) {
-        if (performance.now() - t0 > WASH_SLICE_MS) { pending = true; continue; }
+        if (performance.now() - t0 > WASH_SLICE_MS) {
+          pending = true;
+          continue;
+        }
         const a = root.localToWorld(p.part.anchor.clone());
         let aimDir: number[] | null = null;
-        if (kind === 'spot' && p.part.aim) aimDir = root.localToWorld(p.part.aim.clone()).sub(a).normalize().toArray();
-        const wall = kind === 'spot' ? undefined : this._wallOf(p, a, placeSig);
-        const surf = this.view.surfaceRays ? WashLayer.surfaces(this.view as SurfaceRaySource, a, kind, aimDir, wall) : {};
-        const placements = placeWashes(kind, a.toArray(), washSize(p.part.hints), surf);
+        if (kind === "spot" && p.part.aim)
+          aimDir = root
+            .localToWorld(p.part.aim.clone())
+            .sub(a)
+            .normalize()
+            .toArray();
+        const wall = kind === "spot" ? undefined : this._wallOf(p, a, placeSig);
+        const surf = this.view.surfaceRays
+          ? WashLayer.surfaces(
+              this.view as SurfaceRaySource,
+              a,
+              kind,
+              aimDir,
+              wall,
+            )
+          : {};
+        const placements = placeWashes(
+          kind,
+          a.toArray(),
+          washSize(p.part.hints),
+          surf,
+        );
         // a mesh per quad (two for 'both'), made once and reused; spare ones stay hidden
         const meshes = p.wash ? p.wash.meshes.slice() : [];
         const n = Math.max(meshes.length, placements.length, 1);
-        for (let i = 0; i < n; i++) meshes[i] = this.washes.place(meshes[i], placements[i] || null);
+        for (let i = 0; i < n; i++)
+          meshes[i] = this.washes.place(meshes[i], placements[i] || null);
         p.wash = { meshes, sig: wsig, placements };
       }
-      const r = p.result!, w = p.wash!; // placed just above (or before)
+      const r = p.result!,
+        w = p.wash!; // placed just above (or before)
       const real = this._slots.has(id);
-      w.meshes.forEach((m, i) => { const pl = w.placements[i]; this.washes.paint(m, r.color || [255, 255, 255], pl ? washOpacity(r.level, real, pl.variant) : 0); });
+      w.meshes.forEach((m, i) => {
+        const pl = w.placements[i];
+        this.washes.paint(
+          m,
+          r.color || [255, 255, 255],
+          pl ? washOpacity(r.level, real, pl.variant) : 0,
+        );
+      });
       changed = true;
     }
     this._washSig = pending ? null : sig;
@@ -551,7 +830,8 @@ export class ObjectLayer {
 
   // fixture@position of a lit shadow slot, null when the slot is dark
   _shadowKey(light: PoolLight): string | null {
-    for (const [id, s] of this._slots) if (s.light === light) return `${id}@${light.position.toArray().join()}`;
+    for (const [id, s] of this._slots)
+      if (s.light === light) return `${id}@${light.position.toArray().join()}`;
     return null;
   }
 
@@ -569,9 +849,14 @@ export class ObjectLayer {
   _assign(fixtures: readonly BudgetFixture[]): void {
     const prev = new Map([...this._slots].map(([id, s]) => [id, s.light]));
     this._darken();
-    const { real, shadows } = lightBudget(fixtures, { points: this._nShadow + FREE_POINTS, spots: SPOTS, shadows: this._nShadow });
+    const { real, shadows } = lightBudget(fixtures, {
+      points: this._nShadow + FREE_POINTS,
+      spots: SPOTS,
+      shadows: this._nShadow,
+    });
     const pts = this.pool.points;
-    const shadowSlots = pts.slice(0, this._nShadow), freeSlots = pts.slice(this._nShadow);
+    const shadowSlots = pts.slice(0, this._nShadow),
+      freeSlots = pts.slice(this._nShadow);
     const order = [...real.keys()];
     // a fixture keeps the shadow slot it had (no needless shadow map redraws)
     const take = (id: string): THREE.PointLight | null => {
@@ -582,32 +867,58 @@ export class ObjectLayer {
     const picks = order.filter((x) => shadows.has(x));
     const kept = new Map(picks.map((id) => [id, take(id)]));
     // the budget never picks more lights than the pool has slots (real.get: picks / rest come from real)
-    for (const id of picks) this._slots.set(id, { light: (kept.get(id) || shadowSlots.shift())!, shadow: true, factor: real.get(id)!.factor });
+    for (const id of picks)
+      this._slots.set(id, {
+        light: (kept.get(id) || shadowSlots.shift())!,
+        shadow: true,
+        factor: real.get(id)!.factor,
+      });
     let spot = 0;
     // group lights first, so they get the non-shadow slots (group lights never cast shadows)
     const rest = order.filter((id) => !shadows.has(id));
-    rest.sort((a, b) => (real.get(b)!.grouped ? 1 : 0) - (real.get(a)!.grouped ? 1 : 0));
+    rest.sort(
+      (a, b) => (real.get(b)!.grouped ? 1 : 0) - (real.get(a)!.grouped ? 1 : 0),
+    );
     for (const id of rest) {
       const { kind, factor } = real.get(id)!;
-      if (kind === 'spot') { this._slots.set(id, { light: this.pool.spots[spot++], shadow: false, factor }); continue; }
+      if (kind === "spot") {
+        this._slots.set(id, {
+          light: this.pool.spots[spot++],
+          shadow: false,
+          factor,
+        });
+        continue;
+      }
       const light = (freeSlots.shift() || take(id) || shadowSlots.shift())!;
-      this._slots.set(id, { light, shadow: pts.indexOf(light) < this._nShadow, factor });
+      this._slots.set(id, {
+        light,
+        shadow: pts.indexOf(light) < this._nShadow,
+        factor,
+      });
     }
     const root = this.model!.root; // update() runs only with a model
     const placeSig = root.matrixWorld.elements.map((v) => v.toFixed(5)).join();
     for (const [id, slot] of this._slots) {
       const p = this.parts.get(id)!; // slots are fixtures, fixtures are parts
-      const h = p.part.hints, l = slot.light;
+      const h = p.part.hints,
+        l = slot.light;
       l.position.copy(root.localToWorld(p.part.anchor.clone()));
       // a point light right on a wall (or door) burns a hot spot into it: kept 0.15 m off the wall it faces
-      if (!(l instanceof THREE.SpotLight)) l.position.fromArray(clearOfWall(l.position.toArray(), this._wallOf(p, l.position.clone(), placeSig)));
+      if (!(l instanceof THREE.SpotLight))
+        l.position.fromArray(
+          clearOfWall(
+            l.position.toArray(),
+            this._wallOf(p, l.position.clone(), placeSig),
+          ),
+        );
       l.distance = h.distance;
       l.decay = this.physical ? 2 : h.decay; // physical: candela with inverse-square fall-off
       if (l instanceof THREE.SpotLight) {
         l.angle = h.angle * DEG;
         l.penumbra = h.penumbra;
         // aim from _aimSpots: a plausible target, else straight up (uplights) / down from the lamp itself
-        if (p.part.aim) l.target.position.copy(root.localToWorld(p.part.aim.clone()));
+        if (p.part.aim)
+          l.target.position.copy(root.localToWorld(p.part.aim.clone()));
         else l.target.position.copy(l.position).y -= 1;
         l.target.updateMatrixWorld();
       }
@@ -617,16 +928,31 @@ export class ObjectLayer {
   }
 
   _slotSig(): string {
-    return [...this._slots].map(([id, s]) => `${id}:${s.light.id}:${s.light.position.toArray().join()}`).join(';');
+    return [...this._slots]
+      .map(
+        ([id, s]) => `${id}:${s.light.id}:${s.light.position.toArray().join()}`,
+      )
+      .join(";");
   }
 
   _light(slot: Slot, p: PartEntry): void {
     const r = p.result!; // slots are lit fixtures: evaluated
     const c = r.color || [255, 255, 255];
-    slot.light.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
+    slot.light.color.setRGB(
+      c[0] / 255,
+      c[1] / 255,
+      c[2] / 255,
+      THREE.SRGBColorSpace,
+    );
     const h = p.part.hints;
-    slot.light.intensity = (this.physical ? lampIntensity(h.lumens, r.level, slot.light instanceof THREE.SpotLight ? 'spot' : 'point')
-      : r.level * h.max) * slot.factor;
+    slot.light.intensity =
+      (this.physical
+        ? lampIntensity(
+            h.lumens,
+            r.level,
+            slot.light instanceof THREE.SpotLight ? "spot" : "point",
+          )
+        : r.level * h.max) * slot.factor;
   }
 
   _darken(): void {
@@ -637,10 +963,15 @@ export class ObjectLayer {
   // Objects mounted on a moved part (monitors and their lamps on a desk top): new anchors, and the pools,
   // washes and labels are placed again.
   _reanchorUnder(nodes: readonly THREE.Object3D[]): void {
-    const under = (n: THREE.Object3D): boolean => { for (let x: THREE.Object3D | null = n; x; x = x.parent) if (nodes.includes(x)) return true; return false; };
+    const under = (n: THREE.Object3D): boolean => {
+      for (let x: THREE.Object3D | null = n; x; x = x.parent)
+        if (nodes.includes(x)) return true;
+      return false;
+    };
     let any = false;
     for (const p of this.parts.values()) {
-      if (!p.obj.node || nodes.includes(p.obj.node) || !under(p.obj.node)) continue;
+      if (!p.obj.node || nodes.includes(p.obj.node) || !under(p.obj.node))
+        continue;
       reanchor(p.part, this.model!.root); // called from update(): a model is loaded
       if (p.wash) p.wash.sig = null; // the wall wash is placed again from the new anchor
       p.wallHit = null;
@@ -657,7 +988,10 @@ export class ObjectLayer {
     if (!this.model) return [];
     const root = this.model.root;
     root.updateWorldMatrix(true, false);
-    return [...this.parts].map(([id, p]) => ({ id, world: root.localToWorld(p.part.anchor.clone()) }));
+    return [...this.parts].map(([id, p]) => ({
+      id,
+      world: root.localToWorld(p.part.anchor.clone()),
+    }));
   }
 
   // World position of one object's anchor (null when the object is gone).
@@ -669,16 +1003,33 @@ export class ObjectLayer {
     return model.root.localToWorld(p.part.anchor.clone());
   }
 
-  objectAt(id: string): { obj: ModelObject; part: BasePart; chain: ChainState | null; result: TypeResult | null; binding: ObjectBinding | null } | null {
+  objectAt(id: string): {
+    obj: ModelObject;
+    part: BasePart;
+    chain: ChainState | null;
+    result: TypeResult | null;
+    binding: ObjectBinding | null;
+  } | null {
     const p = this.parts.get(id);
-    return p ? { obj: p.obj, part: p.part, chain: p.chain, result: p.result, binding: this.bindings.get(id) || null } : null;
+    return p
+      ? {
+          obj: p.obj,
+          part: p.part,
+          chain: p.chain,
+          result: p.result,
+          binding: this.bindings.get(id) || null,
+        }
+      : null;
   }
 
   dispose(): void {
     this.setModel(null);
     const group = this.lights;
     for (const l of this.pool.spots) group.remove(l.target);
-    for (const l of [...this.pool.points, ...this.pool.spots]) { group.remove(l); l.dispose(); }
+    for (const l of [...this.pool.points, ...this.pool.spots]) {
+      group.remove(l);
+      l.dispose();
+    }
     this.washes.dispose();
     this.view.objectsGroup.remove(group);
     if (this.view.objectLayer === this) this.view.objectLayer = null;

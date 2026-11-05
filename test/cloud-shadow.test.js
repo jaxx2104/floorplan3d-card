@@ -1,15 +1,30 @@
-import { describe, it, expect } from 'bun:test';
-import * as THREE from 'three';
+import { describe, it, expect } from "bun:test";
+import * as THREE from "three";
 import {
-  cloudShadowParams, cloudShadowOffset, roomMaskFrame, equalize, shadeDirectional, patchCloudShadow, makeCloudUniforms, shadable,
-  CLOUD_UMBRA, CLOUD_TILE_M, CLOUD_WIND_MS, normSway, swayLean,
-} from '../src/cloud-shadow.ts';
+  cloudShadowParams,
+  cloudShadowOffset,
+  roomMaskFrame,
+  equalize,
+  shadeDirectional,
+  patchCloudShadow,
+  makeCloudUniforms,
+  shadable,
+  CLOUD_UMBRA,
+  CLOUD_TILE_M,
+  CLOUD_WIND_MS,
+  normSway,
+  swayLean,
+} from "../src/cloud-shadow.ts";
 
-describe('cloudShadowParams', () => {
-  it('clear sky: no shadows, rooms untouched', () => {
-    expect(cloudShadowParams(0, 0.4)).toEqual({ cover: 1, strength: 0, roomShade: 1 });
+describe("cloudShadowParams", () => {
+  it("clear sky: no shadows, rooms untouched", () => {
+    expect(cloudShadowParams(0, 0.4)).toEqual({
+      cover: 1,
+      strength: 0,
+      roomShade: 1,
+    });
   });
-  it('the threshold shades about the coverage share; a cloud leaves CLOUD_UMBRA of the sun', () => {
+  it("the threshold shades about the coverage share; a cloud leaves CLOUD_UMBRA of the sun", () => {
     const p = cloudShadowParams(60, 0.55);
     expect(p.cover).toBeCloseTo(0.4);
     expect(p.strength).toBeCloseTo(1 - CLOUD_UMBRA);
@@ -18,8 +33,8 @@ describe('cloudShadowParams', () => {
   });
 });
 
-describe('cloudShadowOffset', () => {
-  it('moves with the wind, wrapped to one tile', () => {
+describe("cloudShadowOffset", () => {
+  it("moves with the wind, wrapped to one tile", () => {
     expect(cloudShadowOffset(0)).toEqual([-0, -0]);
     const [x, y] = cloudShadowOffset(10);
     const d = (10 * CLOUD_WIND_MS) / CLOUD_TILE_M;
@@ -28,16 +43,33 @@ describe('cloudShadowOffset', () => {
   });
 });
 
-describe('roomMaskFrame', () => {
-  it('bounds of the polygons in world x / z (z = -y) plus a margin', () => {
-    expect(roomMaskFrame([[[0, 0], [4, 0], [4, 3]], [[4, 0], [6, 0], [6, 2]]], 0.5)).toEqual({ minX: -0.5, minZ: -3.5, sizeX: 7, sizeZ: 4 });
+describe("roomMaskFrame", () => {
+  it("bounds of the polygons in world x / z (z = -y) plus a margin", () => {
+    expect(
+      roomMaskFrame(
+        [
+          [
+            [0, 0],
+            [4, 0],
+            [4, 3],
+          ],
+          [
+            [4, 0],
+            [6, 0],
+            [6, 2],
+          ],
+        ],
+        0.5,
+      ),
+    ).toEqual({ minX: -0.5, minZ: -3.5, sizeX: 7, sizeZ: 4 });
     expect(roomMaskFrame([])).toBe(null);
   });
 });
 
-describe('equalize', () => {
-  it('spreads the values evenly: a threshold of 1 - c keeps about a share c', () => {
-    const n = 4096, d = new Uint8ClampedArray(n * 4);
+describe("equalize", () => {
+  it("spreads the values evenly: a threshold of 1 - c keeps about a share c", () => {
+    const n = 4096,
+      d = new Uint8ClampedArray(n * 4);
     for (let i = 0; i < n; i++) d[i * 4] = Math.round(255 * Math.pow(i / n, 3)); // skewed to dark
     equalize(d);
     for (const c of [0.2, 0.5, 0.8]) {
@@ -50,55 +82,79 @@ describe('equalize', () => {
   });
 });
 
-describe('patching', () => {
-  it('shades the directional lights in three\'s light loop, not the lamps', () => {
+describe("patching", () => {
+  it("shades the directional lights in three's light loop, not the lamps", () => {
     const out = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     expect(out).toBeTruthy();
-    expect(out.startsWith('float fpShade = fpCloudShade();')).toBe(true);
-    const dir = out.indexOf('getDirectionalLightInfo( directionalLight, directLight );');
-    expect(out.indexOf('directLight.color *= fpShade;')).toBeGreaterThan(dir);
+    expect(out.startsWith("float fpShade = fpCloudShade();")).toBe(true);
+    const dir = out.indexOf(
+      "getDirectionalLightInfo( directionalLight, directLight );",
+    );
+    expect(out.indexOf("directLight.color *= fpShade;")).toBeGreaterThan(dir);
     expect(out.match(/fpShade;/g).length).toBe(1); // point / spot lights untouched
-    expect(shadeDirectional('no loop here')).toBe(null);
+    expect(shadeDirectional("no loop here")).toBe(null);
   });
-  it('lit materials once, with their own cache key; the shader gets the uniforms and the shade', () => {
-    const U = makeCloudUniforms(), m = new THREE.MeshStandardMaterial();
+  it("lit materials once, with their own cache key; the shader gets the uniforms and the shade", () => {
+    const U = makeCloudUniforms(),
+      m = new THREE.MeshStandardMaterial();
     expect(patchCloudShadow(m, U)).toBe(true);
     expect(patchCloudShadow(m, U)).toBe(false);
-    expect(m.customProgramCacheKey()).toContain('fpcloud');
-    const sh = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+    expect(m.customProgramCacheKey()).toContain("fpcloud");
+    const sh = {
+      uniforms: {},
+      vertexShader: THREE.ShaderLib.standard.vertexShader,
+      fragmentShader: THREE.ShaderLib.standard.fragmentShader,
+    };
     m.onBeforeCompile(sh);
     expect(sh.uniforms.fpCloudStrength).toBe(U.fpCloudStrength); // shared: uniforms only afterwards
-    expect(sh.vertexShader).toContain('vFpCloudW = ( modelMatrix * fpCloudW ).xyz;');
-    expect(sh.fragmentShader).toContain('directLight.color *= fpShade;');
-    expect(sh.fragmentShader).not.toContain('#include <lights_fragment_begin>');
+    expect(sh.vertexShader).toContain(
+      "vFpCloudW = ( modelMatrix * fpCloudW ).xyz;",
+    );
+    expect(sh.fragmentShader).toContain("directLight.color *= fpShade;");
+    expect(sh.fragmentShader).not.toContain("#include <lights_fragment_begin>");
     expect(shadable(new THREE.MeshBasicMaterial())).toBe(false);
     expect(patchCloudShadow(new THREE.MeshBasicMaterial(), U)).toBe(false);
   });
 });
 
-describe('sway', () => {
-  it('normSway: off unless asked for; true: the decoration layer; lists and strength checked', () => {
-    for (const v of [undefined, null, false, 'yes', { strength: 0 }, { plants: [] }]) expect(normSway(v)).toBe(null);
-    expect(normSway(true)).toEqual({ plants: ['decoration'], strength: 1 });
-    expect(normSway({ plants: 'trees', strength: 9 })).toEqual({ plants: ['trees'], strength: 5 });
+describe("sway", () => {
+  it("normSway: off unless asked for; true: the decoration layer; lists and strength checked", () => {
+    for (const v of [
+      undefined,
+      null,
+      false,
+      "yes",
+      { strength: 0 },
+      { plants: [] },
+    ])
+      expect(normSway(v)).toBe(null);
+    expect(normSway(true)).toEqual({ plants: ["decoration"], strength: 1 });
+    expect(normSway({ plants: "trees", strength: 9 })).toEqual({
+      plants: ["trees"],
+      strength: 5,
+    });
   });
-  it('swayLean: a breath in calm air, more with wind, capped, scaled by strength', () => {
+  it("swayLean: a breath in calm air, more with wind, capped, scaled by strength", () => {
     expect(swayLean(0)).toBeCloseTo(0.08);
     expect(swayLean(5)).toBeGreaterThan(swayLean(2));
     expect(swayLean(100)).toBeCloseTo(0.6);
     expect(swayLean(0, 2)).toBeCloseTo(0.16);
   });
-  it('patchCloudShadow: the sway goes into the vertex shader of swaying materials only', () => {
+  it("patchCloudShadow: the sway goes into the vertex shader of swaying materials only", () => {
     const sh = (sway) => {
       const m = new THREE.MeshStandardMaterial();
       m.userData.fpSway = sway;
       patchCloudShadow(m, makeCloudUniforms());
-      const s = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+      const s = {
+        uniforms: {},
+        vertexShader: THREE.ShaderLib.standard.vertexShader,
+        fragmentShader: THREE.ShaderLib.standard.fragmentShader,
+      };
       m.onBeforeCompile(s, null);
       return { vs: s.vertexShader, key: m.customProgramCacheKey() };
     };
-    expect(sh(true).vs).toContain('fpSway');
-    expect(sh(false).vs).not.toContain('fpSway');
+    expect(sh(true).vs).toContain("fpSway");
+    expect(sh(false).vs).not.toContain("fpSway");
     expect(sh(true).key).not.toBe(sh(false).key);
   });
 });

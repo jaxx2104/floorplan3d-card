@@ -8,23 +8,43 @@
 // The types in src/types/layout.ts are derived from these schemas.
 
 import {
-  array, boolean, literal, map, nullable, number, numeric, object, optional, record, string, tuple, union,
-  unknownValue, withDefault, isPlainObject, run, toJson, type Infer, type Issue, type Schema,
-} from './core.ts';
+  array,
+  boolean,
+  literal,
+  map,
+  nullable,
+  number,
+  numeric,
+  object,
+  optional,
+  record,
+  string,
+  tuple,
+  union,
+  unknownValue,
+  withDefault,
+  isPlainObject,
+  run,
+  toJson,
+  type Infer,
+  type Issue,
+  type Schema,
+} from "./core.ts";
 
 /** The version this card writes. Older layouts are migrated on load; newer ones load as far as known. */
 export const LAYOUT_VERSION = 2;
 
 const opt = optional;
 /** null stored for "not set" (JSON of NaN / an emptied field): read as absent. */
-const absentIfNull = <T>(s: Schema<T>): Schema<T | undefined> => map(nullable(s), (v) => v ?? undefined);
+const absentIfNull = <T>(s: Schema<T>): Schema<T | undefined> =>
+  map(nullable(s), (v) => v ?? undefined);
 
 /** Plan point in metres: [x east, y north]. */
-export const planPoint = tuple(2, '[x, y]');
-const vec3 = tuple(3, '[x, y, z]');
+export const planPoint = tuple(2, "[x, y]");
+const vec3 = tuple(3, "[x, y, z]");
 /** RGB colour as stored by the colour pickers ([r, g, b], 0..255). */
-const rgb = map(tuple(3, '[r, g, b]'), (c): number[] => c);
-const washDir = literal('down', 'up', 'both', 'none');
+const rgb = map(tuple(3, "[r, g, b]"), (c): number[] => c);
+const washDir = literal("down", "up", "both", "none");
 
 export const floorSchema = object({
   id: string(),
@@ -36,7 +56,7 @@ export const floorSchema = object({
 
 export const roomSchema = object({
   /** Missing in hand-written files: '' (the importer assigns one). */
-  id: withDefault(string(), () => ''),
+  id: withDefault(string(), () => ""),
   area_id: opt(nullable(string())),
   floor_id: opt(nullable(string())),
   /** Corners, counter-clockwise or clockwise; fewer than 3 points: not drawn. */
@@ -150,7 +170,12 @@ export const modelSchema = object({
   /** Content hash of the uploaded file (integration model.py). */
   version: opt(string()),
   /** Level / room ids the user has been shown (the regeneration notice reports changes since). */
-  known: opt(object({ levels: withDefault(array(string()), () => []), rooms: withDefault(array(string()), () => []) })),
+  known: opt(
+    object({
+      levels: withDefault(array(string()), () => []),
+      rooms: withDefault(array(string()), () => []),
+    }),
+  ),
   levels: opt(record(levelBindingSchema)),
   rooms: opt(record(roomBindingSchema)),
   pins_migrated: opt(boolean()),
@@ -226,8 +251,8 @@ export const layoutSchema = object({
   views: opt(record(viewSchema)),
   view_order: opt(array(string())),
   badges: opt(badgesSchema),
-  room_labels: opt(literal('size', 'name', 'none')),
-  tap_hints: opt(literal('near', 'always', 'off')),
+  room_labels: opt(literal("size", "name", "none")),
+  tap_hints: opt(literal("near", "always", "off")),
 });
 
 export type NormalisedLayout = Infer<typeof layoutSchema>;
@@ -238,24 +263,35 @@ export type NormalisedLayout = Infer<typeof layoutSchema>;
 type Raw = Record<string, unknown>;
 type Migration = (l: Raw) => Raw;
 
-const isRgb = (c: unknown): boolean => Array.isArray(c) && c.length >= 3 && c.slice(0, 3).every((v) => Number.isFinite(Number(v)));
+const isRgb = (c: unknown): boolean =>
+  Array.isArray(c) &&
+  c.length >= 3 &&
+  c.slice(0, 3).every((v) => Number.isFinite(Number(v)));
 
 // v1 colour keys: a single <one> colour next to (or instead of) the <many> list -> the list only.
 function foldColor(o: unknown, one: string, many: string): unknown {
   if (!isPlainObject(o) || !(one in o)) return o;
   const { [one]: c, ...rest } = o;
-  return Array.isArray(rest[many]) || !isRgb(c) ? rest : { ...rest, [many]: [c] };
+  return Array.isArray(rest[many]) || !isRgb(c)
+    ? rest
+    : { ...rest, [many]: [c] };
 }
 
 // v0.1.4 model.floor_map { levelId: haFloorId | 'always' | 'hidden' } -> model.levels (saved levels win).
 function foldFloorMap(m: unknown): unknown {
-  if (!isPlainObject(m) || !('floor_map' in m)) return m;
+  if (!isPlainObject(m) || !("floor_map" in m)) return m;
   const { floor_map: fm, ...rest } = m;
   const levels: Raw = {};
   if (isPlainObject(fm)) {
-    for (const [id, v] of Object.entries(fm)) if (typeof v === 'string') levels[id] = v === 'always' || v === 'hidden' ? { show: v } : { floor: v };
+    for (const [id, v] of Object.entries(fm))
+      if (typeof v === "string")
+        levels[id] =
+          v === "always" || v === "hidden" ? { show: v } : { floor: v };
   }
-  return { ...rest, levels: { ...levels, ...(isPlainObject(m.levels) ? m.levels : {}) } };
+  return {
+    ...rest,
+    levels: { ...levels, ...(isPlainObject(m.levels) ? m.levels : {}) },
+  };
 }
 
 const MIGRATIONS: Record<number, Migration> = {
@@ -265,20 +301,23 @@ const MIGRATIONS: Record<number, Migration> = {
   //   mower.overlay.<kind>_color  -> <kind>_colors, mower.image.color -> colors
   1: (l) => {
     const out: Raw = { ...l, version: 2 };
-    if ('groups' in out) {
+    if ("groups" in out) {
       const g = out.groups;
       delete out.groups;
-      if (isPlainObject(g)) out.tags = { ...g, ...(isPlainObject(out.tags) ? out.tags : {}) };
+      if (isPlainObject(g))
+        out.tags = { ...g, ...(isPlainObject(out.tags) ? out.tags : {}) };
     }
-    if ('model' in out) out.model = foldFloorMap(out.model);
+    if ("model" in out) out.model = foldFloorMap(out.model);
     if (isPlainObject(out.mower)) {
       const m: Raw = { ...out.mower };
       if (isPlainObject(m.overlay)) {
         let o = m.overlay as unknown;
-        for (const k of ['bg', 'mowed', 'nomow']) o = foldColor(o, `${k}_color`, `${k}_colors`);
+        for (const k of ["bg", "mowed", "nomow"])
+          o = foldColor(o, `${k}_color`, `${k}_colors`);
         m.overlay = o;
       }
-      if (isPlainObject(m.image)) m.image = foldColor(m.image, 'color', 'colors');
+      if (isPlainObject(m.image))
+        m.image = foldColor(m.image, "color", "colors");
       out.mower = m;
     }
     return out;
@@ -302,18 +341,35 @@ export function parseLayout(input: unknown): LayoutParse {
   let raw: Raw;
   if (isPlainObject(input)) raw = input;
   else {
-    if (input !== null && input !== undefined) warnings.push({ path: '(root)', message: 'expected a layout object; starting empty' });
+    if (input !== null && input !== undefined)
+      warnings.push({
+        path: "(root)",
+        message: "expected a layout object; starting empty",
+      });
     raw = {};
   }
   const v = raw.version;
   let from = 1;
-  if (typeof v === 'number' && Number.isInteger(v) && v >= 1) from = v;
-  else if (v !== undefined) warnings.push({ path: 'version', message: `expected a version number, got ${JSON.stringify(v)}; read as 1` });
-  if (from > LAYOUT_VERSION) warnings.push({ path: 'version', message: `layout version ${from} is newer than this card (${LAYOUT_VERSION}); fields it does not know are kept` });
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1) from = v;
+  else if (v !== undefined)
+    warnings.push({
+      path: "version",
+      message: `expected a version number, got ${JSON.stringify(v)}; read as 1`,
+    });
+  if (from > LAYOUT_VERSION)
+    warnings.push({
+      path: "version",
+      message: `layout version ${from} is newer than this card (${LAYOUT_VERSION}); fields it does not know are kept`,
+    });
   let l: Raw = { ...raw, version: from };
   for (let n = from; n < LAYOUT_VERSION; n++) l = MIGRATIONS[n](l);
   const r = run(layoutSchema, l);
-  return { value: r.value ?? emptyLayout(), warnings: [...warnings, ...r.warnings], unknown: r.unknown, from };
+  return {
+    value: r.value ?? emptyLayout(),
+    warnings: [...warnings, ...r.warnings],
+    unknown: r.unknown,
+    from,
+  };
 }
 
 /** A fresh empty layout of the current version. */
@@ -321,10 +377,17 @@ export const emptyLayout = (): NormalisedLayout => run(layoutSchema, {}).value!;
 
 /** The JSON that is stored / exported: plain values only (no undefined), the version stamped. */
 export function serializeLayout(layout: NormalisedLayout): NormalisedLayout {
-  return toJson({ ...layout, version: Math.max(LAYOUT_VERSION, Number(layout.version) || 0) });
+  return toJson({
+    ...layout,
+    version: Math.max(LAYOUT_VERSION, Number(layout.version) || 0),
+  });
 }
 
 /** Log parse warnings once per load (unknown fields are expected from newer cards: not logged). */
-export function logLayoutWarnings(where: string, p: Pick<LayoutParse, 'warnings'>): void {
-  for (const w of p.warnings) console.warn(`floorplan3d: ${where} ${w.path}: ${w.message}`);
+export function logLayoutWarnings(
+  where: string,
+  p: Pick<LayoutParse, "warnings">,
+): void {
+  for (const w of p.warnings)
+    console.warn(`floorplan3d: ${where} ${w.path}: ${w.message}`);
 }

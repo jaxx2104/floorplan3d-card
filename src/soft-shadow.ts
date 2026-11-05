@@ -17,18 +17,37 @@ export const PCSS_BLOCKER_SAMPLES = 16;
 export const PCSS_PCF_SAMPLES = 24;
 
 /** fpPcss uniform for an orthographic shadow camera: [depth range (m), map span (m), light tan, 1 = on]. */
-export function pcssFrame(cam: { near: number; far: number; left: number; right: number }, tan = PCSS_SUN_TAN): [number, number, number, number] {
-  return [Math.max(1e-3, cam.far - cam.near), Math.max(1e-3, cam.right - cam.left), tan, 1];
+export function pcssFrame(
+  cam: { near: number; far: number; left: number; right: number },
+  tan = PCSS_SUN_TAN,
+): [number, number, number, number] {
+  return [
+    Math.max(1e-3, cam.far - cam.near),
+    Math.max(1e-3, cam.right - cam.left),
+    tan,
+    1,
+  ];
 }
 
 /** Penumbra radius (m) a blocker dist metres above a receiver casts (radius scales it: clouds soften). */
-export function penumbraM(dist: number, tan = PCSS_SUN_TAN, radius = 1): number {
+export function penumbraM(
+  dist: number,
+  tan = PCSS_SUN_TAN,
+  radius = 1,
+): number {
   return Math.max(0, dist) * tan * Math.max(1, radius);
 }
 
 /** Kernel radius in texels for a penumbra (m) on a map of size texels over span metres, clamped. */
-export function kernelTexels(penumbra: number, span: number, size: number): number {
-  return Math.min(PCSS_MAX_TEXELS, Math.max(PCSS_MIN_TEXELS, (penumbra / span) * size));
+export function kernelTexels(
+  penumbra: number,
+  span: number,
+  size: number,
+): number {
+  return Math.min(
+    PCSS_MAX_TEXELS,
+    Math.max(PCSS_MIN_TEXELS, (penumbra / span) * size),
+  );
 }
 
 // after #include <shadowmap_pars_fragment> (it defines texture2DCompare, packing is included before it)
@@ -64,9 +83,11 @@ float fpPcssShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensi
 #endif
 `;
 
-const DIR_SHADOW = 'getShadow( directionalShadowMap[ i ]';
+const DIR_SHADOW = "getShadow( directionalShadowMap[ i ]";
 // lights_fragment_begin with the directional lights' lookup swapped for fpPcssShadow, or null when three's
 // light loop changed (no soft shadows then rather than a broken shader).
 export function pcssDirectional(chunk: string): string | null {
-  return chunk.includes(DIR_SHADOW) ? chunk.replace(DIR_SHADOW, 'fpPcssShadow( directionalShadowMap[ i ]') : null;
+  return chunk.includes(DIR_SHADOW)
+    ? chunk.replace(DIR_SHADOW, "fpPcssShadow( directionalShadowMap[ i ]")
+    : null;
 }

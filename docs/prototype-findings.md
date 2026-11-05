@@ -12,23 +12,23 @@ Coordinate system used by the prototype ("model metres"): x along the house (wes
 
 Declared in `initThree` (offset ~68046). Everything is added directly to `scene` unless noted.
 
-| Node | Contents |
-|---|---|
-| `ground` Mesh | `PlaneGeometry(200,200)`, `mat.ground` (0x3a3b36), y = -0.25 (offset ~73510) |
-| loose static meshes (scene children) | plinth `B(16.14,0.3,10.54,...)`, thin floor tile boxes, deck, terrace posts and beam, porch slab, paving, white paver rows, curbs, road plane, all ground-floor exterior and interior walls (`Wall()` builds each wall from several boxes around openings), glass panes, window frames, door, facade lamps, downpipes, chimney, etc. After the merge step (see Q2) these are collapsed into one mesh per material |
-| `Item` Groups (not merged) | each has `userData={id,name,editable:true}`. Furniture (`sofa_living`, `dining_table`, kitchen items, beds, wardrobes, bathtub, ...), `ev_totem`, `sunseeker_x3` (mower), `sunseeker_dock`, `heat_pump`, and later `stairs` (scene) and `stair_wall` (upper). Added/duplicated items get `userData.type/added/src/floor` |
-| `upper` Group | Attic (offset ~97068, `base=2.89`, then 3.25) |
-| `roofG` Group | Roof (offset ~101143) |
-| `compass` Group (contains `rose`) | ring, 4 arrows, N/E/S/W-style letters Z/A/D/R, at (22,-0.2,13) |
-| `labels` Group | 4 facade-number sprites, numbered side names |
-| `hemi`, `sun`, `sun.target` | lights |
-| `helper` | `Box3Helper` selection box (edit mode) |
-| `roomLabels` Group, `roomDims` Group | room name planes and dimension bars/tags (Q9) |
-| `garden` Group (built by `buildGarden`, y offset -0.1) | lawn ShapeGeometry, lawn edging, fences, gates, well, cabinet, mulch, fire pit, optional mower-map image plane, 3D neighbour-outbuilding boxes. Rebuilt on prop change, not merged |
-| `topo` Group | `LineSegments` named `survey`, `features`, `boundaries`, `utilities` (loaded from `topo-lines.json`, y = -0.055) |
-| `markers` Group | red spheres for "Pick points" |
-| fixture parts | per light: PointLight/SpotLight, bulb mesh (`bm` material), invisible 0.45 m hit sphere; parented to `scene` (ground/exterior lights) or `upper` (attic light) |
-| a `THREE.Line` | festoon string line (black, 0x151515) |
+| Node                                                   | Contents                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ground` Mesh                                          | `PlaneGeometry(200,200)`, `mat.ground` (0x3a3b36), y = -0.25 (offset ~73510)                                                                                                                                                                                                                                                                                                                                      |
+| loose static meshes (scene children)                   | plinth `B(16.14,0.3,10.54,...)`, thin floor tile boxes, deck, terrace posts and beam, porch slab, paving, white paver rows, curbs, road plane, all ground-floor exterior and interior walls (`Wall()` builds each wall from several boxes around openings), glass panes, window frames, door, facade lamps, downpipes, chimney, etc. After the merge step (see Q2) these are collapsed into one mesh per material |
+| `Item` Groups (not merged)                             | each has `userData={id,name,editable:true}`. Furniture (`sofa_living`, `dining_table`, kitchen items, beds, wardrobes, bathtub, ...), `ev_totem`, `sunseeker_x3` (mower), `sunseeker_dock`, `heat_pump`, and later `stairs` (scene) and `stair_wall` (upper). Added/duplicated items get `userData.type/added/src/floor`                                                                                          |
+| `upper` Group                                          | Attic (offset ~97068, `base=2.89`, then 3.25)                                                                                                                                                                                                                                                                                                                                                                     |
+| `roofG` Group                                          | Roof (offset ~101143)                                                                                                                                                                                                                                                                                                                                                                                             |
+| `compass` Group (contains `rose`)                      | ring, 4 arrows, N/E/S/W-style letters Z/A/D/R, at (22,-0.2,13)                                                                                                                                                                                                                                                                                                                                                    |
+| `labels` Group                                         | 4 facade-number sprites, numbered side names                                                                                                                                                                                                                                                                                                                                                                      |
+| `hemi`, `sun`, `sun.target`                            | lights                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `helper`                                               | `Box3Helper` selection box (edit mode)                                                                                                                                                                                                                                                                                                                                                                            |
+| `roomLabels` Group, `roomDims` Group                   | room name planes and dimension bars/tags (Q9)                                                                                                                                                                                                                                                                                                                                                                     |
+| `garden` Group (built by `buildGarden`, y offset -0.1) | lawn ShapeGeometry, lawn edging, fences, gates, well, cabinet, mulch, fire pit, optional mower-map image plane, 3D neighbour-outbuilding boxes. Rebuilt on prop change, not merged                                                                                                                                                                                                                                |
+| `topo` Group                                           | `LineSegments` named `survey`, `features`, `boundaries`, `utilities` (loaded from `topo-lines.json`, y = -0.055)                                                                                                                                                                                                                                                                                                  |
+| `markers` Group                                        | red spheres for "Pick points"                                                                                                                                                                                                                                                                                                                                                                                     |
+| fixture parts                                          | per light: PointLight/SpotLight, bulb mesh (`bm` material), invisible 0.45 m hit sphere; parented to `scene` (ground/exterior lights) or `upper` (attic light)                                                                                                                                                                                                                                                    |
+| a `THREE.Line`                                         | festoon string line (black, 0x151515)                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### Ceilings and slabs between storeys
 
@@ -54,16 +54,16 @@ roomDims.visible   = props.showRoomDims!==false  && view==='ground' && !exportin
 topo.visible       = props.showTopo && view==='exterior';
 ```
 
-| Node | Exterior | Ground floor | Attic |
-|---|---|---|---|
-| ground plane, plinth, ground-floor walls (3.24 m), floors, deck, porch, furniture Items | shown | shown | shown (ground-floor walls are not cut) |
-| `upper` (attic slab, knee walls, gables, attic floor, attic light) | shown | **hidden** | shown |
-| `roofG` (roof, soffits, terrace ceiling, gutters) | shown | hidden | hidden (shown only if Side section is on) |
-| `compass`, `labels` (facade numbers) | shown | hidden | hidden |
-| `roomLabels`, `roomDims` | hidden | shown (if props on) | hidden |
-| `topo` | shown if `showTopo` | hidden | hidden |
-| `garden` group (lawn, fences, well, fire pit) | shown (if `showGarden`) | shown | shown (not view-dependent) |
-| Lights listed/clickable | all 18 | only `floor==='ground'` | only `floor==='upper'` |
+| Node                                                                                    | Exterior                | Ground floor            | Attic                                     |
+| --------------------------------------------------------------------------------------- | ----------------------- | ----------------------- | ----------------------------------------- |
+| ground plane, plinth, ground-floor walls (3.24 m), floors, deck, porch, furniture Items | shown                   | shown                   | shown (ground-floor walls are not cut)    |
+| `upper` (attic slab, knee walls, gables, attic floor, attic light)                      | shown                   | **hidden**              | shown                                     |
+| `roofG` (roof, soffits, terrace ceiling, gutters)                                       | shown                   | hidden                  | hidden (shown only if Side section is on) |
+| `compass`, `labels` (facade numbers)                                                    | shown                   | hidden                  | hidden                                    |
+| `roomLabels`, `roomDims`                                                                | hidden                  | shown (if props on)     | hidden                                    |
+| `topo`                                                                                  | shown if `showTopo`     | hidden                  | hidden                                    |
+| `garden` group (lawn, fences, well, fire pit)                                           | shown (if `showGarden`) | shown                   | shown (not view-dependent)                |
+| Lights listed/clickable                                                                 | all 18                  | only `floor==='ground'` | only `floor==='upper'`                    |
 
 Day/Night does not change visibility, only light intensities and `scene.background` (Q5).
 Side-section button: forces `view='upper'` if currently `ground`, makes `roofG` visible, and enables a clipping plane (Q11).
@@ -143,12 +143,12 @@ t.sun.position.set(7 - Math.sin(sA)*38, 34, -6 + Math.cos(sA)*38);
 // sun.target fixed at (7, 0, -6); initial creation: sun.position(-6,34,43), colour 0xfff0dc
 ```
 
-| | Day | Night |
-|---|---|---|
-| Hemisphere light | sky 0xc4d6ff, ground 0x2a2520, intensity **0.9** | **0.14** (initial value in creation is 0.1) |
-| Sun (DirectionalLight 0xfff0dc) | intensity **2.6** | **0** |
-| Ambient light | not found | not found |
-| Background | 0x2a2d30 | 0x0e0f10 |
+|                                 | Day                                              | Night                                       |
+| ------------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| Hemisphere light                | sky 0xc4d6ff, ground 0x2a2520, intensity **0.9** | **0.14** (initial value in creation is 0.1) |
+| Sun (DirectionalLight 0xfff0dc) | intensity **2.6**                                | **0**                                       |
+| Ambient light                   | not found                                        | not found                                   |
+| Background                      | 0x2a2d30                                         | 0x0e0f10                                    |
 
 No night fill or moonlight light exists in this file (only the hemisphere 0.14 at night). All building light at night comes from the fixtures (Q7). Default north value 63.6 degrees (prop range 0..359, step 0.1). Compass is a rotating rose, sun azimuth is derived from the same angle.
 
@@ -159,6 +159,7 @@ No night fill or moonlight light exists in this file (only the hemisphere 0.14 a
 All via helper `M(color, roughness, extra) = MeshStandardMaterial` (offset ~69305).
 
 ### Procedural textures (all canvas based, `CanvasTexture`, sRGB)
+
 - `makeSeams(base, hi, lo, rep)`: 64x4 canvas, base fill, 3 px highlight column + 2 px dark groove column; `wrap=Repeat`, `repeat.set(rep,1)`, anisotropy 8. Used for board cladding (`rep = 1/0.145`, i.e. 145 mm boards, UVs rescaled to metres), terrace deck/ceiling boards, roof panels (`'#33373a','#4a4f53','#232628'`, repeat 36 for main roof, 23 for terrace roof), thermowood totem (`1/0.105`).
 - `makeGrass`: 512x512, base `#4a7433`, 16000 random hsl blades (hue 82-110, sat 38-60%, light 20-40%), faint light bands, `repeat 1/6`, anisotropy 8, rotated with the garden (`grassTex.rotation = -rot`).
 - `makePavers`: 256x256, base `#8f8e8a`, 8 rows x 5 bricks, hsl(40,3%,50-58%), `repeat 1/1.28`.
@@ -167,30 +168,31 @@ All via helper `M(color, roughness, extra) = MeshStandardMaterial` (offset ~6930
 - Logo canvas 256x48 on the heat pump. Label canvases (Q9).
 
 ### Material table (colour, roughness, extras)
-| Material | Colour | Rough | Metal | Notes |
-|---|---|---|---|---|
-| wall (interior partitions) | 0xebe7df | 0.92 | - | |
-| plaster (exterior walls, slab, knee walls) | 0xeeece7 | 0.9 | - | |
-| plinth | 0x6b6157 | 0.94 | - | |
-| wood/board (cladding, all wood variants unified to `boardMat`) | 0xffffff + seams map | 0.92 | - | `userData.boards = true`; `boardThin` clone with polygonOffset -4 |
-| oak (attic floor, posts) | 0xa07a55 | 0.55 | - | polygonOffset -4 |
-| tile (floors) | 0xcfcbc3 | 0.35 | - | polygonOffset -4 |
-| deck | 0x7d6149 | 0.8 | - | polygonOffset |
-| concrete | 0x9c988f | 0.95 | - | polygonOffset |
-| paving (plain) / pavers | 0x4a4e51 / 0xffffff + map | 0.94 / 0.9 | - | |
-| ground | 0x3a3b36 | 1 | - | |
-| roof (and roofT) | 0xffffff + seam map | 0.45 | 0.3 | |
-| tin (gutters, chimney) | 0x33373a | 0.45 | 0.3 | |
-| frame (window frames, rust-orange) | 0xbe752d | 0.58 | - | |
-| door | 0x39352f | 0.55 | 0.25 | |
-| lamp (facade lamp bodies) | 0x141414 | 0.42 | 0.3 | |
-| glass | 0x9fb6c4 | 0.05 | 0.1 | `transparent:true, opacity:0.25`; no `transmission` anywhere |
-| grass (lawn) | 0xffffff + grass map | 0.95 | - | |
-| mulch, soil, hedge, fence | 0xb08a5e / 0x3b2a1f / 0x3d5a2f / 0xa9a6a0 | 1 / 1 / 0.9 / 0.95 | - | |
-| metal | 0x2a2a2a | 0.35 | 0.8 | |
-| fabric / linen / white / ceramic | 0x5d6670 / 0xe8e4dc / 0xf0eee9 / 0xf4f4f2 | 0.95 / 0.95 / 0.5 / 0.15 | - | |
-| screen | 0x0b0c0d | 0.15 | - | |
-| lowZone | 0xe3b56b, MeshBasicMaterial | - | - | transparent, opacity 0.22, depthWrite false |
+
+| Material                                                       | Colour                                    | Rough                    | Metal | Notes                                                             |
+| -------------------------------------------------------------- | ----------------------------------------- | ------------------------ | ----- | ----------------------------------------------------------------- |
+| wall (interior partitions)                                     | 0xebe7df                                  | 0.92                     | -     |                                                                   |
+| plaster (exterior walls, slab, knee walls)                     | 0xeeece7                                  | 0.9                      | -     |                                                                   |
+| plinth                                                         | 0x6b6157                                  | 0.94                     | -     |                                                                   |
+| wood/board (cladding, all wood variants unified to `boardMat`) | 0xffffff + seams map                      | 0.92                     | -     | `userData.boards = true`; `boardThin` clone with polygonOffset -4 |
+| oak (attic floor, posts)                                       | 0xa07a55                                  | 0.55                     | -     | polygonOffset -4                                                  |
+| tile (floors)                                                  | 0xcfcbc3                                  | 0.35                     | -     | polygonOffset -4                                                  |
+| deck                                                           | 0x7d6149                                  | 0.8                      | -     | polygonOffset                                                     |
+| concrete                                                       | 0x9c988f                                  | 0.95                     | -     | polygonOffset                                                     |
+| paving (plain) / pavers                                        | 0x4a4e51 / 0xffffff + map                 | 0.94 / 0.9               | -     |                                                                   |
+| ground                                                         | 0x3a3b36                                  | 1                        | -     |                                                                   |
+| roof (and roofT)                                               | 0xffffff + seam map                       | 0.45                     | 0.3   |                                                                   |
+| tin (gutters, chimney)                                         | 0x33373a                                  | 0.45                     | 0.3   |                                                                   |
+| frame (window frames, rust-orange)                             | 0xbe752d                                  | 0.58                     | -     |                                                                   |
+| door                                                           | 0x39352f                                  | 0.55                     | 0.25  |                                                                   |
+| lamp (facade lamp bodies)                                      | 0x141414                                  | 0.42                     | 0.3   |                                                                   |
+| glass                                                          | 0x9fb6c4                                  | 0.05                     | 0.1   | `transparent:true, opacity:0.25`; no `transmission` anywhere      |
+| grass (lawn)                                                   | 0xffffff + grass map                      | 0.95                     | -     |                                                                   |
+| mulch, soil, hedge, fence                                      | 0xb08a5e / 0x3b2a1f / 0x3d5a2f / 0xa9a6a0 | 1 / 1 / 0.9 / 0.95       | -     |                                                                   |
+| metal                                                          | 0x2a2a2a                                  | 0.35                     | 0.8   |                                                                   |
+| fabric / linen / white / ceramic                               | 0x5d6670 / 0xe8e4dc / 0xf0eee9 / 0xf4f4f2 | 0.95 / 0.95 / 0.5 / 0.15 | -     |                                                                   |
+| screen                                                         | 0x0b0c0d                                  | 0.15                     | -     |                                                                   |
+| lowZone                                                        | 0xe3b56b, MeshBasicMaterial               | -                        | -     | transparent, opacity 0.22, depthWrite false                       |
 
 Other transparency: `mowerImage` plane (MeshBasicMaterial, additive blending, opacity prop 0.85). No transmission, no clearcoat.
 
@@ -199,56 +201,65 @@ Other transparency: `mowerImage` plane (MeshBasicMaterial, additive blending, op
 ## 7. Lamps
 
 ### Per-fixture data (state array `lights`, offset ~51000)
+
 Fields: `id, floor ('ground'|'upper'), name, rgb (bool), on, bri (1..255), h (hue deg), s (sat %), pos [x,y,z], max, pts[], dir[], strip[], string, beads[], spot, aim, aims[]`. `max` is the maximum PointLight intensity (the number multiplied by brightness fraction).
 
-| Entity id | floor | type | max | notes |
-|---|---|---|---|---|
-| light.living_room | ground | point | 34 | rgb, pos (2.9,2.55,3.6) |
-| light.dining_table | ground | point | 12 | rgb, (2.1,1.8,5.75) |
-| light.kitchen | ground | point | 24 | not rgb |
-| light.laundry_room | ground | point | 20 | "Technical room", off by default |
-| light.room_a (anonymised) | ground | point | 26 | rgb |
-| light.bedroom | ground | point | 26 | rgb |
-| light.bedroom_2 | ground | point | 26 | rgb |
-| light.hallway | ground | point | 24 | |
-| light.entrance | ground | point | 16 | |
-| light.bathroom | ground | point | 20 | |
-| light.terrace | ground | point, 1 pt, dir [0,-1] | 6 | |
-| light.entrance_led | ground | 3 points + 3 emissive strip boxes (hidden bulbs) | 2.5 | LED coves |
-| light.terrace_string | ground | `string:true`, 6 point lights (`STRING(4)`) + 13 emissive bead spheres (`STRING(1.0)`) | 3 | festoon around terrace ceiling |
-| light.terrace_uplights | ground | `spot:true`, 3 SpotLights (post uplights) | 10 | |
-| light.back_facade_lamp | ground | point, dir [0,-1] | 5 | |
-| light.facade_lamps | ground | 4 points | 5 | |
-| light.bedroom_end_lamps | ground | 2 points, dir [1,0] | 5 | |
-| light.attic | upper | point | 30 | rgb |
+| Entity id                 | floor  | type                                                                                   | max | notes                            |
+| ------------------------- | ------ | -------------------------------------------------------------------------------------- | --- | -------------------------------- |
+| light.living_room         | ground | point                                                                                  | 34  | rgb, pos (2.9,2.55,3.6)          |
+| light.dining_table        | ground | point                                                                                  | 12  | rgb, (2.1,1.8,5.75)              |
+| light.kitchen             | ground | point                                                                                  | 24  | not rgb                          |
+| light.laundry_room        | ground | point                                                                                  | 20  | "Technical room", off by default |
+| light.room_a (anonymised) | ground | point                                                                                  | 26  | rgb                              |
+| light.bedroom             | ground | point                                                                                  | 26  | rgb                              |
+| light.bedroom_2           | ground | point                                                                                  | 26  | rgb                              |
+| light.hallway             | ground | point                                                                                  | 24  |                                  |
+| light.entrance            | ground | point                                                                                  | 16  |                                  |
+| light.bathroom            | ground | point                                                                                  | 20  |                                  |
+| light.terrace             | ground | point, 1 pt, dir [0,-1]                                                                | 6   |                                  |
+| light.entrance_led        | ground | 3 points + 3 emissive strip boxes (hidden bulbs)                                       | 2.5 | LED coves                        |
+| light.terrace_string      | ground | `string:true`, 6 point lights (`STRING(4)`) + 13 emissive bead spheres (`STRING(1.0)`) | 3   | festoon around terrace ceiling   |
+| light.terrace_uplights    | ground | `spot:true`, 3 SpotLights (post uplights)                                              | 10  |                                  |
+| light.back_facade_lamp    | ground | point, dir [0,-1]                                                                      | 5   |                                  |
+| light.facade_lamps        | ground | 4 points                                                                               | 5   |                                  |
+| light.bedroom_end_lamps   | ground | 2 points, dir [1,0]                                                                    | 5   |                                  |
+| light.attic               | upper  | point                                                                                  | 30  | rgb                              |
 
 Light objects (offset ~107600):
+
 ```js
 const pl = l.spot ? new THREE.SpotLight(0xffffff, 0, 7, 0.42, 0.6, 1.4)  // intensity, distance 7, angle 0.42 rad, penumbra 0.6, decay 1.4
                   : new THREE.PointLight(0xffffff, 0, 0, 2);              // distance 0 (infinite), decay 2
 pl.shadow.mapSize.set(512,512); pl.shadow.bias=-0.004; pl.shadow.camera.near=0.15;
 // spot target: l.aims[i] (explicit) else (x, 2.2, l.aim); aim = POST_Z-0.55 for uplights
 ```
+
 Multi-point fixtures are offset by `dir*0.12` from the bulb mesh. Spot target is parented to `upper` or `scene`.
 
 ### Glowing mesh and colour handling
+
 - One material `bm = MeshStandardMaterial({color:0x222222, roughness:0.4, emissive:0xffffff, emissiveIntensity:0})` is shared by all bulb meshes of a fixture. Geometries: single lamps = sphere r 0.08; strings = sphere r 0.04 (beads); spot = box 0.09x0.006x0.09; wall lamps = 0.03x0.17x0.05 or 0.05x0.17x0.03; strips = thin boxes; strip bulbs hidden.
 - Per update (`applyLights`):
+
 ```js
 const [r,g,b] = hsv(s.h??0, s.s??0);        // custom HSV(value=1) -> RGB, h deg, s %
 const f = s.on ? s.bri/255 : 0;
 o.pls.forEach(pl => { pl.color.setRGB(r,g,b,THREE.SRGBColorSpace); pl.intensity = f*l.max; pl.castShadow=false; });
 o.bm.emissive.setRGB(r,g,b,THREE.SRGBColorSpace); o.bm.emissiveIntensity = f*3;
 ```
+
 - hs_color maps directly to (h,s) (`hs_color` also appears in the exported YAML). Colour temperature or mireds/kelvin: **not found**. "Warm white" is just a swatch preset `['Warm white',35,45]` (h 35, s 45); "Cool white" `210,6`. Other presets: Red 0/100, Amber 28/100, Magenta 315/85, Violet 265/80, Blue 220/90, Teal 175/85.
 - Relay warm white: choosing Relejs sets `h:30` and `s: min(s,45)`; Dimmer keeps `h` and clamps `s` to 45; Gudrā spuldze leaves colour alone.
 
 ### Real-light budget
+
 - All 31 lights (11 single + 20 multi-point incl. 3 spots) exist permanently with intensity 0 when off (no add/remove).
 - Shadow casting: `shadowBudget = 4`. Only single-point fixtures (`!l.pts`) that are on and in the current view cast shadows, first 4 in array order; all others `castShadow=false`. (Comment in source says the GPU sampler limit is 8.)
 
 ### Modes ("Relejs / Dimmer / Gudrā spuldze") and "Fiksēta"
+
 `ctrlOf(l) = l.ctrl || (l.rgb ? 'bulb' : 'relay')`.
+
 - UI: Relejs hides the brightness slider and swatches; Dimmer shows slider (1..255); Gudrā spuldze shows slider + 8 colour swatches. Persisted in localStorage `house-layout-v1` under `lightCfg[id] = {ctrl, locked}`.
 - 3D rendering: the mode does **not** change intensity maths (brightness still scales intensity even in relay mode); it only affects the controls and colour clamp described above.
 - HA attributes in exported YAML (`buildYaml`, offset ~136700): relay: overlay opacity `state==='on' ? '1' : '0'`; dimmer and bulb: opacity `brightness/255` (default 255); bulb additionally `filter: hue-rotate(hs_color[0] deg) saturate(hs_color[1]%)`. In the house.glb export: relay -> `suggest.domain:'switch'`, others `'light'`; `ui.popup` as in Q3.
@@ -261,14 +272,14 @@ o.bm.emissive.setRGB(r,g,b,THREE.SRGBColorSpace); o.bm.emissiveIntensity = f*3;
 
 No tween or easing exists (the word is not used for camera animation); `setCam(p, target)` sets position and target instantly and calls `controls.update()`. Perspective camera: fov 35, near 0.3, far 260.
 
-| Preset (function) | Position | Target | Distance / polar (from vertical) / azimuth (from +z toward +x) [computed] |
-|---|---|---|---|
-| Perspective, ground or attic (`resetView`) | (7.8, 17, 21) | (7.8, 0, 5) | 23.3 m / 43.3 deg / 0 deg |
-| Perspective, exterior with garden | (24, 26, 34) | (7.8, 0, 5) | 42.2 m / 51.9 deg / 29.2 deg |
-| Perspective, exterior without garden | (7.8, 12, 30) | (7.8, 1.5, 5) | 27.1 m / 67.2 deg / 0 deg |
-| Top down, exterior with garden | (7.8, 64, 5.02) | (7.8, 0, 5) | 64 m / ~0 deg |
-| Top down, other cases | (7.8, 26, 5.02) | (7.8, 0, 5) | 26 m / ~0 deg |
-| Side section | (sectionX+20, 4.6, 5.01) | (sectionX, 3.8, 5) | ~20 m / ~88 deg / 90 deg (looks along -x) |
+| Preset (function)                          | Position                 | Target             | Distance / polar (from vertical) / azimuth (from +z toward +x) [computed] |
+| ------------------------------------------ | ------------------------ | ------------------ | ------------------------------------------------------------------------- |
+| Perspective, ground or attic (`resetView`) | (7.8, 17, 21)            | (7.8, 0, 5)        | 23.3 m / 43.3 deg / 0 deg                                                 |
+| Perspective, exterior with garden          | (24, 26, 34)             | (7.8, 0, 5)        | 42.2 m / 51.9 deg / 29.2 deg                                              |
+| Perspective, exterior without garden       | (7.8, 12, 30)            | (7.8, 1.5, 5)      | 27.1 m / 67.2 deg / 0 deg                                                 |
+| Top down, exterior with garden             | (7.8, 64, 5.02)          | (7.8, 0, 5)        | 64 m / ~0 deg                                                             |
+| Top down, other cases                      | (7.8, 26, 5.02)          | (7.8, 0, 5)        | 26 m / ~0 deg                                                             |
+| Side section                               | (sectionX+20, 4.6, 5.01) | (sectionX, 3.8, 5) | ~20 m / ~88 deg / 90 deg (looks along -x)                                 |
 
 OrbitControls: `enableDamping=true`, `maxPolarAngle = Math.PI*0.47` (about 84.6 deg, camera cannot go below the horizon), `minDistance 4`, `maxDistance 130`; no azimuth limits, no pan limits.
 Export cameras: `orthoCam(ORTHO_BOX = [-6,29,-30,20])` looking down from y=80, `up=(0,0,-1)`, near 1, far 200 (see Q12).
@@ -282,6 +293,7 @@ Both are flat canvas-textured planes lying on the floor (not DOM, not sprites), 
 **Room names (`roomLabels`, offset ~107800)**: canvas per label, font `600 56px "IBM Plex Sans", sans-serif`; width = text width + 48, height 56+36; background `rgba(17,18,19,0.72)` rounded rect radius 18; text colour `#f3efe6`, centred. World height 0.5 m (width scaled by aspect), at y = 0.05, `renderOrder 20`. 11 labels from `ROOM_NAMES` (name, x, z).
 
 **Dimension guides (`roomDims`)**: for each of the 6 measured rooms in `ROOM_RECTS`:
+
 - Orange bar (colour 0xe3b56b) along x (length), at z0+0.3, with end ticks (0.035 x 0.25 m); tag text `'garums ' + Math.round((x1-x0)*1000)`, (pill `#e3b56b`, text `#111213`).
 - Teal bar (colour 0x5cc8c0) along z (depth), at x0+0.3; tag text `'dziļums ' + Math.round((z1-z0)*1000)`, pill `#5cc8c0`, rotated 90 deg (rot = PI/2), offset +0.9 along the bar.
 - Tag canvas font `600 44px "IBM Plex Sans"`, pill radius 12, height 0.46 m, y = 0.06, `renderOrder 21`. Bars: BoxGeometry(L, 0.01, 0.06) at y=0.055, `MeshBasicMaterial depthTest:false`.
@@ -322,17 +334,21 @@ Facade labels (exterior): 4 world-scaled `Sprite`s (IBM Plex Sans, light backgro
 ## 12. Exports
 
 ### "Export for Home Assistant" (`openExport` / `download`)
+
 Opens a modal with YAML text from `buildYaml`, plus a "Download renders + YAML (.zip)" button. Produces `<view>_floorplan.zip` containing: `<view>_base.jpg` (all lights off, night), one `<view>_<light_slug>.jpg` per light in the view (that light on, bri 255, red-hue 0/100 for bulb mode, mower hidden), and `<view>_floorplan.yaml`. Render: width 1920, JPEG 0.9, current camera (or orthographic top view if prop `exportTopOrtho` and Exterior).
 YAML: `type: custom:config-template-card` wrapping a `picture-elements` card: base image `/local/floorplan/<view>_base.jpg`, one `type: image` element per light with `mix-blend-mode: lighten` and templated opacity/hue-rotate (Q7), one `state-icon` per light (position = projected screen % of `l.pos`, tap `toggle`), and, for Exterior, conditional Wallbox and Sunseeker markers plus (in ortho mode) a camera image overlay with a CSS matrix computed from the mower-map fit.
 
 ### "floorplan3d-card (house.glb)" (`fp3dExport`)
+
 Builds a new `THREE.Scene` containing level groups `ground`, `attic`, `exterior`, `roof` with room/zone/object groups tagged with `userData.fp` (Q3), clones scene meshes into them (skips lights, sprites, lines, helpers, `lowZone`, light-entity items, transparent meshes with opacity <0.6 such as glass, and planes >=100 m wide i.e. ground), runs `GLTFExporter.parseAsync(root,{binary:true,maxTextureSize:2048,onlyVisible:false})`. Output: `house_house_glb.zip` with `house.glb` and a README noting levels ground (0 / 2.89) and attic (3.25 / 2.5), objects (lamp fixtures, mower, mower_dock, ev_charger, heat_pump), "plan north = house long axis", `environment.north = -26.4` (true north is 26.4 degrees west of model north; = 333.6), and instructions `model: /local/house.glb`. Plan coordinates: x = model z + 0.27, y = model x + 0.27.
 
 ### "House Plan backgrounds (PNG)" (`housePlanExport`)
+
 For three jobs (ground, attic, exterior) it switches view, forces Day mode, all lights off, hides labels/dims/markers/helper, renders an **orthographic top-down PNG** with `orthoCam(B)`:
+
 - ground and attic: box `HB = [-1.0,16.6,-3.0,11.2]` at 150 px/m -> 2340 x 2130 px; files `house_ground.png`, `house_attic.png`;
 - exterior: `ORTHO_BOX = [-6,29,-30,20]` at 60 px/m -> 2100 x 3000 px; `house_site.png`.
-Zip `house_houseplan.zip` also contains `README.txt` (Latvian) listing each image's pixel size, px/m and covered model x/z extent (top = terrace side) and steps for the "House Plan" HACS card (create a space per storey, upload PNG, outline rooms, bind HA areas). Afterwards the original view/mode is restored.
+  Zip `house_houseplan.zip` also contains `README.txt` (Latvian) listing each image's pixel size, px/m and covered model x/z extent (top = terrace side) and steps for the "House Plan" HACS card (create a space per storey, upload PNG, outline rooms, bind HA areas). Afterwards the original view/mode is restored.
 
 ---
 

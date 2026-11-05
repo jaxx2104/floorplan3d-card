@@ -2,13 +2,18 @@
 // controller is off). Pure parts (mode, reachability, fade) are unit-tested; TapHints draws them as two
 // shared THREE.Points (filled / hollow, materials made once), drawn a little towards the camera so the
 // lamp's own mesh does not hide its dot while walls in front still do.
-import * as THREE from 'three';
-import { controllersOf } from './logic.ts';
-import type { ChainState, Controller, ObjectBinding, ObjectLike } from './logic.ts';
-import type { HassEntity } from '../types/ha.ts';
-import type { Layout, LayoutTag } from '../types/layout.ts';
+import * as THREE from "three";
+import { controllersOf } from "./logic.ts";
+import type {
+  ChainState,
+  Controller,
+  ObjectBinding,
+  ObjectLike,
+} from "./logic.ts";
+import type { HassEntity } from "../types/ha.ts";
+import type { Layout, LayoutTag } from "../types/layout.ts";
 
-export type TapHintsMode = 'always' | 'off' | 'near';
+export type TapHintsMode = "always" | "off" | "near";
 /** One dot: world position, reachable (filled) or not (hollow), colour [r, g, b] (0-255). */
 export interface HintItem {
   id: string;
@@ -17,7 +22,7 @@ export interface HintItem {
   color?: readonly number[] | null;
 }
 type HintPoints = THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
-type HintKind = 'filled' | 'hollow';
+type HintKind = "filled" | "hollow";
 type States = Record<string, HassEntity>;
 
 export const HINT_RADIUS = 120; // px: near-pointer mode shows dots within this distance
@@ -25,34 +30,54 @@ export const HINT_PX = 6;
 export const HINT_OPACITY = 0.35;
 export const TOUCH_SHOW_MS = 3000;
 
-export function tapHintsMode(layout: Pick<Layout, 'tap_hints'> | null | undefined): TapHintsMode {
+export function tapHintsMode(
+  layout: Pick<Layout, "tap_hints"> | null | undefined,
+): TapHintsMode {
   const v = layout && layout.tap_hints;
-  return v === 'always' || v === 'off' ? v : 'near';
+  return v === "always" || v === "off" ? v : "near";
 }
 
-const bad = (s: HassEntity | null | undefined): boolean => !s || s.state === 'unavailable' || s.state === 'unknown';
-const nameOf = (states: States, e: string): string => (states[e] && states[e].attributes && states[e].attributes.friendly_name) || e;
+const bad = (s: HassEntity | null | undefined): boolean =>
+  !s || s.state === "unavailable" || s.state === "unknown";
+const nameOf = (states: States, e: string): string =>
+  (states[e] && states[e].attributes && states[e].attributes.friendly_name) ||
+  e;
 
 // Can a tap act on the object? { ok, reason } with the toast text when not: a controller off ("Turn on
 // first: <label>", label = tag label, else the controller's name), else something offline.
 /** Whether a tap can reach the object's entity; reason: why not (for the toast). */
-export type Reachability = { ok: true; reason: null } | { ok: false; reason: string };
+export type Reachability =
+  { ok: true; reason: null } | { ok: false; reason: string };
 export function reachability(
-  obj: Pick<ObjectLike, 'group'> | null | undefined,
+  obj: Pick<ObjectLike, "group"> | null | undefined,
   binding: (Partial<ObjectBinding> & { hidden?: boolean }) | null | undefined,
-  chain: Pick<ChainState, 'controllers'> | null | undefined,
+  chain: Pick<ChainState, "controllers"> | null | undefined,
   states: States = {},
   tags: Record<string, LayoutTag | null | undefined> = {},
 ): Reachability {
-  if (!binding || binding.hidden) return { ok: false, reason: 'Not reachable (offline)' };
-  const ctrls: Controller[] = chain && chain.controllers ? chain.controllers : controllersOf(obj, binding, tags);
-  const off = ctrls.find((c) => !bad(states[c.entity]) && states[c.entity].state !== 'on');
+  if (!binding || binding.hidden)
+    return { ok: false, reason: "Not reachable (offline)" };
+  const ctrls: Controller[] =
+    chain && chain.controllers
+      ? chain.controllers
+      : controllersOf(obj, binding, tags);
+  const off = ctrls.find(
+    (c) => !bad(states[c.entity]) && states[c.entity].state !== "on",
+  );
   if (off) {
     const t = tags[off.tag];
-    return { ok: false, reason: `Turn on first: ${(t && typeof t.label === 'string' && t.label) || nameOf(states, off.entity)}` };
+    return {
+      ok: false,
+      reason: `Turn on first: ${(t && typeof t.label === "string" && t.label) || nameOf(states, off.entity)}`,
+    };
   }
   const own = binding.entity;
-  if ((own && bad(states[own])) || ctrls.some((c) => bad(states[c.entity])) || (!own && !ctrls.length)) return { ok: false, reason: 'Not reachable (offline)' };
+  if (
+    (own && bad(states[own])) ||
+    ctrls.some((c) => bad(states[c.entity])) ||
+    (!own && !ctrls.length)
+  )
+    return { ok: false, reason: "Not reachable (offline)" };
   return { ok: true, reason: null };
 }
 
@@ -67,7 +92,9 @@ function dotTexels(hollow: boolean, n = 16): Uint8Array<ArrayBuffer> {
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const r = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
-      const a = hollow ? Math.max(0, 1 - Math.abs(r - 0.72) / 0.2) : Math.min(1, Math.max(0, (1 - r) / 0.15));
+      const a = hollow
+        ? Math.max(0, 1 - Math.abs(r - 0.72) / 0.2)
+        : Math.min(1, Math.max(0, (1 - r) / 0.15));
       const i = (y * n + x) * 4;
       out[i] = out[i + 1] = out[i + 2] = 255;
       out[i + 3] = Math.round(Math.min(1, a) * 255);
@@ -88,26 +115,49 @@ export class TapHints {
 
   constructor(parent: THREE.Object3D) {
     this.group = new THREE.Group();
-    this.group.name = 'fp-tap-hints';
+    this.group.name = "fp-tap-hints";
     this.group.userData.helper = true;
     this.group.renderOrder = 12;
     parent.add(this.group);
     const layers: Partial<Record<HintKind, HintPoints>> = {};
     this.textures = [];
-    for (const kind of ['filled', 'hollow'] as const) {
-      const tex = new THREE.DataTexture(dotTexels(kind === 'hollow'), 16, 16, THREE.RGBAFormat);
+    for (const kind of ["filled", "hollow"] as const) {
+      const tex = new THREE.DataTexture(
+        dotTexels(kind === "hollow"),
+        16,
+        16,
+        THREE.RGBAFormat,
+      );
       tex.magFilter = tex.minFilter = THREE.LinearFilter;
       tex.needsUpdate = true;
       this.textures.push(tex);
-      const mat = new THREE.PointsMaterial({ size: HINT_PX, sizeAttenuation: false, map: tex, vertexColors: true, transparent: true,
-        depthWrite: false, depthTest: true, toneMapped: false, fog: false });
+      const mat = new THREE.PointsMaterial({
+        size: HINT_PX,
+        sizeAttenuation: false,
+        map: tex,
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+        toneMapped: false,
+        fog: false,
+      });
       // drawn 0.3 m towards the camera: the lamp's own glass does not hide its dot, walls in front still do
       mat.onBeforeCompile = (sh) => {
-        sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\nmvPosition.xyz += normalize(-mvPosition.xyz) * 0.3;\ngl_Position = projectionMatrix * mvPosition;');
+        sh.vertexShader = sh.vertexShader.replace(
+          "#include <project_vertex>",
+          "#include <project_vertex>\nmvPosition.xyz += normalize(-mvPosition.xyz) * 0.3;\ngl_Position = projectionMatrix * mvPosition;",
+        );
       };
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX * 4), 4));
+      geo.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(MAX * 3), 3),
+      );
+      geo.setAttribute(
+        "color",
+        new THREE.BufferAttribute(new Float32Array(MAX * 4), 4),
+      );
       geo.setDrawRange(0, 0);
       const pts = new THREE.Points(geo, mat);
       pts.frustumCulled = false;
@@ -124,12 +174,18 @@ export class TapHints {
   }
 
   setPixelRatio(pr: number | null | undefined): void {
-    for (const p of Object.values(this.layers)) p.material.size = HINT_PX * (pr || 1);
+    for (const p of Object.values(this.layers))
+      p.material.size = HINT_PX * (pr || 1);
   }
 
   // items: [{ id, world, ok, color }]; unchanged signature: nothing to do. True when the dots changed.
   setItems(items: readonly HintItem[]): boolean {
-    const sig = items.map((i) => `${i.id}:${i.ok ? 1 : 0}:${i.color ? i.color.join(',') : ''}:${i.world.x.toFixed(3)},${i.world.y.toFixed(3)},${i.world.z.toFixed(3)}`).join(';');
+    const sig = items
+      .map(
+        (i) =>
+          `${i.id}:${i.ok ? 1 : 0}:${i.color ? i.color.join(",") : ""}:${i.world.x.toFixed(3)},${i.world.y.toFixed(3)},${i.world.z.toFixed(3)}`,
+      )
+      .join(";");
     if (sig === this.sig) return false;
     this.sig = sig;
     this.items = items.slice(0, MAX);
@@ -142,26 +198,45 @@ export class TapHints {
     let changed = false;
     for (const it of this.items) {
       const a = alphaOf(it);
-      if (this.alpha.get(it.id) !== a) { this.alpha.set(it.id, a); changed = true; }
+      if (this.alpha.get(it.id) !== a) {
+        this.alpha.set(it.id, a);
+        changed = true;
+      }
     }
     if (changed) this._write();
     return changed;
   }
 
   _write(): void {
-    const fill = this.layers.filled, hollow = this.layers.hollow;
-    let nf = 0, nh = 0;
+    const fill = this.layers.filled,
+      hollow = this.layers.hollow;
+    let nf = 0,
+      nh = 0;
     const c = new THREE.Color();
     for (const it of this.items) {
       const a = (this.alpha.get(it.id) ?? 1) * HINT_OPACITY;
       const layer = it.ok ? fill : hollow;
       const k = it.ok ? nf++ : nh++;
-      (layer.geometry.attributes.position as THREE.BufferAttribute).setXYZ(k, it.world.x, it.world.y, it.world.z);
+      (layer.geometry.attributes.position as THREE.BufferAttribute).setXYZ(
+        k,
+        it.world.x,
+        it.world.y,
+        it.world.z,
+      );
       const rgb = it.ok ? it.color || [255, 255, 255] : [158, 158, 158];
       c.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
-      (layer.geometry.attributes.color as THREE.BufferAttribute).setXYZW(k, c.r, c.g, c.b, a);
+      (layer.geometry.attributes.color as THREE.BufferAttribute).setXYZW(
+        k,
+        c.r,
+        c.g,
+        c.b,
+        a,
+      );
     }
-    for (const [layer, n] of [[fill, nf], [hollow, nh]] as const) {
+    for (const [layer, n] of [
+      [fill, nf],
+      [hollow, nh],
+    ] as const) {
       layer.geometry.setDrawRange(0, n);
       layer.geometry.attributes.position.needsUpdate = true;
       layer.geometry.attributes.color.needsUpdate = true;
@@ -175,7 +250,10 @@ export class TapHints {
   }
 
   dispose(): void {
-    for (const p of Object.values(this.layers)) { p.geometry.dispose(); p.material.dispose(); }
+    for (const p of Object.values(this.layers)) {
+      p.geometry.dispose();
+      p.material.dispose();
+    }
     for (const t of this.textures) t.dispose();
     if (this.group.parent) this.group.parent.remove(this.group);
   }

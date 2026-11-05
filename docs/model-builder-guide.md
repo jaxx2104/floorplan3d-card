@@ -28,6 +28,7 @@ into `extras` automatically. (Blender: custom properties on the object, "Include
 properties" in the glTF exporter.)
 
 Every tag has:
+
 - `kind`: `level` | `room` | `zone` | `object`
 - `id`: lowercase `a-z 0-9 _ -`, max 64, **unique per kind and stable forever**. The card binds
   everything to ids. When you re-export, a lamp that moved keeps its id. Never give an old id to
@@ -68,6 +69,7 @@ scene              (or one wrapper node, e.g. "house" with fp {views: [...]}, se
 ```
 
 Rules:
+
 1. **Levels are top-level** (or children of one wrapper node, like `house` above). Every other
    node is inside exactly one level.
 2. **One level per storey**, including basements. Fill `order` bottom-up (basement -1, ground 0,
@@ -135,16 +137,16 @@ house.userData.fp = { views: [
 
 Selectors:
 
-| selector | matches |
-|---|---|
-| `all` | the whole model |
-| `level:<id>` | a level |
-| `role:<storey\|basement\|exterior\|roof>` | every level with that role |
-| `room:<id>` / `zone:<id>` | a room or zone |
-| `object:<id>` / `type:<type>` / `group:<name>` | objects by id, type or group |
-| `tag:<name>` | objects carrying the tag (Edit → Objects; by default the object's `group` and the HA labels of its entity) |
-| `layer:<name>` | every node with that layer (below) |
-| `node:<path>` | a node by its name path from the root, `/`-separated; `*` matches within a name, `**` across levels |
+| selector                                       | matches                                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `all`                                          | the whole model                                                                                            |
+| `level:<id>`                                   | a level                                                                                                    |
+| `role:<storey\|basement\|exterior\|roof>`      | every level with that role                                                                                 |
+| `room:<id>` / `zone:<id>`                      | a room or zone                                                                                             |
+| `object:<id>` / `type:<type>` / `group:<name>` | objects by id, type or group                                                                               |
+| `tag:<name>`                                   | objects carrying the tag (Edit → Objects; by default the object's `group` and the HA labels of its entity) |
+| `layer:<name>`                                 | every node with that layer (below)                                                                         |
+| `node:<path>`                                  | a node by its name path from the root, `/`-separated; `*` matches within a name, `**` across levels        |
 
 Reference for view sets, camera presets (`fp.views[*].camera`), controls and lighting:
 [prototype-view-rules.md](prototype-view-rules.md) (the rules the prototype house uses: which
@@ -186,11 +188,11 @@ house.userData.fp = { render: {
 With the card's `quality: high` (the default) the card turns three kinds of plain `MeshStandardMaterial` into
 `MeshPhysicalMaterial`, once when the model loads (and back when the quality changes):
 
-| class | look | found by |
-|---|---|---|
-| `glass` | thin glass: smooth (roughness 0.04), reflects the sky environment, gets more opaque at grazing angles (fresnel); keeps its colour (tint) and opacity | the material or mesh name has the word `glass`, `glazing`, `pane(s)` or `window` (not `window_frame` / `window_sill`); the `glass` layer; or a see-through (`opacity` ≤ 0.6), untextured, non-glowing material |
-| `floor` | a subtle clear coat over its own roughness | the material or mesh name has `floor(s)`, `flooring`, `parquet`, `laminate`, `tile(s)`, `wood(en)`; or a flat mesh (≤ 0.4 m thick) inside a room whose top lies within 5 cm of its level's floor height. Indoors only: zones, exterior / roof levels and the terrain keep their look |
-| `fabric` | sheen (a soft rim at grazing angles) | the name has `sofa`, `couch`, `bed`, `mattress`, `curtain`, `drape`, `fabric`, `textile`, `upholstery`, `cushion`, `pillow`, `blanket`, `rug`, `carpet` (rugs and carpets are fabric, never clear-coated floors); also the name of an untagged group around the mesh (a cushion `Cube.003` in the group `Sofa`) |
+| class    | look                                                                                                                                                 | found by                                                                                                                                                                                                                                                                                                        |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `glass`  | thin glass: smooth (roughness 0.04), reflects the sky environment, gets more opaque at grazing angles (fresnel); keeps its colour (tint) and opacity | the material or mesh name has the word `glass`, `glazing`, `pane(s)` or `window` (not `window_frame` / `window_sill`); the `glass` layer; or a see-through (`opacity` ≤ 0.6), untextured, non-glowing material                                                                                                  |
+| `floor`  | a subtle clear coat over its own roughness                                                                                                           | the material or mesh name has `floor(s)`, `flooring`, `parquet`, `laminate`, `tile(s)`, `wood(en)`; or a flat mesh (≤ 0.4 m thick) inside a room whose top lies within 5 cm of its level's floor height. Indoors only: zones, exterior / roof levels and the terrain keep their look                            |
+| `fabric` | sheen (a soft rim at grazing angles)                                                                                                                 | the name has `sofa`, `couch`, `bed`, `mattress`, `curtain`, `drape`, `fabric`, `textile`, `upholstery`, `cushion`, `pillow`, `blanket`, `rug`, `carpet` (rugs and carpets are fabric, never clear-coated floors); also the name of an untagged group around the mesh (a cushion `Cube.003` in the group `Sofa`) |
 
 - Names match as words: letters on both sides break a word, so `bedroom` is no `bed` and
   `fiberglass` no `glass`; `_`, digits, spaces and `.` separate words.
@@ -335,34 +337,34 @@ What the card reads (everything else in `fp` is kept for later and ignored):
 
 ### Types
 
-| type | look in the card | tap / hold (default) | hints read |
-|---|---|---|---|
-| `light` | glow mesh emissive in the light colour (brightness / 255 × 3, less for large glow meshes) + a real light | toggle / popup | `beam`, `max`, `distance`, `decay`, `angle`, `penumbra`, `target`, `castShadow`, `offset`, `lumens` |
-| `light_strip` | the whole glow mesh emissive; a real light only when `max` is set | toggle / popup | as `light` |
-| `mower` | the node follows the mower's live position and heading; glow green mowing, amber returning, red error | popup / more-info | `front`: `+x` / `-x` / `+z` / `-z` (which local axis is the nose, default `+x`) |
-| `dock` | LED mesh lit while the mower is docked | more-info / more-info | `led`: LED mesh name (default `led`) |
-| `ev_charger` | LED green charging, blue ready, red error; a power label while charging | more-info / popup | `led` |
-| `climate` | a label with the current temperature; glow warm heating, cool cooling | more-info / popup | — |
-| `cover` | the moving part follows `current_position`: a curtain gathers (scales along `axis` about its origin, 1 closed → `min` open), a desk top lifts (`motion: "lift"`, `range` metres at 0 % / 100 % above the modelled pose) | toggle / more-info | `motion`: `gather` / `lift`, `part`: moving child name (default `moving`, else the node), `axis`: `x` / `y` / `z` local (default `x`), `min` (default 0.15), `range`: `[m at 0 %, m at 100 %]`, `path`: a bent rail `[[x, z], …]` (m, moving part frame, from the gathered end): its children (pleats) slide along it instead of scaling |
-| anything else | no change in look | more-info / popup | — |
+| type          | look in the card                                                                                                                                                                                                        | tap / hold (default)  | hints read                                                                                                                                                                                                                                                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `light`       | glow mesh emissive in the light colour (brightness / 255 × 3, less for large glow meshes) + a real light                                                                                                                | toggle / popup        | `beam`, `max`, `distance`, `decay`, `angle`, `penumbra`, `target`, `castShadow`, `offset`, `lumens`                                                                                                                                                                                                                                      |
+| `light_strip` | the whole glow mesh emissive; a real light only when `max` is set                                                                                                                                                       | toggle / popup        | as `light`                                                                                                                                                                                                                                                                                                                               |
+| `mower`       | the node follows the mower's live position and heading; glow green mowing, amber returning, red error                                                                                                                   | popup / more-info     | `front`: `+x` / `-x` / `+z` / `-z` (which local axis is the nose, default `+x`)                                                                                                                                                                                                                                                          |
+| `dock`        | LED mesh lit while the mower is docked                                                                                                                                                                                  | more-info / more-info | `led`: LED mesh name (default `led`)                                                                                                                                                                                                                                                                                                     |
+| `ev_charger`  | LED green charging, blue ready, red error; a power label while charging                                                                                                                                                 | more-info / popup     | `led`                                                                                                                                                                                                                                                                                                                                    |
+| `climate`     | a label with the current temperature; glow warm heating, cool cooling                                                                                                                                                   | more-info / popup     | —                                                                                                                                                                                                                                                                                                                                        |
+| `cover`       | the moving part follows `current_position`: a curtain gathers (scales along `axis` about its origin, 1 closed → `min` open), a desk top lifts (`motion: "lift"`, `range` metres at 0 % / 100 % above the modelled pose) | toggle / more-info    | `motion`: `gather` / `lift`, `part`: moving child name (default `moving`, else the node), `axis`: `x` / `y` / `z` local (default `x`), `min` (default 0.15), `range`: `[m at 0 %, m at 100 %]`, `path`: a bent rail `[[x, z], …]` (m, moving part frame, from the gathered end): its children (pleats) slide along it instead of scaling |
+| anything else | no change in look                                                                                                                                                                                                       | more-info / popup     | —                                                                                                                                                                                                                                                                                                                                        |
 
 Later types (`door`, `gate`, `fan`, `vacuum`, …) can be tagged already; they behave as
 `generic` until the card supports them.
 
 ### Light hints
 
-| key | meaning | default |
-|---|---|---|
-| `beam` | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light) | `point` |
-| `max` | light intensity at full brightness (real light = brightness / 255 × `max`) | 5 |
-| `distance` | metres the light reaches (0 = no limit) | 0 |
-| `decay` | fall-off (2 = physical) | 2 |
-| `angle` | spot cone, degrees (5–80) | 24 |
-| `penumbra` | spot edge softness 0–1 | 0.6 |
-| `target` | `[x, y, z]` model point a spot aims at | straight down |
-| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters | true |
-| `offset` | `[x, y, z]` metres added to the light position (model axes) | none |
-| `lumens` | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) | 800 (spots 300) |
+| key          | meaning                                                                                                                       | default         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `beam`       | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light)                      | `point`         |
+| `max`        | light intensity at full brightness (real light = brightness / 255 × `max`)                                                    | 5               |
+| `distance`   | metres the light reaches (0 = no limit)                                                                                       | 0               |
+| `decay`      | fall-off (2 = physical)                                                                                                       | 2               |
+| `angle`      | spot cone, degrees (5–80)                                                                                                     | 24              |
+| `penumbra`   | spot edge softness 0–1                                                                                                        | 0.6             |
+| `target`     | `[x, y, z]` model point a spot aims at                                                                                        | straight down   |
+| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters                                                                  | true            |
+| `offset`     | `[x, y, z]` metres added to the light position (model axes)                                                                   | none            |
+| `lumens`     | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) | 800 (spots 300) |
 
 The card owns a fixed pool of 12 real lights (8 point, 4 spot) and gives them to the lit fixtures in
 view, largest `max` first; the rest glow without a light. At most 4 point fixtures without a group

@@ -1,30 +1,36 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>floorplan3d-card demo</title>
-  <style>
-    body { margin: 0; font-family: Roboto, system-ui, sans-serif; background: #e9ecef; }
-    main { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
-    .theme { padding: 16px; }
-    .theme h2 { margin: 0 0 10px; font-size: 14px; font-weight: 500; color: var(--secondary-text-color); }
-    .light { background: #fafafa; --card-background-color: #ffffff; --primary-text-color: #212121;
-      --secondary-text-color: #727272; --divider-color: rgba(0, 0, 0, .12); --primary-color: #03a9f4;
-      --text-primary-color: #fff; --state-light-active-color: #ff9800; }
-    .dark { background: #111111; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1;
-      --secondary-text-color: #9b9b9b; --divider-color: rgba(225, 225, 225, .12); --primary-color: #03a9f4;
-      --text-primary-color: #fff; --state-light-active-color: #ff9800; }
-    #log { position: fixed; bottom: 8px; right: 12px; font: 12px monospace; color: #888; }
-  </style>
-</head>
-<body>
-  <main>
-    <section class="theme light"><h2>Light theme</h2><floorplan3d-card></floorplan3d-card></section>
-    <section class="theme dark"><h2>Dark theme</h2><floorplan3d-card></floorplan3d-card></section>
-  </main>
-  <div id="log"></div>
-  <script type="module" src="../dist/floorplan3d-card.js"></script>
-  <script type="module" src="../dist/demo.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>floorplan3d-card demo</title>
+    <style>
+      body { margin: 0; font-family: Roboto, system-ui, sans-serif; background: #e9ecef; }
+      main { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+      .theme { padding: 16px; }
+      .theme h2 { margin: 0 0 10px; font-size: 14px; font-weight: 500; color: var(--secondary-text-color); }
+      .light { background: #fafafa; --card-background-color: #ffffff; --primary-text-color: #212121;
+        --secondary-text-color: #727272; --divider-color: rgba(0, 0, 0, .12); --primary-color: #03a9f4;
+        --text-primary-color: #fff; --state-light-active-color: #ff9800; }
+      .dark { background: #111111; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1;
+        --secondary-text-color: #9b9b9b; --divider-color: rgba(225, 225, 225, .12); --primary-color: #03a9f4;
+        --text-primary-color: #fff; --state-light-active-color: #ff9800; }
+      #log { position: fixed; bottom: 8px; right: 12px; font: 12px monospace; color: #888; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="theme light">
+        <h2>Light theme</h2>
+        <floorplan3d-card></floorplan3d-card>
+      </section>
+      <section class="theme dark">
+        <h2>Dark theme</h2>
+        <floorplan3d-card></floorplan3d-card>
+      </section>
+    </main>
+    <div id="log"></div>
+    <script type="module" src="../dist/floorplan3d-card.js"></script>
+    <script type="module" src="../dist/demo.js"></script>
+  </body>
 </html>

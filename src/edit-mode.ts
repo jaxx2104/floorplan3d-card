@@ -7,53 +7,107 @@
 // tools/* (drawing, outline picking, drags, handles, map pickers, rotation centre, the Views pick menu)
 // and tabs/* (each tab's template with its event handlers). Those take the EditMode as `ed`.
 
-import * as E from './editor.ts';
-import { roomFloorId } from './layout.ts';
-import { createPanel, requestRender, renderNow, setSaveState, onStates } from './edit/panel.ts';
-import { canvasDown, canvasMove, canvasUp, canvasDownCapture, onKeyDown, syncStageClasses } from './edit/router.ts';
-import { traceOutline } from './edit/tools/pick-outline.ts';
-import { markerDown, dragMove, dragEnd, endWindowDrag } from './edit/tools/drag.ts';
-import { refreshOverlay } from './edit/tools/handles.ts';
-import { closePicker } from './edit/tools/map-tools.ts';
-import { closeMenu } from './edit/tools/view-menu.ts';
-import { selectObject } from './edit/tabs/objects.ts';
-import { onViewChanged } from './edit/tabs/views.ts';
-import { onModelLoaded, setModelProps } from './edit/tabs/model.ts';
+import * as E from "./editor.ts";
+import { roomFloorId } from "./layout.ts";
+import {
+  createPanel,
+  requestRender,
+  renderNow,
+  setSaveState,
+  onStates,
+} from "./edit/panel.ts";
+import {
+  canvasDown,
+  canvasMove,
+  canvasUp,
+  canvasDownCapture,
+  onKeyDown,
+  syncStageClasses,
+} from "./edit/router.ts";
+import { traceOutline } from "./edit/tools/pick-outline.ts";
+import {
+  markerDown,
+  dragMove,
+  dragEnd,
+  endWindowDrag,
+} from "./edit/tools/drag.ts";
+import { refreshOverlay } from "./edit/tools/handles.ts";
+import { closePicker } from "./edit/tools/map-tools.ts";
+import { closeMenu } from "./edit/tools/view-menu.ts";
+import { selectObject } from "./edit/tabs/objects.ts";
+import { onViewChanged } from "./edit/tabs/views.ts";
+import { onModelLoaded, setModelProps } from "./edit/tabs/model.ts";
 
-import type { Mesh, Object3D } from 'three';
-import type { FloorplanView } from './view.ts';
-import type { Hass } from './types/ha.ts';
-import type { Floorplan3dCard } from './card-impl.ts';
-import type { MarkerPosition } from './layout.ts';
-import type { ModelIndex } from './view/model.ts';
-import type { TabId } from './edit/tabs/index.ts';
-import type { TreeRows } from './edit/tabs/views.ts';
-import type { MapPicker, PickerPoint } from './map-picker.ts';
-import type { PinInput, SnapResult } from './editor.ts';
-import type { Floor, Layout, LayoutModel, LayoutPin, LayoutRoom, MapColorKind, PlanPoint } from './types/layout.ts';
-import type { OutlineGrid } from './outline.ts';
+import type { Mesh, Object3D } from "three";
+import type { FloorplanView } from "./view.ts";
+import type { Hass } from "./types/ha.ts";
+import type { Floorplan3dCard } from "./card-impl.ts";
+import type { MarkerPosition } from "./layout.ts";
+import type { ModelIndex } from "./view/model.ts";
+import type { TabId } from "./edit/tabs/index.ts";
+import type { TreeRows } from "./edit/tabs/views.ts";
+import type { MapPicker, PickerPoint } from "./map-picker.ts";
+import type { PinInput, SnapResult } from "./editor.ts";
+import type {
+  Floor,
+  Layout,
+  LayoutModel,
+  LayoutPin,
+  LayoutRoom,
+  MapColorKind,
+  PlanPoint,
+} from "./types/layout.ts";
+import type { OutlineGrid } from "./outline.ts";
 
 // ---------- edit state ----------
-export interface Drawing { areaId: string; floorId: string; points: PlanPoint[]; cursor: SnapResult | null }
-export interface Picking { areaId: string; busy: boolean; poly: PlanPoint[] | null; floorId?: string }
+export interface Drawing {
+  areaId: string;
+  floorId: string;
+  points: PlanPoint[];
+  cursor: SnapResult | null;
+}
+export interface Picking {
+  areaId: string;
+  busy: boolean;
+  poly: PlanPoint[] | null;
+  floorId?: string;
+}
 /** false: off; true: the mower icon colour; else the map colour category (3D click on the overlay). */
 export type ColorPick = boolean | MapColorKind;
-export interface AlignPair extends PickerPoint { plan: PlanPoint }
+export interface AlignPair extends PickerPoint {
+  plan: PlanPoint;
+}
 export interface Aligning {
   pairs: AlignPair[];
   pending: PickerPoint | null;
   /** the overlay alignment when it started: Cancel / Esc put it back */
   start?: { x: number; y: number; rotation: number; width: number };
 }
-export interface EditMessage { text: string; error?: boolean; warn?: boolean }
+export interface EditMessage {
+  text: string;
+  error?: boolean;
+  warn?: boolean;
+}
 /** Model tab: the part clicked in 3D (untagged parts have only a path). */
-export interface ModelPick { kind: string; id?: string; path?: string }
-export interface StickMove { id: string; from: LayoutPin; pin: PinInput }
+export interface ModelPick {
+  kind: string;
+  id?: string;
+  path?: string;
+}
+export interface StickMove {
+  id: string;
+  from: LayoutPin;
+  pin: PinInput;
+}
 
-interface DragBase { start: [number, number]; moved: boolean; raf?: number }
+interface DragBase {
+  start: [number, number];
+  moved: boolean;
+  raf?: number;
+}
 /** A room corner (vertex) or edge midpoint (mid: becomes a vertex drag on the first move). */
 export interface RoomDrag extends DragBase {
-  kind: 'vertex' | 'mid';
+  kind: "vertex" | "mid";
   roomId: string;
   /** the corner dragged (mid: set on the first move) */
   index: number;
@@ -63,7 +117,7 @@ export interface RoomDrag extends DragBase {
   preview?: LayoutRoom;
 }
 export interface MarkerDrag extends DragBase {
-  kind: 'marker';
+  kind: "marker";
   id: string;
   pos: MarkerPosition;
   last?: { clientX: number; clientY: number };
@@ -72,7 +126,7 @@ export interface MarkerDrag extends DragBase {
   snapped?: boolean;
 }
 export interface OverlayDrag extends DragBase {
-  kind: 'overlay';
+  kind: "overlay";
   plan: PlanPoint;
   origin: [number, number];
   floorId: string;
@@ -80,7 +134,10 @@ export interface OverlayDrag extends DragBase {
 export type Drag = RoomDrag | MarkerDrag | OverlayDrag;
 
 /** Traced floor outlines per mesh piece and height (pick-outline). */
-export interface OutlineEntry { grid?: OutlineGrid | null; loops?: PlanPoint[][] }
+export interface OutlineEntry {
+  grid?: OutlineGrid | null;
+  loops?: PlanPoint[][];
+}
 
 const SNAP_PX = 10; // snap radius never smaller than this many screen pixels
 
@@ -114,7 +171,7 @@ export class EditMode {
   _down: [number, number] | null;
   _numTimer: ReturnType<typeof setTimeout> | undefined;
   /** a render is queued: at the end of the task ('soon') or on the next frame (hass updates) */
-  _renderQueued: 'soon' | 'frame' | null;
+  _renderQueued: "soon" | "frame" | null;
   /** panel values being edited that are not saved yet (a dragged slider, a typed entity id) */
   drafts: Map<string, string>;
   _reportOpen: boolean;
@@ -139,7 +196,7 @@ export class EditMode {
 
   constructor(card: Floorplan3dCard) {
     this.card = card;
-    this.tab = 'rooms';
+    this.tab = "rooms";
     this.selectedRoom = null;
     this.selectedMarker = null;
     this.drawing = null; // { areaId, floorId, points, cursor }
@@ -155,7 +212,7 @@ export class EditMode {
     this.drag = null;
     this.confirmDelete = false;
     this.confirmModelDelete = false;
-    this.saveState = '';
+    this.saveState = "";
     this.message = null; // { text, error }
     this.picker = null; // the open MapPicker (2D map image)
     this.pivoting = false; // "Set rotation centre" waiting for a click
@@ -182,27 +239,41 @@ export class EditMode {
     this.vwExpanded = new Set<string>(); // room/zone rows showing their objects
     this.objExpanded = new Set<string>(); // Objects tab: room rows showing their objects (collapsed by default)
     this.objSel = null; // Objects tab: object picked in 3D / its row
-    this.objTagFilter = ''; // Objects tab: show only objects with this tag ('' = all)
-    this.objTagBulk = ''; // Objects tab: the tag typed for Add tag / Remove tag
+    this.objTagFilter = ""; // Objects tab: show only objects with this tag ('' = all)
+    this.objTagBulk = ""; // Objects tab: the tag typed for Add tag / Remove tag
     this.objPicked = new Set<string>(); // Objects tab: multi-select for Add tag / Remove tag
     this.menu = null;
-    this._onMenuAway = (e: PointerEvent) => { if (this.menu && !e.composedPath().includes(this.menu)) closeMenu(this); };
+    this._onMenuAway = (e: PointerEvent) => {
+      if (this.menu && !e.composedPath().includes(this.menu)) closeMenu(this);
+    };
   }
 
-  get layout(): Layout { return this.card._layout!; } // edit mode opens on a loaded layout
-  get hass(): Hass { return this.card._hass; }
-  get view(): FloorplanView { return this.card._view; }
-  get floors(): Floor[] { return this.card._floors || []; }
+  get layout(): Layout {
+    return this.card._layout!;
+  } // edit mode opens on a loaded layout
+  get hass(): Hass {
+    return this.card._hass;
+  }
+  get view(): FloorplanView {
+    return this.card._view;
+  }
+  get floors(): Floor[] {
+    return this.card._floors || [];
+  }
 
   // The floor that "Place", drawing and the door tool work on: the floor shown on its own, the view's
   // single linked floor, else (overview, several or no linked floors) the HA floor of the view's
   // primary level, else the first floor.
   activeFloor(): string {
-    const c = this.card, has = (id: string | null | undefined): id is string => !!id && this.floors.some((f) => f.id === id);
+    const c = this.card,
+      has = (id: string | null | undefined): id is string =>
+        !!id && this.floors.some((f) => f.id === id);
     if (c._floorOnly && has(c._floor)) return c._floor;
     const st = c._viewState;
-    if (st && !st.allFloors && st.floors.length === 1 && has(st.floors[0])) return st.floors[0];
-    const prim = st && st.primary && c._levels ? c._levels.levelFloor[st.primary] : null;
+    if (st && !st.allFloors && st.floors.length === 1 && has(st.floors[0]))
+      return st.floors[0];
+    const prim =
+      st && st.primary && c._levels ? c._levels.levelFloor[st.primary] : null;
     if (has(prim)) return prim;
     if (!st && has(c._floor)) return c._floor;
     return this.floors[0].id;
@@ -217,11 +288,14 @@ export class EditMode {
   }
 
   snapRadius(): number {
-    return Math.max(E.SNAP_RADIUS, SNAP_PX / Math.max(this.view.pixelsPerMetre(), 1e-6));
+    return Math.max(
+      E.SNAP_RADIUS,
+      SNAP_PX / Math.max(this.view.pixelsPerMetre(), 1e-6),
+    );
   }
 
   enter() {
-    window.addEventListener('keydown', this._onKey);
+    window.addEventListener("keydown", this._onKey);
     this.view.setStems(true);
     this.render();
     refreshOverlay(this);
@@ -230,17 +304,17 @@ export class EditMode {
 
   // card detached while editing / attached again: window listeners off / on (state kept)
   detach() {
-    window.removeEventListener('keydown', this._onKey);
+    window.removeEventListener("keydown", this._onKey);
     endWindowDrag(this);
     closeMenu(this);
   }
 
   attach() {
-    window.addEventListener('keydown', this._onKey);
+    window.addEventListener("keydown", this._onKey);
   }
 
   exit() {
-    window.removeEventListener('keydown', this._onKey);
+    window.removeEventListener("keydown", this._onKey);
     closePicker(this);
     endWindowDrag(this);
     this.drawing = null;
@@ -266,7 +340,8 @@ export class EditMode {
 
   // called by the card after every rebuild
   afterUpdate() {
-    if (this.selectedRoom && !this.room(this.selectedRoom)) this.selectedRoom = null;
+    if (this.selectedRoom && !this.room(this.selectedRoom))
+      this.selectedRoom = null;
     this.card._applyMarkerSelection(this.selectedMarker);
     refreshOverlay(this);
     this.render();
@@ -281,7 +356,7 @@ export class EditMode {
     this.selectedMarker = null;
     this.doorMode = false;
     this.confirmDelete = false;
-    if (id) this.tab = 'rooms';
+    if (id) this.tab = "rooms";
     this.card._applyMarkerSelection(null);
     refreshOverlay(this);
     this.render();
@@ -291,28 +366,58 @@ export class EditMode {
     this.selectedMarker = id;
     this.selectedRoom = null;
     this.doorMode = false;
-    if (id) this.tab = 'devices';
+    if (id) this.tab = "devices";
     this.card._applyMarkerSelection(id);
     refreshOverlay(this);
     this.render();
   }
 
   // ---------- facade: the card's listeners and hooks, and the headless checks ----------
-  setSaveState(s: string) { setSaveState(this, s); }
+  setSaveState(s: string) {
+    setSaveState(this, s);
+  }
   /** queues a panel render (coalesced) */
-  render() { requestRender(this); }
+  render() {
+    requestRender(this);
+  }
   /** renders the panel now (to scroll to a row it just showed) */
-  renderNow() { renderNow(this); }
-  onStates() { onStates(this); }
-  onModelLoaded(changed = true) { onModelLoaded(this, changed); }
-  onViewChanged() { onViewChanged(this); }
-  selectObject(id: string) { selectObject(this, id); }
-  setModelProps(patch: Partial<LayoutModel>, rerender = true) { setModelProps(this, patch, rerender); }
-  canvasDown(e: PointerEvent) { canvasDown(this, e); }
-  canvasMove(e: PointerEvent) { canvasMove(this, e); }
-  canvasUp(e: PointerEvent) { canvasUp(this, e); }
-  canvasDownCapture(e: PointerEvent) { canvasDownCapture(this, e); }
-  markerDown(m: { id: string }, e: PointerEvent) { markerDown(this, m, e); }
-  _syncStageClasses() { syncStageClasses(this); }
-  _traceOutline(mesh: Mesh, hit: number[]) { return traceOutline(this, mesh, hit); }
+  renderNow() {
+    renderNow(this);
+  }
+  onStates() {
+    onStates(this);
+  }
+  onModelLoaded(changed = true) {
+    onModelLoaded(this, changed);
+  }
+  onViewChanged() {
+    onViewChanged(this);
+  }
+  selectObject(id: string) {
+    selectObject(this, id);
+  }
+  setModelProps(patch: Partial<LayoutModel>, rerender = true) {
+    setModelProps(this, patch, rerender);
+  }
+  canvasDown(e: PointerEvent) {
+    canvasDown(this, e);
+  }
+  canvasMove(e: PointerEvent) {
+    canvasMove(this, e);
+  }
+  canvasUp(e: PointerEvent) {
+    canvasUp(this, e);
+  }
+  canvasDownCapture(e: PointerEvent) {
+    canvasDownCapture(this, e);
+  }
+  markerDown(m: { id: string }, e: PointerEvent) {
+    markerDown(this, m, e);
+  }
+  _syncStageClasses() {
+    syncStageClasses(this);
+  }
+  _traceOutline(mesh: Mesh, hit: number[]) {
+    return traceOutline(this, mesh, hit);
+  }
 }

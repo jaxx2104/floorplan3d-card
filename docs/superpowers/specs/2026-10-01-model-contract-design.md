@@ -6,12 +6,13 @@ Date: 2026-10-01
 ## Goal
 
 A house model (.glb) is built once by a separate design session and uploaded to the card. It
-describes *what exists* (levels, rooms, outdoor zones, fixtures such as lamps, a charging
+describes _what exists_ (levels, rooms, outdoor zones, fixtures such as lamps, a charging
 station, the mower). Everything that connects it to Home Assistant (which HA floor a level is,
 which area a room is, which entity drives a lamp, what a tap does, what a popup shows) is set in
 the card and stored in the shared layout. Regenerating the model never loses those settings.
 
 Success looks like:
+
 - The design session follows one guide (`docs/model-builder-guide.md`) and its model plugs in
   without HA ids baked in.
 - In the card you click a level, room or object and assign it; lamps then glow when on, the
@@ -42,29 +43,31 @@ Each gets its own implementation plan; they share the vocabulary in this spec.
 ## 1. The model contract
 
 ### Coordinates and units
+
 Unchanged from today: metres, glTF Y up, plan x = east, plan y = north = -Z. "North" is the
 model's north (usually along the house); the real compass offset is set in the card (section 6).
 
 ### `fp` tags
+
 Any node may carry `extras.fp` (glTF node extras). GLTFLoader exposes them as `userData.fp`.
 Fields common to all kinds:
 
-| field | required | meaning |
-|---|---|---|
-| `kind` | yes | `level` \| `room` \| `zone` \| `object` |
-| `id` | yes | stable id, `[a-z0-9_-]{1,64}`, unique per kind. Bindings hang on it. Never reuse an id for something else. |
-| `label` | no | human name shown in the card (falls back to `id`) |
+| field   | required | meaning                                                                                                    |
+| ------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `kind`  | yes      | `level` \| `room` \| `zone` \| `object`                                                                    |
+| `id`    | yes      | stable id, `[a-z0-9_-]{1,64}`, unique per kind. Bindings hang on it. Never reuse an id for something else. |
+| `label` | no       | human name shown in the card (falls back to `id`)                                                          |
 
 Per kind:
 
 **level**: a storey or a layer of the scene.
 
-| field | meaning |
-|---|---|
-| `role` | `storey` (default) \| `basement` \| `exterior` \| `roof` |
-| `order` | integer, bottom-up (basement -1, ground 0, first 1 …). Used for automatic floor matching. |
-| `elevation` | finished floor height in metres (top of slab) |
-| `height` | clear ceiling height in metres |
+| field       | meaning                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `role`      | `storey` (default) \| `basement` \| `exterior` \| `roof`                                  |
+| `order`     | integer, bottom-up (basement -1, ground 0, first 1 …). Used for automatic floor matching. |
+| `elevation` | finished floor height in metres (top of slab)                                             |
+| `height`    | clear ceiling height in metres                                                            |
 
 Everything belonging to a level is a descendant of the level node. Levels are top-level nodes
 (or children of a single wrapper node). Exterior (garden, drive, fence, lawn) is a level with
@@ -72,11 +75,11 @@ Everything belonging to a level is a descendant of the level node. Levels are to
 
 **room** (indoor) and **zone** (outdoor area: terrace, garden, driveway):
 
-| field | meaning |
-|---|---|
+| field     | meaning                                                                     |
+| --------- | --------------------------------------------------------------------------- |
 | `outline` | polygon `[[x, y], …]` in plan metres, inner floor outline, no closing point |
-| `doors` | optional `[[x, y], …]` points on the outline where openings are |
-| `suggest` | optional `{ "area": "<ha area id>" }` |
+| `doors`   | optional `[[x, y], …]` points on the outline where openings are             |
+| `suggest` | optional `{ "area": "<ha area id>" }`                                       |
 
 A room/zone node must be inside a level node. Its descendants are the room's own geometry
 (floor slab, optional furniture). Rooms derived from the model replace drawn rooms for the same
@@ -84,19 +87,20 @@ area (section 3).
 
 **object**: a fixture or device.
 
-| field | meaning |
-|---|---|
-| `type` | id from the type catalogue (section 5); unknown types fall back to `generic` |
-| `group` | optional: objects with the same group can be bound in one go |
-| `glow` | optional: name of the child mesh (or material) that lights up / changes colour; default: the whole object |
-| `anchor` | optional `[x, y, z]` local point for labels, light origin, popup anchor; default: bounding-box centre |
-| `hints` | type-specific settings (section 5) |
-| `suggest` | optional `{ "entity": "light.x", "domain": "light", "area": "terrace" }` |
-| `ui` | optional default controls: `{ "tap": <action>, "hold": <action>, "double_tap": <action>, "popup": [<row>, …] }` |
+| field     | meaning                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------- |
+| `type`    | id from the type catalogue (section 5); unknown types fall back to `generic`                                    |
+| `group`   | optional: objects with the same group can be bound in one go                                                    |
+| `glow`    | optional: name of the child mesh (or material) that lights up / changes colour; default: the whole object       |
+| `anchor`  | optional `[x, y, z]` local point for labels, light origin, popup anchor; default: bounding-box centre           |
+| `hints`   | type-specific settings (section 5)                                                                              |
+| `suggest` | optional `{ "entity": "light.x", "domain": "light", "area": "terrace" }`                                        |
+| `ui`      | optional default controls: `{ "tap": <action>, "hold": <action>, "double_tap": <action>, "popup": [<row>, …] }` |
 
 An object node belongs to the level (and room/zone) it sits under.
 
 ### Name fallback
+
 Tools that cannot write extras may encode the tag in the node name:
 `fp:<kind>:<id>` for level/room/zone and `fp:<type>:<id>` for objects (the token is an object
 type when it is not one of the four kinds). The legacy `floor:<id>` name is read as
@@ -104,6 +108,7 @@ type when it is not one of the four kinds). The legacy `floor:<id>` name is read
 `exterior`. Extras win over names.
 
 ### Untagged nodes
+
 Allowed. They are scenery of the level they sit under. In the card any mesh can still be
 clicked and turned into an object; that binding is stored by node path (section 2) and
 survives a re-export only while the path is unchanged.
@@ -180,6 +185,7 @@ The Model tab gains three lists: **Levels**, **Rooms & zones**, **Objects**, eac
 the Model tab open picks the nearest tagged ancestor of the hit mesh (object > room/zone >
 level); untagged meshes offer "Make this an object". The picked node is outlined and its panel
 opens:
+
 - level: HA floor select + show mode
 - room/zone: HA area select (with "create area" link to HA)
 - object: type select, entity picker (candidates first), extra entities, hints (generated from
@@ -198,6 +204,7 @@ object replaces it). Markers for devices not bound to any object still appear as
 ## 5. Types
 
 ### Module interface
+
 ```js
 export default {
   id: 'light', label: 'Light',
@@ -211,6 +218,7 @@ export default {
   dispose(state) {},
 };
 ```
+
 `ctx` gives: the object node, its glow meshes, anchor (world), resolved hints, primary and extra
 state objects, theme, environment (night factor, sun), and helpers `addLight`, `addSprite`,
 `addParticles`, `addLabel`, `setEmissive`, `requestFrame` (for animating types). Types are
@@ -222,23 +230,23 @@ request frames while animating.
 
 ### Catalogue v1
 
-| type | domains | behaviour | hints | default tap / hold / popup |
-|---|---|---|---|---|
-| `light` | light | glow mesh emissive + light in HA colour (rgb/hs/colour temp) and brightness | `beam` point/spot/up/down, `range`, `angle` | toggle / popup / toggle, brightness, color |
-| `light_strip` | light | whole glow mesh emissive along its length | — | toggle / popup / toggle, brightness, color |
-| `mower` | lawn_mower | follows the live position (Mower tab calibration), turns to heading, status colour | `front` +x/-x/+z/-z | popup / more-info / mower_controls, battery |
-| `vacuum` | vacuum | same as mower, indoors (position from the vacuum's attributes if present, else stays docked) | `front` | popup / more-info / vacuum_controls, battery |
-| `dock` | binary_sensor, sensor, lawn_mower | LED colour: charging / docked / error / idle | `led` mesh name | more-info / more-info / state |
-| `ev_charger` | sensor, switch, binary_sensor | LED + charge level ring | — | popup / more-info / state, attributes |
-| `door` `window` `gate` `garage_door` | binary_sensor, cover, lock | opens on hinge/track; partial with `current_position`; else colour when open | `opens` swing/slide/roll/tilt, `hinge` [x,y,z], `axis`, `travel` (deg or m) | more-info / more-info / state |
-| `cover` | cover | slides/rolls to `current_position` | `direction`, `travel` | popup / more-info / cover_controls |
-| `fan` | fan | spins around `axis`, speed from `percentage` | `axis` | toggle / popup / toggle, speed |
-| `climate` | climate | warm/cool glow while heating/cooling | — | more-info / more-info / — |
-| `screen` | media_player | screen mesh lights while playing | — | more-info / more-info / — |
-| `sprinkler` | valve, switch | spray particles while on | `direction`, `reach` | toggle / popup / toggle |
-| `camera` | camera | view cone; tap opens the stream | `fov`, `range` | more-info / more-info / — |
-| `display` | sensor, any | floating value label at the anchor | `format` (e.g. `{state} {unit}`) | more-info / more-info / — |
-| `generic` | any | highlight when the state is "on-like" | — | more-info / more-info / state |
+| type                                 | domains                           | behaviour                                                                                    | hints                                                                       | default tap / hold / popup                   |
+| ------------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
+| `light`                              | light                             | glow mesh emissive + light in HA colour (rgb/hs/colour temp) and brightness                  | `beam` point/spot/up/down, `range`, `angle`                                 | toggle / popup / toggle, brightness, color   |
+| `light_strip`                        | light                             | whole glow mesh emissive along its length                                                    | —                                                                           | toggle / popup / toggle, brightness, color   |
+| `mower`                              | lawn_mower                        | follows the live position (Mower tab calibration), turns to heading, status colour           | `front` +x/-x/+z/-z                                                         | popup / more-info / mower_controls, battery  |
+| `vacuum`                             | vacuum                            | same as mower, indoors (position from the vacuum's attributes if present, else stays docked) | `front`                                                                     | popup / more-info / vacuum_controls, battery |
+| `dock`                               | binary_sensor, sensor, lawn_mower | LED colour: charging / docked / error / idle                                                 | `led` mesh name                                                             | more-info / more-info / state                |
+| `ev_charger`                         | sensor, switch, binary_sensor     | LED + charge level ring                                                                      | —                                                                           | popup / more-info / state, attributes        |
+| `door` `window` `gate` `garage_door` | binary_sensor, cover, lock        | opens on hinge/track; partial with `current_position`; else colour when open                 | `opens` swing/slide/roll/tilt, `hinge` [x,y,z], `axis`, `travel` (deg or m) | more-info / more-info / state                |
+| `cover`                              | cover                             | slides/rolls to `current_position`                                                           | `direction`, `travel`                                                       | popup / more-info / cover_controls           |
+| `fan`                                | fan                               | spins around `axis`, speed from `percentage`                                                 | `axis`                                                                      | toggle / popup / toggle, speed               |
+| `climate`                            | climate                           | warm/cool glow while heating/cooling                                                         | —                                                                           | more-info / more-info / —                    |
+| `screen`                             | media_player                      | screen mesh lights while playing                                                             | —                                                                           | more-info / more-info / —                    |
+| `sprinkler`                          | valve, switch                     | spray particles while on                                                                     | `direction`, `reach`                                                        | toggle / popup / toggle                      |
+| `camera`                             | camera                            | view cone; tap opens the stream                                                              | `fov`, `range`                                                              | more-info / more-info / —                    |
+| `display`                            | sensor, any                       | floating value label at the anchor                                                           | `format` (e.g. `{state} {unit}`)                                            | more-info / more-info / —                    |
+| `generic`                            | any                               | highlight when the state is "on-like"                                                        | —                                                                           | more-info / more-info / state                |
 
 Popup rows: `toggle`, `brightness`, `color`, `color_temp`, `speed`, `cover_controls`,
 `mower_controls`, `vacuum_controls`, `battery`, `state`, `attributes`,
@@ -252,6 +260,7 @@ Actions (same shape as HA dashboard actions):
 ## 6. Environment
 
 `layout.environment = { sun: 'sun.sun', weather: 'weather.home', north: 26, shadows: false }`.
+
 - `north`: degrees clockwise from model north to true north (set in the card, with a compass
   preview). Also offered to the Mower tab as the default GPS rotation.
 - sun: directional light from `azimuth`/`elevation` corrected by `north`; sky/background tint and

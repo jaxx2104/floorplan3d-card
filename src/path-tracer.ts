@@ -22,10 +22,17 @@
 // (cloud shadows, contact shadows, PCSS, city windows, sway, probes and baked lightmaps: the trace computes the
 // indirect light itself), clipping (the view does not trace while a cut-away or section clips), and the post
 // passes (ambient occlusion, bloom, bokeh / grade): they stay in the raster frame below while the trace fades in.
-import * as THREE from 'three';
-import { WebGLPathTracer } from 'three-gpu-pathtracer';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { STILL_BOUNCES, STILL_DENOISE, STILL_SAMPLE_MAX, STILL_SCALE, STILL_TILES, STILL_TRANSMISSIVE_BOUNCES } from './still.ts';
+import * as THREE from "three";
+import { WebGLPathTracer } from "three-gpu-pathtracer";
+import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import {
+  STILL_BOUNCES,
+  STILL_DENOISE,
+  STILL_SAMPLE_MAX,
+  STILL_SCALE,
+  STILL_TILES,
+  STILL_TRANSMISSIVE_BOUNCES,
+} from "./still.ts";
 
 /** What a session traces. */
 export interface TraceSource {
@@ -61,17 +68,33 @@ interface TracerInternals {
 // A material's state the trace reads: when it changes the materials are uploaded again.
 function materialSig(m: THREE.Material): string {
   const s = m as Partial<THREE.MeshPhysicalMaterial>;
-  const hex = (c: THREE.Color | undefined) => (c ? c.getHexString() : '-');
-  return [m.uuid, m.version, hex(s.color), hex(s.emissive), s.emissiveIntensity ?? 0, m.opacity, s.roughness ?? '', s.metalness ?? '', s.transmission ?? '', m.visible ? 1 : 0].join(':');
+  const hex = (c: THREE.Color | undefined) => (c ? c.getHexString() : "-");
+  return [
+    m.uuid,
+    m.version,
+    hex(s.color),
+    hex(s.emissive),
+    s.emissiveIntensity ?? 0,
+    m.opacity,
+    s.roughness ?? "",
+    s.metalness ?? "",
+    s.transmission ?? "",
+    m.visible ? 1 : 0,
+  ].join(":");
 }
 
 // Copies a texture to the drawing buffer as it is (no tone mapping, no colour conversion): the raster frame.
 function copyMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: { map: { value: null } },
-    vertexShader: 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }',
-    fragmentShader: 'uniform sampler2D map;\nvarying vec2 vUv;\nvoid main() { gl_FragColor = texture2D( map, vUv ); }',
-    depthTest: false, depthWrite: false, blending: THREE.NoBlending, toneMapped: false,
+    vertexShader:
+      "varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }",
+    fragmentShader:
+      "uniform sampler2D map;\nvarying vec2 vUv;\nvoid main() { gl_FragColor = texture2D( map, vUv ); }",
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NoBlending,
+    toneMapped: false,
   });
 }
 
@@ -79,18 +102,23 @@ function copyMaterial(): THREE.ShaderMaterial {
 // a dozen lights, so a rare path that finds it (or a lamp's bright bounce) would stay a white dot for hundreds of
 // samples. Slightly biased (the brightest light paths are dimmed), never visible on the lamp glows (tone mapped white).
 export function clampSamples(material: THREE.ShaderMaterial): void {
-  const end = 'gl_FragColor.a *= opacity;';
-  if (material.fragmentShader.split(end).length !== 2) throw new Error('floorplan3d: unexpected path tracing shader');
-  material.fragmentShader = material.fragmentShader.replace(end, `if ( any( isnan( gl_FragColor.rgb ) ) || any( isinf( gl_FragColor.rgb ) ) ) gl_FragColor.rgb = vec3( 0.0 );
+  const end = "gl_FragColor.a *= opacity;";
+  if (material.fragmentShader.split(end).length !== 2)
+    throw new Error("floorplan3d: unexpected path tracing shader");
+  material.fragmentShader = material.fragmentShader.replace(
+    end,
+    `if ( any( isnan( gl_FragColor.rgb ) ) || any( isinf( gl_FragColor.rgb ) ) ) gl_FragColor.rgb = vec3( 0.0 );
     { float l = dot( gl_FragColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ); if ( l > ${STILL_SAMPLE_MAX.toFixed(1)} ) gl_FragColor.rgb *= ${STILL_SAMPLE_MAX.toFixed(1)} / l; }
-    ${end}`);
+    ${end}`,
+  );
   material.needsUpdate = true;
 }
 
 // Lift (m) of a polygon-offset sheet above the surface it lies on, for the trace.
 const SHEET_LIFT_M = 0.003;
 
-const QUAD_VS = 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }';
+const QUAD_VS =
+  "varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }";
 
 // The denoise guide: view-space normal (facing the camera) and linear depth (0: nothing, the background).
 function guideMaterial(): THREE.ShaderMaterial {
@@ -107,7 +135,14 @@ function guideMaterial(): THREE.ShaderMaterial {
 // similarity; nothing crosses between the model and the background.
 function atrousMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { map: { value: null }, guide: { value: null }, step: { value: 1 }, sigmaZ: { value: STILL_DENOISE.depth }, sigmaL: { value: STILL_DENOISE.luminance }, normalPow: { value: STILL_DENOISE.normal } },
+    uniforms: {
+      map: { value: null },
+      guide: { value: null },
+      step: { value: 1 },
+      sigmaZ: { value: STILL_DENOISE.depth },
+      sigmaL: { value: STILL_DENOISE.luminance },
+      normalPow: { value: STILL_DENOISE.normal },
+    },
     vertexShader: QUAD_VS,
     fragmentShader: `uniform sampler2D map; uniform sampler2D guide; uniform float step; uniform float sigmaZ; uniform float sigmaL; uniform float normalPow;
       varying vec2 vUv;
@@ -142,7 +177,9 @@ function atrousMaterial(): THREE.ShaderMaterial {
         }
         gl_FragColor = wsum > 0.0 ? sum / wsum : c0;
       }`,
-    depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NoBlending,
   });
 }
 
@@ -161,14 +198,29 @@ function compositeMaterial(): THREE.ShaderMaterial {
         gl_FragColor.rgb *= gl_FragColor.a;
         gl_FragColor *= opacity;
       }`,
-    depthTest: false, depthWrite: false, transparent: true,
-    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
-    blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
   });
 }
 
-const halfTarget = (w: number, h: number, filter: THREE.MagnificationTextureFilter) =>
-  new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: filter, magFilter: filter, depthBuffer: filter === THREE.NearestFilter, generateMipmaps: false });
+const halfTarget = (
+  w: number,
+  h: number,
+  filter: THREE.MagnificationTextureFilter,
+) =>
+  new THREE.WebGLRenderTarget(w, h, {
+    type: THREE.HalfFloatType,
+    minFilter: filter,
+    magFilter: filter,
+    depthBuffer: filter === THREE.NearestFilter,
+    generateMipmaps: false,
+  });
 
 export class PathTraceSession {
   renderer: THREE.WebGLRenderer;
@@ -211,7 +263,7 @@ export class PathTraceSession {
     this.builds = 0;
     this._geometryKey = null;
     this._envKey = null;
-    this._matSig = '';
+    this._matSig = "";
     this._raster = null;
     this._copy = new FullScreenQuad(copyMaterial());
     this._guideMat = guideMaterial();
@@ -223,13 +275,22 @@ export class PathTraceSession {
     this._denoisedAt = -1;
     this._src = null;
     // the scene the tracer reads: the source's meshes and lights, the sky environment, no background
-    const walk = (roots: THREE.Object3D[], cb: (o: THREE.Object3D) => void, light: boolean) => {
+    const walk = (
+      roots: THREE.Object3D[],
+      cb: (o: THREE.Object3D) => void,
+      light: boolean,
+    ) => {
       const src = this._src;
       if (!src) return;
       const visit = (o: THREE.Object3D) => {
         if (!o.visible || src.skip(o)) return;
-        if (!light) { if (!src.drop(o)) cb(o); }
-        else if ((o as Partial<THREE.Light>).isLight && (o as THREE.Light).intensity > 0) cb(o);
+        if (!light) {
+          if (!src.drop(o)) cb(o);
+        } else if (
+          (o as Partial<THREE.Light>).isLight &&
+          (o as THREE.Light).intensity > 0
+        )
+          cb(o);
         for (const c of o.children) visit(c);
       };
       for (const r of roots) visit(r);
@@ -242,12 +303,18 @@ export class PathTraceSession {
       backgroundRotation: new THREE.Euler(),
       environmentRotation: new THREE.Euler(),
       updateMatrixWorld: () => {}, // the view's frame did
-      traverseVisible: (cb: (o: THREE.Object3D) => void) => { if (this._src) walk(this._src.meshes, cb, false); },
-      traverse: (cb: (o: THREE.Object3D) => void) => { if (this._src) walk(this._src.lights, cb, true); },
+      traverseVisible: (cb: (o: THREE.Object3D) => void) => {
+        if (this._src) walk(this._src.meshes, cb, false);
+      },
+      traverse: (cb: (o: THREE.Object3D) => void) => {
+        if (this._src) walk(this._src.lights, cb, true);
+      },
     };
     Object.defineProperties(proxy, {
       environment: { get: () => (this._src ? this._src.environment : null) },
-      environmentIntensity: { get: () => (this._src ? this._src.environmentIntensity : 0) },
+      environmentIntensity: {
+        get: () => (this._src ? this._src.environmentIntensity : 0),
+      },
     });
     this._proxy = proxy as unknown as THREE.Scene;
   }
@@ -259,9 +326,11 @@ export class PathTraceSession {
     // the sky cube is read back synchronously (CubeToEquirectGenerator): no pack buffer may be left bound. Probe
     // read-backs already unbind theirs (packSafe in light-probes.ts); this guards any other async read-back
     const gl = this.renderer.getContext();
-    if (gl instanceof WebGL2RenderingContext) gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    if (gl instanceof WebGL2RenderingContext)
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     return this._ownOpacity(() => {
-      const t = this.tracer, inner = t as unknown as TracerInternals;
+      const t = this.tracer,
+        inner = t as unknown as TracerInternals;
       if (src.geometryKey !== this._geometryKey) {
         t.setScene(this._proxy, camera);
         this._geometryKey = src.geometryKey;
@@ -278,7 +347,10 @@ export class PathTraceSession {
       }
       t.updateEnvironment(); // its intensity too (a uniform)
       const sig = this._materialsSig();
-      if (sig !== this._matSig) { t.updateMaterials(); this._matSig = sig; }
+      if (sig !== this._matSig) {
+        t.updateMaterials();
+        this._matSig = sig;
+      }
       return false;
     });
   }
@@ -300,13 +372,19 @@ export class PathTraceSession {
       const mats = ([] as THREE.Material[]).concat((o as THREE.Mesh).material);
       if (mats.some((m) => m && m.polygonOffset && m.polygonOffsetFactor < 0)) {
         lifted.push([o, o.matrixWorld.clone()]);
-        o.matrixWorld.premultiply(new THREE.Matrix4().makeTranslation(0, SHEET_LIFT_M, 0));
+        o.matrixWorld.premultiply(
+          new THREE.Matrix4().makeTranslation(0, SHEET_LIFT_M, 0),
+        );
       }
       for (const m of mats) {
         if (!m || seen.has(m)) continue;
         seen.add(m);
-        const ud = m.userData, cc = m as unknown as { _clearcoat?: number };
-        const coat = typeof cc._clearcoat === 'number' && cc._clearcoat > 0 ? cc._clearcoat : undefined;
+        const ud = m.userData,
+          cc = m as unknown as { _clearcoat?: number };
+        const coat =
+          typeof cc._clearcoat === "number" && cc._clearcoat > 0
+            ? cc._clearcoat
+            : undefined;
         if (ud.baseOpacity === undefined && coat === undefined) continue;
         saved.push([m, m.opacity, m.transparent, coat]);
         if (ud.baseOpacity !== undefined) {
@@ -323,20 +401,26 @@ export class PathTraceSession {
       for (const [m, opacity, transparent, coat] of saved) {
         m.opacity = opacity;
         m.transparent = transparent;
-        if (coat !== undefined) (m as unknown as { _clearcoat: number })._clearcoat = coat;
+        if (coat !== undefined)
+          (m as unknown as { _clearcoat: number })._clearcoat = coat;
       }
     }
   }
 
   _materialsSig(): string {
     const mats = (this.tracer as unknown as TracerInternals)._materials || [];
-    return mats.map(materialSig).join('|');
+    return mats.map(materialSig).join("|");
   }
 
   // The raster frame just drawn (the drawing buffer, before the browser shows it) kept as the image under the trace.
   keepRaster(): void {
-    const r = this.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
-    if (!this._raster || this._raster.image.width !== size.x || this._raster.image.height !== size.y) {
+    const r = this.renderer,
+      size = r.getDrawingBufferSize(new THREE.Vector2());
+    if (
+      !this._raster ||
+      this._raster.image.width !== size.x ||
+      this._raster.image.height !== size.y
+    ) {
       if (this._raster) this._raster.dispose();
       this._raster = new THREE.FramebufferTexture(size.x, size.y);
     }
@@ -355,14 +439,22 @@ export class PathTraceSession {
 
   // The denoise guide for this camera, at the trace's size (the drawing buffer times STILL_SCALE).
   _drawGuide(): void {
-    const r = this.renderer, size = r.getDrawingBufferSize(new THREE.Vector2());
-    const w = Math.max(1, Math.floor(size.x * STILL_SCALE)), h = Math.max(1, Math.floor(size.y * STILL_SCALE));
+    const r = this.renderer,
+      size = r.getDrawingBufferSize(new THREE.Vector2());
+    const w = Math.max(1, Math.floor(size.x * STILL_SCALE)),
+      h = Math.max(1, Math.floor(size.y * STILL_SCALE));
     if (!this._guide || this._guide.width !== w || this._guide.height !== h) {
       for (const t of [this._guide, ...this._ping]) if (t) t.dispose();
       this._guide = halfTarget(w, h, THREE.NearestFilter);
-      this._ping = [halfTarget(w, h, THREE.LinearFilter), halfTarget(w, h, THREE.LinearFilter)];
+      this._ping = [
+        halfTarget(w, h, THREE.LinearFilter),
+        halfTarget(w, h, THREE.LinearFilter),
+      ];
     }
-    const prev = r.getRenderTarget(), clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha(), auto = r.autoClear;
+    const prev = r.getRenderTarget(),
+      clear = r.getClearColor(new THREE.Color()),
+      alpha = r.getClearAlpha(),
+      auto = r.autoClear;
     r.setRenderTarget(this._guide);
     r.setClearColor(0x000000, 0);
     r.autoClear = true;
@@ -381,8 +473,11 @@ export class PathTraceSession {
     const n = Math.floor(this.tracer.samples);
     if (this._denoised && n === this._denoisedAt) return this._denoised;
     if (!this._guide) return null;
-    const r = this.renderer, m = this._atrous.material as THREE.ShaderMaterial, prev = r.getRenderTarget();
-    let src: THREE.Texture = this.tracer.target.texture, out: THREE.WebGLRenderTarget | null = null;
+    const r = this.renderer,
+      m = this._atrous.material as THREE.ShaderMaterial,
+      prev = r.getRenderTarget();
+    let src: THREE.Texture = this.tracer.target.texture,
+      out: THREE.WebGLRenderTarget | null = null;
     m.uniforms.guide.value = this._guide.texture;
     for (let i = 0; i < STILL_DENOISE.passes; i++) {
       out = this._ping[i % 2];
@@ -404,12 +499,16 @@ export class PathTraceSession {
   }
 
   get compiling(): boolean {
-    return Boolean((this.tracer as unknown as { isCompiling: boolean }).isCompiling);
+    return Boolean(
+      (this.tracer as unknown as { isCompiling: boolean }).isCompiling,
+    );
   }
 
   // One tile of the next sample.
   step(): void {
-    const r = this.renderer, clip = r.clippingPlanes, auto = r.autoClear;
+    const r = this.renderer,
+      clip = r.clippingPlanes,
+      auto = r.autoClear;
     r.clippingPlanes = [];
     try {
       this.tracer.renderSample();
@@ -421,12 +520,14 @@ export class PathTraceSession {
 
   // The raster frame, then the denoised trace at opacity (tone mapped and upscaled) over it, into the drawing buffer.
   draw(opacity: number): void {
-    const r = this.renderer, auto = r.autoClear;
+    const r = this.renderer,
+      auto = r.autoClear;
     r.setRenderTarget(null);
     r.autoClear = false;
     try {
       if (this._raster) {
-        (this._copy.material as THREE.ShaderMaterial).uniforms.map.value = this._raster;
+        (this._copy.material as THREE.ShaderMaterial).uniforms.map.value =
+          this._raster;
         this._copy.render(r);
       }
       const img = opacity > 0 ? this._denoise() : null;
@@ -449,7 +550,7 @@ export class PathTraceSession {
       // the BVH, attribute, material, texture array, light and environment uniforms are GPU textures
       for (const u of Object.values(p.material.uniforms)) {
         const v = u.value as { dispose?: () => void } | null;
-        if (v && typeof v.dispose === 'function') v.dispose();
+        if (v && typeof v.dispose === "function") v.dispose();
       }
       p.material.dispose();
       p.dispose();

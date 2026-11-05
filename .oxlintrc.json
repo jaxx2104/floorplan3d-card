@@ -27,12 +27,7 @@
   ],
   "overrides": [
     {
-      "files": [
-        "scripts/**",
-        "test/**",
-        "tools/*.mjs",
-        "*.config.js"
-      ],
+      "files": ["scripts/**", "test/**", "tools/*.mjs", "*.config.js"],
       "env": {
         "node": true
       }

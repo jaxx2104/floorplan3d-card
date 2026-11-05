@@ -1,10 +1,42 @@
-{ "version": 1,
-  "floors": [{ "id": "ground", "name": "Ground floor", "elevation": 0, "height": 2.7 }],
-  "rooms": [{ "id": "r1", "area_id": "kitchen", "floor_id": "ground", "polygon": [[0,0],[4,0],[4,3],[0,3]],
-              "doors": [[2,0]], "outdoor": false }],
-  "pins": { "device:abc123": { "x": 1.2, "y": 0.4, "z": 2.6, "floor_id": "ground" } },
+{
+  "version": 1,
+  "floors": [
+    { "id": "ground", "name": "Ground floor", "elevation": 0, "height": 2.7 }
+  ],
+  "rooms": [
+    {
+      "id": "r1",
+      "area_id": "kitchen",
+      "floor_id": "ground",
+      "polygon": [
+        [0, 0],
+        [4, 0],
+        [4, 3],
+        [0, 3]
+      ],
+      "doors": [[2, 0]],
+      "outdoor": false
+    }
+  ],
+  "pins": {
+    "device:abc123": { "x": 1.2, "y": 0.4, "z": 2.6, "floor_id": "ground" }
+  },
   "hidden": ["device:xyz"],
-  "mower": { "entity": "device_tracker.mower_position", "source": "gps", "x_attr": "x", "y_attr": "y",
-             "floor_id": "ground", "calibration": [{ "src": [45.0, 10.0], "plan": [10, -5] }],
-             "overlay": { "entity": "image.mower_map", "x": 0, "y": 0, "rotation": 0, "width": 30,
-                          "opacity": 0.6, "refresh": 10 } } }
+  "mower": {
+    "entity": "device_tracker.mower_position",
+    "source": "gps",
+    "x_attr": "x",
+    "y_attr": "y",
+    "floor_id": "ground",
+    "calibration": [{ "src": [45.0, 10.0], "plan": [10, -5] }],
+    "overlay": {
+      "entity": "image.mower_map",
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "width": 30,
+      "opacity": 0.6,
+      "refresh": 10
+    }
+  }
+}

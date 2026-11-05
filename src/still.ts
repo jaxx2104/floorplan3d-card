@@ -21,7 +21,12 @@ export const STILL_TEST_SAMPLES = 3;
 /** Denoise of the traced image (path-tracer.ts): a-trous passes (steps 1, 2, 4, ... texels of the trace), depth
  * tolerance (share of the depth per step), luminance tolerance (tone-mapped 0..1: keeps shadow edges), normal
  * sharpness (power of the normals' cosine). The first pass also cuts fireflies to their neighbours' brightest. */
-export const STILL_DENOISE = Object.freeze({ passes: 3, depth: 0.02, luminance: 0.15, normal: 32 });
+export const STILL_DENOISE = Object.freeze({
+  passes: 3,
+  depth: 0.02,
+  luminance: 0.15,
+  normal: 32,
+});
 /** A path's radiance (linear luminance) is capped at this before it is accumulated (fireflies). */
 export const STILL_SAMPLE_MAX = 6;
 /** Trace resolution: this share of the drawing buffer per side (upscaled when drawn). */
@@ -33,17 +38,34 @@ export const STILL_BOUNCES = 5;
 export const STILL_TRANSMISSIVE_BOUNCES = 3;
 
 /** What a session may spend, and when its image shows (samples). */
-export interface StillBudget { samples: number; ms: number; fadeFrom: number; fadeTo: number }
+export interface StillBudget {
+  samples: number;
+  ms: number;
+  fadeFrom: number;
+  fadeTo: number;
+}
 
 // The budget: in test mode a few samples (the fade from the first sample, full at the last), else
 // STILL_MAX_SAMPLES / STILL_MAX_MS with the fade from STILL_FADE_FROM to STILL_FADE_TO.
 export function stillBudget(test: boolean): StillBudget {
-  if (test) return { samples: STILL_TEST_SAMPLES, ms: STILL_MAX_MS, fadeFrom: 1, fadeTo: STILL_TEST_SAMPLES };
-  return { samples: STILL_MAX_SAMPLES, ms: STILL_MAX_MS, fadeFrom: STILL_FADE_FROM, fadeTo: STILL_FADE_TO };
+  if (test)
+    return {
+      samples: STILL_TEST_SAMPLES,
+      ms: STILL_MAX_MS,
+      fadeFrom: 1,
+      fadeTo: STILL_TEST_SAMPLES,
+    };
+  return {
+    samples: STILL_MAX_SAMPLES,
+    ms: STILL_MAX_MS,
+    fadeFrom: STILL_FADE_FROM,
+    fadeTo: STILL_FADE_TO,
+  };
 }
 
 /** Why no trace runs now (null: one may). */
-export type StillHold = 'tier' | 'model' | 'offscreen' | 'hidden' | 'edit' | 'clip' | 'idle' | null;
+export type StillHold =
+  "tier" | "model" | "offscreen" | "hidden" | "edit" | "clip" | "idle" | null;
 
 /** Inputs of the start decision. */
 export interface StillState {
@@ -66,13 +88,13 @@ export interface StillState {
 
 // Whether a trace may start now, else what holds it off (checked in this order).
 export function stillHold(s: StillState): StillHold {
-  if (!s.tier) return 'tier';
-  if (!s.model) return 'model';
-  if (!s.onScreen) return 'offscreen';
-  if (!s.visible) return 'hidden';
-  if (s.editing) return 'edit';
-  if (s.clipped) return 'clip';
-  if (!(s.idleFor >= (s.idleMs ?? STILL_IDLE_MS))) return 'idle';
+  if (!s.tier) return "tier";
+  if (!s.model) return "model";
+  if (!s.onScreen) return "offscreen";
+  if (!s.visible) return "hidden";
+  if (s.editing) return "edit";
+  if (s.clipped) return "clip";
+  if (!(s.idleFor >= (s.idleMs ?? STILL_IDLE_MS))) return "idle";
   return null;
 }
 
@@ -81,14 +103,27 @@ export function stillHold(s: StillState): StillHold {
 export function stillFade(samples: number, budget: StillBudget): number {
   if (!(samples >= budget.fadeFrom)) return 0;
   if (!(budget.fadeTo > budget.fadeFrom)) return 1;
-  return Math.min(1, (samples - budget.fadeFrom) / (budget.fadeTo - budget.fadeFrom));
+  return Math.min(
+    1,
+    (samples - budget.fadeFrom) / (budget.fadeTo - budget.fadeFrom),
+  );
 }
 
 // The session has spent its budget.
-export const stillDone = (samples: number, elapsedMs: number, budget: StillBudget): boolean =>
-  samples >= budget.samples || elapsedMs >= budget.ms;
+export const stillDone = (
+  samples: number,
+  elapsedMs: number,
+  budget: StillBudget,
+): boolean => samples >= budget.samples || elapsedMs >= budget.ms;
 
 // Trace resolution for a drawing buffer (px): STILL_SCALE per side, at least 1 px.
-export function stillSize(w: number, h: number, scale = STILL_SCALE): [number, number] {
-  return [Math.max(1, Math.floor(w * scale)), Math.max(1, Math.floor(h * scale))];
+export function stillSize(
+  w: number,
+  h: number,
+  scale = STILL_SCALE,
+): [number, number] {
+  return [
+    Math.max(1, Math.floor(w * scale)),
+    Math.max(1, Math.floor(h * scale)),
+  ];
 }
