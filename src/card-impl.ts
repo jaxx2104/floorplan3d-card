@@ -403,7 +403,13 @@ export class Floorplan3dCard extends HTMLElement {
     logConfigWarnings(parsed);
     this._config = parsed.value;
     this._mode = this._config.view === "top" ? "top" : "3d";
-    this._store = new LayoutStore(this._config.layout_key);
+    // the same key keeps its store: a fresh one has no backend until a load, so its saves would be dropped
+    // (a config change on a running card does not load the layout again)
+    if (
+      !this._store ||
+      this._store.key !== (this._config.layout_key || "default")
+    )
+      this._store = new LayoutStore(this._config.layout_key);
     this._applyHeight();
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {

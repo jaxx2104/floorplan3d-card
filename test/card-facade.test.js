@@ -5,6 +5,21 @@ import "../src/card-impl.ts";
 import { defineDelegates } from "../src/card/delegates.ts";
 import { ActionRunner } from "../src/card/action-runner.ts";
 
+describe("setConfig", () => {
+  it("keeps the layout store of the same key (its backend), a new key gets a new one", () => {
+    const c = document.createElement("floorplan3d-card-impl");
+    c.setConfig({ layout_key: "home" });
+    const store = c._store;
+    store.backend = "shared"; // as after the layout load
+    c.setConfig({ layout_key: "home", merge: false });
+    expect(c._store).toBe(store);
+    expect(c._store.writable).toBe(true);
+    c.setConfig({ layout_key: "other" });
+    expect(c._store).not.toBe(store);
+    expect(c._store.key).toBe("other");
+  });
+});
+
 describe("defineDelegates", () => {
   it("forwards methods with their arguments and this of the part", () => {
     class Part {
