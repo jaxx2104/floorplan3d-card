@@ -278,3 +278,118 @@ describe("what the fixtures pin down", () => {
     warn.mockRestore();
   });
 });
+
+describe("parseLayout repairs", () => {
+  const paths = (input) => parseLayout(input).warnings.map((w) => w.path);
+
+  it("a top-level section of the wrong type falls back to its default, with a warning", () => {
+    const l = parseLayout({
+      mower: "x",
+      model: 5,
+      floors: "x",
+      hidden: {},
+      view_order: "a",
+      tap_hints: 7,
+    });
+    expect(l.value).toMatchObject({
+      mower: null,
+      model: null,
+      floors: [],
+      hidden: [],
+    });
+    expect("view_order" in l.value || "tap_hints" in l.value).toBe(false);
+    expect(l.warnings.map((w) => w.path).sort()).toEqual([
+      "floors",
+      "hidden",
+      "model",
+      "mower",
+      "tap_hints",
+      "view_order",
+    ]);
+  });
+
+  it("a version that is not a positive integer is reported and read as v1", () => {
+    for (const version of [1.5, 0, "x"]) {
+      const l = parseLayout({ version });
+      expect(l.value.version).toBe(LAYOUT_VERSION);
+      expect(l.warnings.map((w) => w.path)).toContain("version");
+    }
+  });
+
+  it("pin fields of the wrong shape are dropped, the pin kept", () => {
+    const l = parseLayout({
+      pins: {
+        a: { x: 1, y: 2, z: "1", floor_id: "g" },
+        b: { x: 1, y: 2, offset: [1, 2] },
+      },
+    });
+    expect(l.value.pins).toEqual({
+      a: { x: 1, y: 2, floor_id: "g" },
+      b: { x: 1, y: 2 },
+    });
+    expect(l.warnings.map((w) => w.path)).toEqual([
+      "pins.a.z",
+      "pins.b.offset",
+    ]);
+  });
+
+  it("drops non-object objects / groups", () => {
+    const l = parseLayout({ objects: [1, 2], groups: "x" }).value;
+    expect("objects" in l).toBe(false);
+    expect("groups" in l).toBe(false);
+    expect(parseLayout({ objects: { a: {} } }).value.objects).toEqual({
+      a: {},
+    });
+  });
+
+  it("mower and model fields no fixture has survive a save and load", () => {
+    const input = {
+      mower: {
+        entity: "lawn_mower.m",
+        source: "xy",
+        ground: "floor",
+        track_attr: "path",
+        track_show: true,
+        track_color: "#ff0000",
+        track_width: 2,
+        track_opacity: 0.5,
+        auto: false,
+        overlay: {
+          entity: "image.m",
+          hide_icon: true,
+          zone: "auto",
+          mowed_tolerance: 30,
+          nomow_tolerance: 20,
+        },
+      },
+      model: { url: "/local/x.glb", uploaded: 123 },
+      views: { a: { cut: null } },
+    };
+    const first = parseLayout(input);
+    expect(first.warnings).toEqual([]);
+    expect(first.value).toMatchObject(input);
+    const again = parseLayout(
+      JSON.parse(JSON.stringify(serializeLayout(first.value))),
+    );
+    expect(again.warnings).toEqual([]);
+    expect(again.value).toEqual(first.value);
+    expect(
+      paths({ mower: { track_width: "3", track_color: [1, 2, 3] } }),
+    ).toEqual(["mower.track_width", "mower.track_color"]);
+  });
+
+  it("fills defaults and repairs bad fields", () => {
+    expect(parseLayout(null).value).toEqual(emptyLayout());
+    expect(
+      parseLayout({ rooms: "x", pins: null, floors: [{ id: "g" }], extra: 1 })
+        .value,
+    ).toMatchObject({
+      version: 2,
+      rooms: [],
+      pins: {},
+      floors: [{ id: "g" }],
+      hidden: [],
+      extra: 1,
+    });
+  });
+});

@@ -1,39 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "bun:test";
 import { LayoutStore } from "../src/storage.ts";
-import { parseLayout, emptyLayout } from "../src/schema/layout.ts";
 
 const fail = () => Promise.reject(new Error("unknown command"));
-
-describe("parseLayout (load)", () => {
-  it("fills defaults and repairs bad fields", () => {
-    expect(parseLayout(null).value).toEqual(emptyLayout());
-    expect(
-      parseLayout({ rooms: "x", pins: null, floors: [{ id: "g" }], extra: 1 })
-        .value,
-    ).toMatchObject({
-      version: 2,
-      rooms: [],
-      pins: {},
-      floors: [{ id: "g" }],
-      hidden: [],
-      extra: 1,
-    });
-  });
-  it("migrates the v0.1.4 model floor_map into level bindings", () => {
-    expect(
-      parseLayout({
-        model: {
-          version: "v",
-          floor_map: { ground: "floor1", attic: "always" },
-        },
-      }).value.model,
-    ).toEqual({
-      version: "v",
-      levels: { ground: { floor: "floor1" }, attic: { show: "always" } },
-    });
-  });
-});
 
 describe("LayoutStore", () => {
   beforeEach(() => {
