@@ -15,7 +15,13 @@ import { lightColor } from "../src/objects/logic.ts";
 import { ObjectLayer } from "../src/objects/layer.ts";
 import { replaceLights } from "../src/objects/model-lamps.ts";
 import { hintDefaults } from "../src/objects/types.ts";
-import { emissiveLevel, blooms, BLOOM_MIN_EMISSIVE } from "../src/bloom.ts";
+import {
+  emissiveLevel,
+  blooms,
+  unrealStrength,
+  BLOOM_MIN_EMISSIVE,
+  BLOOM_STRENGTH,
+} from "../src/bloom.ts";
 
 describe("kelvin -> rgb (Planckian locus)", () => {
   it("xy on the locus at reference temperatures", () => {
@@ -334,5 +340,13 @@ describe("selective bloom: what blooms", () => {
       ),
     ).toBe(false);
     expect(blooms(new THREE.Sprite())).toBe(false);
+  });
+});
+
+describe("selective bloom: UnrealBloomPass strength", () => {
+  it("its composite of five equal mips (3 x strength x their weights) is BLOOM_STRENGTH x one of them", () => {
+    // the weights mix(factor, 1.2 - factor, radius) of the factors 1, 0.8, 0.6, 0.4, 0.2 sum to 3 at any radius
+    for (const radius of [0, 0.5, 1])
+      expect(3 * unrealStrength(radius) * 3).toBeCloseTo(BLOOM_STRENGTH);
   });
 });

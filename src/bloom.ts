@@ -1,18 +1,20 @@
 // Selective bloom (render quality 'high', QualityTier.bloom): only emissive things glow — lamp glow meshes of
 // lights that are on, screens, any emissive model material — never walls lit by a lamp or the sun.
 // After the frame render: the emissive surfaces alone (everything opaque drawn black, so walls in front still
-// hide a lamp) at half the drawing buffer size in a half-float target, blurred down and up a mip chain
-// (dual filter: 5 taps down, 8 taps up), added to the canvas in display-linear light. A frame with no emissive
-// surface in view runs nothing but the search (a walk over the visible meshes); idle frames are never drawn.
+// hide a lamp) at half the drawing buffer size in a half-float target, blurred by three's UnrealBloomPass (its
+// mip chain of separable Gaussians, no threshold: the source holds nothing but the emissive surfaces), its
+// composite added to the canvas in display-linear light. A frame with no emissive surface in view runs nothing
+// but the search (a walk over the visible meshes); idle frames are never drawn.
 import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { occludes } from "./depth-pass.ts";
 import type { Drawable } from "./view/core.ts";
 
 /** Share of the bloom added to the frame. */
 export const BLOOM_STRENGTH = 0.6;
-/** Blur levels below the half-size source (1/4 .. 1/64 of the drawing buffer). */
-export const BLOOM_LEVELS = 5;
+/** UnrealBloomPass radius (0..1: the share of the wide mips; 0.5 weighs its five mips alike). */
+export const BLOOM_RADIUS = 0.5;
 /** Emissive radiance (colour × intensity, brightest channel) below which a surface does not bloom. */
 export const BLOOM_MIN_EMISSIVE = 0.05;
 
@@ -56,36 +58,6 @@ const VERT = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
-// dual filter (Bjørge 2015): the centre and 4 diagonal taps one source texel out (each a bilinear 2 x 2 average)
-const DOWN_FRAG = /* glsl */ `
-uniform sampler2D tSrc;
-uniform vec2 texel;
-varying vec2 vUv;
-void main() {
-  vec3 c = texture2D(tSrc, vUv).rgb * 4.0;
-  c += texture2D(tSrc, vUv + vec2(-1.0, -1.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(1.0, -1.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(-1.0, 1.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(1.0, 1.0) * texel).rgb;
-  gl_FragColor = vec4(c / 8.0, 1.0);
-}`;
-
-const UP_FRAG = /* glsl */ `
-uniform sampler2D tSrc;
-uniform vec2 texel;
-varying vec2 vUv;
-void main() {
-  vec3 c = texture2D(tSrc, vUv + vec2(-2.0, 0.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(2.0, 0.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(0.0, -2.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(0.0, 2.0) * texel).rgb;
-  c += texture2D(tSrc, vUv + vec2(-1.0, -1.0) * texel).rgb * 2.0;
-  c += texture2D(tSrc, vUv + vec2(1.0, -1.0) * texel).rgb * 2.0;
-  c += texture2D(tSrc, vUv + vec2(-1.0, 1.0) * texel).rgb * 2.0;
-  c += texture2D(tSrc, vUv + vec2(1.0, 1.0) * texel).rgb * 2.0;
-  gl_FragColor = vec4(c / 12.0, 1.0);
-}`;
-
 // the canvas (tone mapped, sRGB or linear) + the bloom (scene linear, compressed so it never clips harshly)
 const ADD_FRAG = /* glsl */ `
 uniform sampler2D tColor, tBloom;
@@ -101,21 +73,19 @@ void main() {
   gl_FragColor = vec4(srgb > 0.5 ? toSrgb(c) : c, base.a);
 }`;
 
-const target = (): THREE.WebGLRenderTarget =>
-  new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.HalfFloatType,
-    depthBuffer: false,
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-  });
+// UnrealBloomPass strength for a composite of BLOOM_STRENGTH x the mean of its mips: its composite is
+// 3 x strength x the sum of the mips, each weighted by mix(factor, 1.2 - factor, radius).
+export function unrealStrength(radius: number = BLOOM_RADIUS): number {
+  const factors = [1.0, 0.8, 0.6, 0.4, 0.2];
+  const sum = factors.reduce((t, f) => t + f + (1.2 - 2 * f) * radius, 0);
+  return BLOOM_STRENGTH / (3 * sum);
+}
 
 export class SelectiveBloom {
   renderer: THREE.WebGLRenderer;
   source: THREE.WebGLRenderTarget;
-  levels: THREE.WebGLRenderTarget[];
+  blur: UnrealBloomPass;
   color: THREE.FramebufferTexture | null;
-  down: THREE.ShaderMaterial;
-  up: THREE.ShaderMaterial;
   add: THREE.ShaderMaterial;
   fsQuad: FullScreenQuad;
   stats: { passes: number; skipped: number };
@@ -132,23 +102,14 @@ export class SelectiveBloom {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
     });
-    this.levels = Array.from({ length: BLOOM_LEVELS }, target);
+    // sized to the source: its mips start at half of that
+    this.blur = new UnrealBloomPass(
+      new THREE.Vector2(2, 2),
+      unrealStrength(),
+      BLOOM_RADIUS,
+      -1, // no threshold: every emissive pixel blooms
+    );
     this.color = null; // FramebufferTexture at the drawing buffer size
-    const pass = (frag: string, blending: THREE.Blending = THREE.NoBlending) =>
-      new THREE.ShaderMaterial({
-        vertexShader: VERT,
-        fragmentShader: frag,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-        blending,
-        uniforms: {
-          tSrc: { value: null },
-          texel: { value: new THREE.Vector2() },
-        },
-      });
-    this.down = pass(DOWN_FRAG);
-    this.up = pass(UP_FRAG, THREE.AdditiveBlending); // each level adds onto the one above it
     this.add = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: ADD_FRAG,
@@ -158,12 +119,12 @@ export class SelectiveBloom {
       uniforms: {
         tColor: { value: null },
         tBloom: { value: null },
-        strength: { value: BLOOM_STRENGTH },
+        strength: { value: 1 },
         exposure: { value: 1 },
         srgb: { value: 1 },
       },
     });
-    this.fsQuad = new FullScreenQuad(this.down);
+    this.fsQuad = new FullScreenQuad(this.add);
     this.stats = { passes: 0, skipped: 0 };
     this._black = new WeakMap();
     this._glow = new WeakMap();
@@ -246,15 +207,11 @@ export class SelectiveBloom {
     this.stats.passes++;
     const r = this.renderer,
       full = r.getDrawingBufferSize(new THREE.Vector2());
-    let w = Math.max(1, Math.round(full.x / 2)),
+    const w = Math.max(1, Math.round(full.x / 2)),
       h = Math.max(1, Math.round(full.y / 2));
     if (this.source.width !== w || this.source.height !== h) {
       this.source.setSize(w, h);
-      for (const l of this.levels) {
-        w = Math.max(1, Math.round(w / 2));
-        h = Math.max(1, Math.round(h / 2));
-        l.setSize(w, h);
-      }
+      this.blur.setSize(w, h); // its mips: 1/4 .. 1/64 of the drawing buffer
     }
     const prevTarget = r.getRenderTarget(),
       prevAutoClear = r.autoClear,
@@ -292,26 +249,10 @@ export class SelectiveBloom {
       for (const o of hidden) o.visible = true;
       r.shadowMap.needsUpdate = prevShadow;
     }
-    // down the chain, then back up: each level adds the blurred level below it
+    // the blur: UnrealBloomPass's composite lands in its first horizontal target (it then also adds itself
+    // onto the source, which is not read again)
+    this.blur.render(r, this.source, this.source, 0, false);
     const q = this.fsQuad;
-    let src: THREE.WebGLRenderTarget = this.source;
-    q.material = this.down;
-    for (const l of this.levels) {
-      this.down.uniforms.tSrc.value = src.texture;
-      this.down.uniforms.texel.value.set(1 / src.width, 1 / src.height);
-      r.setRenderTarget(l);
-      q.render(r);
-      src = l;
-    }
-    q.material = this.up;
-    r.autoClear = false;
-    for (let i = this.levels.length - 1; i > 0; i--) {
-      const lo = this.levels[i];
-      this.up.uniforms.tSrc.value = lo.texture;
-      this.up.uniforms.texel.value.set(0.5 / lo.width, 0.5 / lo.height);
-      r.setRenderTarget(this.levels[i - 1]);
-      q.render(r);
-    }
     // onto the canvas
     if (
       !this.color ||
@@ -322,11 +263,11 @@ export class SelectiveBloom {
       this.color = new THREE.FramebufferTexture(full.x, full.y);
     }
     r.setRenderTarget(null);
+    r.autoClear = false;
     r.copyFramebufferToTexture(this.color);
     const u = this.add.uniforms;
     u.tColor.value = this.color;
-    u.tBloom.value = this.levels[0].texture;
-    u.strength.value = BLOOM_STRENGTH / this.levels.length;
+    u.tBloom.value = this.blur.renderTargetsHorizontal[0].texture;
     u.exposure.value = r.toneMappingExposure;
     u.srgb.value = r.outputColorSpace === THREE.SRGBColorSpace ? 1 : 0;
     q.material = this.add;
@@ -338,12 +279,10 @@ export class SelectiveBloom {
   }
 
   dispose(): void {
-    this.down.dispose();
-    this.up.dispose();
+    this.blur.dispose();
     this.add.dispose();
     this.fsQuad.dispose();
     this.source.dispose();
-    for (const l of this.levels) l.dispose();
     if (this.color) this.color.dispose();
   }
 }
