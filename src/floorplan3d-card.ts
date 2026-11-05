@@ -166,7 +166,21 @@ export class Floorplan3dCardShell extends HTMLElement {
   }
 }
 
-if (!customElements.get("floorplan3d-card")) {
+// HA's frontend replaces window.customElements with its scoped registry polyfill before it defines
+// <home-assistant>; a name defined on the native registry before that is invisible to HA ("Custom
+// element doesn't exist"). The small entry can run first, so on an HA page that has not defined
+// <home-assistant> yet it waits for it, then defines on whatever window.customElements is by then.
+export function registryReady(
+  doc: Document = document,
+  registry: CustomElementRegistry = customElements,
+): boolean {
+  return (
+    !doc.querySelector("home-assistant") || !!registry.get("home-assistant")
+  );
+}
+
+function register(): void {
+  if (customElements.get("floorplan3d-card")) return;
   customElements.define("floorplan3d-card", Floorplan3dCardShell);
   const cards = (window.customCards = window.customCards || []);
   cards.push({
@@ -180,3 +194,6 @@ if (!customElements.get("floorplan3d-card")) {
     "background:#03a9f4;color:#fff;border-radius:3px",
   );
 }
+
+if (registryReady()) register();
+else void customElements.whenDefined("home-assistant").then(register);

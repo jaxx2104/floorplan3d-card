@@ -5,7 +5,7 @@
 // The floorplan3d-card shell: HA's card API without the card module, which it imports on first connect
 // and hosts as a floorplan3d-card-impl child that gets every config and hass.
 import { describe, it, expect, vi } from "bun:test";
-import { gridRows } from "../src/floorplan3d-card.ts";
+import { gridRows, registryReady } from "../src/floorplan3d-card.ts";
 
 // no WebGL in the test DOM: a stand-in impl records what the shell forwards (the real one is in card-facade)
 vi.mock("../src/card-impl.ts", () => {
@@ -108,5 +108,21 @@ describe("sections view sizing", () => {
     expect(impl.layout).toBe(undefined);
     expect(s.style.height).toBe("");
     s.remove();
+  });
+});
+
+describe("registryReady", () => {
+  const reg = (defined) => ({
+    get: (n) => (defined.includes(n) ? class {} : undefined),
+  });
+  const doc = (ha) => ({
+    querySelector: (s) => (ha && s === "home-assistant" ? {} : null),
+  });
+  it("defines right away outside HA (demo, tests)", () => {
+    expect(registryReady(doc(false), reg([]))).toBe(true);
+  });
+  it("waits on an HA page until <home-assistant> (and HA's registry polyfill) is defined", () => {
+    expect(registryReady(doc(true), reg([]))).toBe(false);
+    expect(registryReady(doc(true), reg(["home-assistant"]))).toBe(true);
   });
 });
