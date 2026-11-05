@@ -18,11 +18,11 @@ export function dataTab(ed: EditMode): TemplateResult {
     ],
     user: [
       "warn",
-      "Per user: stored in your HA user data. Other users will not see this layout. Install the floorplan3d integration to share it.",
+      "Read-only: this layout comes from your HA user data (older versions saved it there) and changes are not saved. Install the floorplan3d integration to save: it stores the layout for every user and device and takes this layout over with the next change.",
     ],
     browser: [
       "warn",
-      "This browser only: other browsers and devices will not see this layout. Install the floorplan3d integration to share it.",
+      "Read-only: this layout comes from this browser (older versions saved it there) and changes are not saved. Install the floorplan3d integration to save: it stores the layout for every user and device and takes this layout over with the next change.",
     ],
   };
   const info = (b && infos[b]) || ["warn", "Storage not loaded yet."];

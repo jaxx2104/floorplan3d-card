@@ -1,6 +1,9 @@
 // The card's shadow DOM styles (markers, popup, toolbar, edit panel).
 export const STYLE: string = `
   :host { display: block; }
+  /* sections view (HA's layout = "grid"): fill the grid cell */
+  :host([grid]), :host([grid]) ha-card, :host([grid]) .body { height: 100%; }
+  :host([grid]) .body { box-sizing: border-box; }
   ha-card { display: block; overflow: hidden; position: relative; container-type: inline-size;
     background: var(--ha-card-background, var(--card-background-color, #fff));
     border-radius: var(--ha-card-border-radius, 12px); color: var(--primary-text-color); }
@@ -159,6 +162,8 @@ export const STYLE: string = `
     .body.editing { flex-direction: column; }
     .body.editing .stage { flex: none; width: 100%; }
     .editing .panel { width: auto; max-height: 420px; border-left: none; border-top: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
+    :host([grid]) .body.editing .stage { flex: 1 1 0; min-height: 160px; }
+    :host([grid]) .editing .panel { max-height: 55%; }
   }
   .tabs { display: flex; border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
   .panel .tabs button { flex: 1; border-radius: 0; font: inherit; padding: 10px 4px; background: none; border: none; cursor: pointer;

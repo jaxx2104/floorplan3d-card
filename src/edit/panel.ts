@@ -76,6 +76,7 @@ const SAVE_TEXT: Record<string, string> = {
   saving: "Saving…",
   saved: "Saved",
   failed: "Save failed",
+  readonly: "Not saved (read-only)",
 };
 export function saveText(ed: EditMode): string {
   return SAVE_TEXT[ed.saveState] || "";
@@ -83,8 +84,8 @@ export function saveText(ed: EditMode): string {
 
 const BACKEND_LABEL: Record<string, string> = {
   shared: "Shared storage",
-  user: "Per-user storage",
-  browser: "Browser storage",
+  user: "Per-user storage (read-only)",
+  browser: "Browser storage (read-only)",
 };
 export function backendLabel(ed: EditMode): string {
   const b = ed.card._store.backend;

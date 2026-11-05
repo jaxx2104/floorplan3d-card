@@ -13,6 +13,7 @@ const VERSION = "0.0.0-dev";
 interface CardImpl extends HTMLElement {
   setConfig(config: CardConfig): void;
   hass: Hass;
+  layout?: string;
 }
 
 /** An entry of HA's custom card picker (window.customCards). */
@@ -33,6 +34,17 @@ declare global {
 }
 
 const DEFAULT_HEIGHT = "520px";
+// sections view grid: a row is 56 px plus an 8 px gap
+const GRID_ROW_PX = 64;
+const GRID_ROWS = 8;
+const GRID_MIN_ROWS = 4;
+
+/** Sections view rows for a configured height: px heights rounded to rows, others the default. */
+export function gridRows(height: unknown): number {
+  const m = /^\s*(\d+(?:\.\d+)?)px\s*$/.exec(String(height ?? ""));
+  if (!m) return GRID_ROWS;
+  return Math.max(GRID_MIN_ROWS, Math.round((Number(m[1]) + 8) / GRID_ROW_PX));
+}
 
 // One import for every card on the page.
 let implLoad: Promise<unknown> | null = null;
@@ -47,6 +59,8 @@ export class Floorplan3dCardShell extends HTMLElement {
   _hass: Hass | null = null;
   _impl: CardImpl | null = null;
   _loading = false;
+  /** HA's layout of the card's place: "grid" in a sections view (the card fills its grid cell). */
+  _haLayout: string | undefined = undefined;
 
   static getStubConfig(): Partial<CardConfig> {
     return {};
@@ -57,9 +71,40 @@ export class Floorplan3dCardShell extends HTMLElement {
     return document.createElement("floorplan3d-card-editor");
   }
 
-  // sections view: span the whole section by default
-  getGridOptions(): { columns: string; min_columns: number; rows: string } {
-    return { columns: "full", min_columns: 6, rows: "auto" };
+  // sections view: span the whole section, rows from `height` (resizable there; the card fills them)
+  getGridOptions(): {
+    columns: string;
+    min_columns: number;
+    rows: number;
+    min_rows: number;
+  } {
+    return {
+      columns: "full",
+      min_columns: 6,
+      rows: gridRows(this._config?.height),
+      min_rows: GRID_MIN_ROWS,
+    };
+  }
+
+  // HA sets layout = "grid" on cards in a sections view: fill the cell, `height` is for masonry views.
+  set layout(v: string | undefined) {
+    this._haLayout = v;
+    this._applyLayout();
+    if (this._impl) this._impl.layout = v;
+  }
+
+  get layout(): string | undefined {
+    return this._haLayout;
+  }
+
+  _applyLayout(): void {
+    const grid = this._haLayout === "grid";
+    this.style.height = grid ? "100%" : "";
+    // the card's place while it loads (a grid cell has its own size)
+    this.style.minHeight =
+      this._impl || grid || !this._config
+        ? ""
+        : this._config.height || DEFAULT_HEIGHT;
   }
 
   getCardSize(): number {
@@ -72,7 +117,7 @@ export class Floorplan3dCardShell extends HTMLElement {
     this._config = config;
     this.style.display = "block";
     if (this._impl) this._impl.setConfig(config);
-    else this.style.minHeight = config.height || DEFAULT_HEIGHT; // the card's place while it loads
+    this._applyLayout();
     if (this.isConnected) this._ensure();
   }
 
@@ -101,11 +146,12 @@ export class Floorplan3dCardShell extends HTMLElement {
           "floorplan3d-card-impl",
         ) as unknown as CardImpl;
         impl.style.display = "block";
+        impl.layout = this._haLayout;
         // config first (the card renders on connect once it has one), then hass
         impl.setConfig(this._config);
         if (this._hass) impl.hass = this._hass;
         this._impl = impl;
-        this.style.minHeight = "";
+        this._applyLayout();
         this.append(impl);
       },
       (e: unknown) => {

@@ -1,7 +1,10 @@
-// Layout persistence.
-// 1. floorplan3d companion integration (shared across all users and devices)
-// 2. frontend user data (stored in HA, but per user)
-// 3. browser localStorage (last resort)
+// Layout persistence. The floorplan3d companion integration is the only place layouts are saved
+// (shared across all users and devices). Read order:
+// 1. the companion integration
+// 2. frontend user data (per user; older versions saved there): read-only, for migration
+// 3. browser localStorage (older versions without HA storage): read-only, for migration
+// A layout read from 2. or 3. while the integration is installed moves to it with the next save;
+// without the integration the layout is shown but edits are not saved.
 
 import {
   logLayoutWarnings,
@@ -11,7 +14,7 @@ import {
 import type { Hass } from "./types/ha.ts";
 import type { Layout } from "./types/layout.ts";
 
-/** Where layouts are saved: the companion integration, HA user data, or this browser. */
+/** Where the layout was read from: the companion integration (the only writable one), HA user data, or this browser. */
 export type StorageBackend = "shared" | "user" | "browser";
 
 export class LayoutStore {
@@ -25,6 +28,11 @@ export class LayoutStore {
     this.backend = null;
     this._timer = null;
     this._pending = null;
+  }
+
+  /** Saves go through: the companion integration answered. */
+  get writable(): boolean {
+    return this.backend === "shared";
   }
 
   async load(hass: Pick<Hass, "callWS">): Promise<Layout> {
@@ -90,26 +98,19 @@ export class LayoutStore {
       this._pending = resolve;
       this._timer = setTimeout(async () => {
         this._pending = null;
-        const data = serializeLayout(layout);
+        if (!this.writable) {
+          console.warn(
+            "floorplan3d: layout not saved, the floorplan3d integration is not installed",
+          );
+          resolve(false);
+          return;
+        }
         try {
-          if (this.backend === "shared") {
-            await hass.callWS({
-              type: "floorplan3d/layout/set",
-              key: this.key,
-              layout: data,
-            });
-          } else if (this.backend === "user") {
-            await hass.callWS({
-              type: "frontend/set_user_data",
-              key: "floorplan3d_" + this.key,
-              value: data,
-            });
-          } else {
-            localStorage.setItem(
-              "floorplan3d_" + this.key,
-              JSON.stringify(data),
-            );
-          }
+          await hass.callWS({
+            type: "floorplan3d/layout/set",
+            key: this.key,
+            layout: serializeLayout(layout),
+          });
           resolve(true);
         } catch (e) {
           console.error("floorplan3d: save failed", e);

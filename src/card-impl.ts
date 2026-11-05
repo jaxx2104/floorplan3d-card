@@ -302,6 +302,7 @@ export class Floorplan3dCard extends HTMLElement {
   declare _ro: ResizeObserver | undefined;
   declare _io: IntersectionObserver | null | undefined;
   declare _onActivity: (() => void) | undefined;
+  _haLayout: string | undefined = undefined;
 
   constructor() {
     super();
@@ -403,10 +404,7 @@ export class Floorplan3dCard extends HTMLElement {
     this._config = parsed.value;
     this._mode = this._config.view === "top" ? "top" : "3d";
     this._store = new LayoutStore(this._config.layout_key);
-    if (this._stage) {
-      this._stage.style.height = this._config.height;
-      this._body.style.setProperty("--fp-height", this._config.height);
-    }
+    this._applyHeight();
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
       this._view.setOcclusion(this._config.occlusion !== false);
@@ -472,6 +470,27 @@ export class Floorplan3dCard extends HTMLElement {
 
   getCardSize(): number {
     return Math.ceil(parseInt(this._config?.height as string, 10) / 50) || 10; // NaN (no config) -> 10
+  }
+
+  /** HA's layout of the card's place (the shell forwards it): "grid" in a sections view. */
+  get layout(): string | undefined {
+    return this._haLayout;
+  }
+
+  set layout(v: string | undefined) {
+    this._haLayout = v;
+    this._applyHeight();
+  }
+
+  // A grid cell (sections view) gives the card its size: fill it. Elsewhere `height`.
+  _applyHeight(): void {
+    const grid = this._haLayout === "grid";
+    this.toggleAttribute("grid", grid);
+    this.style.height = grid ? "100%" : "";
+    if (!this._stage || !this._config) return;
+    const h = grid ? "100%" : this._config.height;
+    this._stage.style.height = h;
+    this._body.style.setProperty("--fp-height", h);
   }
 
   set hass(hass: Hass) {
@@ -608,9 +627,8 @@ export class Floorplan3dCard extends HTMLElement {
     const q = <E extends Element>(sel: string): E =>
       root.querySelector<E>(sel)!;
     this._stage = q<HTMLDivElement>(".stage");
-    const height = this._config.height;
-    this._stage.style.height = height;
-    q<HTMLDivElement>(".body").style.setProperty("--fp-height", height);
+    this._body = q<HTMLDivElement>(".body");
+    this._applyHeight();
     this._chips = q<HTMLDivElement>(".chips");
     this._empty = q<HTMLDivElement>(".empty");
     this._notice = q<HTMLDivElement>(".notice");
@@ -631,7 +649,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._sectionBtn.addEventListener("click", () =>
       this.setSection(!this._section),
     );
-    this._body = q<HTMLDivElement>(".body");
     this._editBtn = q<HTMLButtonElement>("button.edit");
     this._skyCtl.wire(root); // Day / night button, sun time scrubber
     this._editBtn.addEventListener("click", () => this._toggleEdit());
@@ -815,9 +832,10 @@ export class Floorplan3dCard extends HTMLElement {
   _commit(layout: Layout): void {
     this._layout = layout; // the state flow rebuilds what the edit touched
     const seq = (this._saveSeq = (this._saveSeq || 0) + 1);
-    this._edit?.setSaveState("saving");
+    const writable = this._store.writable;
+    this._edit?.setSaveState(writable ? "saving" : "readonly");
     this._store.save(this._hass, layout).then((ok: boolean) => {
-      if (seq === this._saveSeq)
+      if (seq === this._saveSeq && writable)
         this._edit?.setSaveState(ok ? "saved" : "failed");
     });
   }

@@ -34,7 +34,7 @@ position and map overlay.
 - `mower.js` — read position from entity (gps: latitude/longitude attrs or "lat,lon" state;
   xy: configurable attributes), calibration: 1 pt translate, 2 pts similarity, 3+ pts
   least-squares affine. `overlayUrl()` for image./camera. entities via entity_picture.
-- `storage.js` — LayoutStore: companion integration WS -> `frontend/set_user_data` -> localStorage.
+- `storage.js` — LayoutStore: companion integration WS (the only writer) -> `frontend/get_user_data` -> localStorage (both read-only, for migration).
 
 Review these, fix bugs, add unit tests (bun test) for placement + mower math.
 

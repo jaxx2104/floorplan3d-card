@@ -5,7 +5,7 @@
 // The floorplan3d-card shell: HA's card API without the card module, which it imports on first connect
 // and hosts as a floorplan3d-card-impl child that gets every config and hass.
 import { describe, it, expect, vi } from "bun:test";
-import "../src/floorplan3d-card.ts";
+import { gridRows } from "../src/floorplan3d-card.ts";
 
 // no WebGL in the test DOM: a stand-in impl records what the shell forwards (the real one is in card-facade)
 vi.mock("../src/card-impl.ts", () => {
@@ -41,7 +41,8 @@ describe("floorplan3d-card shell", () => {
     expect(s.getGridOptions()).toEqual({
       columns: "full",
       min_columns: 6,
-      rows: "auto",
+      rows: 10,
+      min_rows: 4,
     });
     expect(() => s.setConfig(null)).toThrow();
     await settle();
@@ -81,6 +82,31 @@ describe("floorplan3d-card shell", () => {
     s.setConfig({});
     await settle();
     expect(s.querySelector("floorplan3d-card-impl").configs).toEqual([{}]);
+    s.remove();
+  });
+});
+
+describe("sections view sizing", () => {
+  it("rows from a px height (56 px rows, 8 px gaps), the default otherwise", () => {
+    expect(gridRows("520px")).toBe(8);
+    expect(gridRows("600px")).toBe(10);
+    expect(gridRows("100px")).toBe(4); // min_rows
+    expect(gridRows("60vh")).toBe(8);
+    expect(gridRows(undefined)).toBe(8);
+  });
+  it("layout grid: the shell and the card fill the cell, no height from the config", async () => {
+    const s = shell();
+    s.layout = "grid";
+    s.setConfig({ height: "300px" });
+    expect(s.style.minHeight).toBe("");
+    expect(s.style.height).toBe("100%");
+    document.body.append(s);
+    await settle();
+    const impl = s.querySelector("floorplan3d-card-impl");
+    expect(impl.layout).toBe("grid");
+    s.layout = undefined; // masonry
+    expect(impl.layout).toBe(undefined);
+    expect(s.style.height).toBe("");
     s.remove();
   });
 });

@@ -62,7 +62,8 @@ describe("LayoutStore", () => {
     expect(s.backend).toBe("shared");
   });
 
-  it("falls back to frontend user data", async () => {
+  it("reads frontend user data without the integration, read-only", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const callWS = vi.fn(async (m) => {
       if (m.type === "frontend/get_user_data")
         return { value: { hidden: ["x"] } };
@@ -72,17 +73,17 @@ describe("LayoutStore", () => {
     const s = new LayoutStore();
     expect((await s.load({ callWS })).hidden).toEqual(["x"]);
     expect(s.backend).toBe("user");
+    expect(s.writable).toBe(false);
+    callWS.mockClear();
     const p = s.save({ callWS }, { a: 1 });
     await vi.runAllTimersAsync();
-    await p;
-    expect(callWS).toHaveBeenLastCalledWith({
-      type: "frontend/set_user_data",
-      key: "floorplan3d_default",
-      value: { a: 1, version: 2 },
-    });
+    expect(await p).toBe(false);
+    expect(callWS).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it("falls back to localStorage", async () => {
+  it("reads localStorage as the last resort, read-only", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     localStorage.setItem(
       "floorplan3d_k",
       JSON.stringify({ rooms: [{ id: "z" }] }),
@@ -92,13 +93,14 @@ describe("LayoutStore", () => {
       { id: "z", polygon: [] },
     ]);
     expect(s.backend).toBe("browser");
+    expect(s.writable).toBe(false);
     const p = s.save({ callWS: fail }, { rooms: [] });
     await vi.runAllTimersAsync();
-    expect(await p).toBe(true);
+    expect(await p).toBe(false);
     expect(JSON.parse(localStorage.getItem("floorplan3d_k"))).toEqual({
-      rooms: [],
-      version: 2,
+      rooms: [{ id: "z" }],
     });
+    warn.mockRestore();
   });
 
   it("debounces saves and settles superseded promises", async () => {
