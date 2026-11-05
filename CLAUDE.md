@@ -83,7 +83,8 @@ View mode:
 - Floor chips (each floor + All), 3D / Top view toggle, edit button (admins only).
 - Marker tap: toggle for light/switch/fan/input_boolean, otherwise more-info.
   Long-press (500 ms): more-info (`hass-more-info` event, bubbles + composed).
-- Lights that are on: additive radial glow on the floor, colour from rgb_color, strength from brightness.
+- Lights that are on: additive radial glow on the floor, colour from rgb_color, strength from brightness
+  (plan only: over a 3D model the floor is lit by real lights, the glow is not drawn).
 - Marker shows secondary sensor value (e.g. temperature) when the device has one.
 
 Edit mode (side panel, tabs Rooms / Devices / Mower / Data):

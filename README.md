@@ -12,7 +12,8 @@ position over its map.
   3D model the chips are the model's views (Exterior, Ground floor, …), linked to HA floors
 - Tap toggles lights, switches, fans and input booleans; other devices (and long-press) open
   the more-info dialog
-- Lights that are on cast a glow on the floor in their colour and brightness
+- Lights that are on cast a glow on the floor in their colour and brightness (on the plan; over a 3D model
+  the model's real lights light the floor instead)
 - Markers show a value next to the icon (temperature, power, …); their shape tells what a tap does:
   circles act, rounded squares show readings, diamonds are alarms, pictures for people and players
 - Edit mode for admins: draw rooms, doors, floors, pin and hide devices, import/export

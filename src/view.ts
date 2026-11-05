@@ -985,7 +985,12 @@ export class FloorplanView {
     );
   }
 
+  // A light marker's floor glow: only on the plan alone. Over a 3D model the floor is lit by the sun, the sky and
+  // the model's real lamps, and the decal (additive, not tone mapped) on top of that light blew it out (dark theme
+  // by day: 0.52 to 0.69 display luminance, 27 % of it clipped) or, painted over it in the light theme, darkened
+  // a sunlit floor. The marker itself still shows the light is on.
   _glowVisible(id: string, g: GlowEntry): boolean {
+    if (this.model) return false;
     const st = this._markerStates ? this._markerStates.get(id) : null;
     return (
       (st ? !!st.shown : this._shows(g.floorId)) &&

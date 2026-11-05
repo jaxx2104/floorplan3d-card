@@ -109,6 +109,21 @@ describe("FloorplanView facade", () => {
     v._scheduleOcclusion(0, "m1");
     expect(v.occlusion._scheduleOcclusion).toHaveBeenCalledWith(0, "m1");
   });
+
+  it("a light marker's floor glow shows on the plan alone, never over a 3D model (its real light is there)", () => {
+    const v = facade();
+    Object.assign(v, {
+      model: null,
+      _markerStates: null,
+      _visibleSet: null,
+      visibleFloor: "all",
+      _cutAway: () => false,
+    });
+    const g = { floorId: "ground", mesh: { position: new THREE.Vector3() } };
+    expect(v._glowVisible("light", g)).toBe(true);
+    v.model = { id: "m" };
+    expect(v._glowVisible("light", g)).toBe(false);
+  });
 });
 
 describe("CameraRig", () => {
