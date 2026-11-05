@@ -226,20 +226,43 @@ describe("fitTransform", () => {
     close(f({ u: 3, v: 7 }), g([3, 7]));
   });
 
-  // Known bug (src/mower.ts fitTransform): the collinear fallback takes the first two points, and
-  // when those are the same reading every position collapses onto one plan point. Flip to it() once
-  // the fallback picks two distinct points.
-  it.failing(
-    "a repeated first point with collinear others keeps the line",
-    () => {
-      const pts = [
-        { src: [0, 0], plan: [0, 0] },
-        { src: [0, 0], plan: [0, 0] },
-        { src: [1, 0], plan: [2, 0] },
-      ];
-      close(fitTransform(pts, "xy")({ u: 1, v: 0 }), [2, 0]);
-    },
-  );
+  it("a repeated first point with collinear others keeps the line", () => {
+    const pts = [
+      { src: [0, 0], plan: [0, 0] },
+      { src: [0, 0], plan: [0, 0] },
+      { src: [1, 0], plan: [2, 0] },
+    ];
+    close(fitTransform(pts, "xy")({ u: 1, v: 0 }), [2, 0]);
+  });
+
+  it("collinear readings with duplicates fit through the two farthest apart", () => {
+    const g = ([u, v]) => [2 * u + 1, 2 * v];
+    const srcs = [
+      [1, 0],
+      [1, 0],
+      [0, 0],
+      [3, 0],
+      [0, 0],
+    ];
+    const f = fitTransform(
+      srcs.map((s) => ({ src: s, plan: g(s) })),
+      "xy",
+    );
+    close(f({ u: 5, v: 0 }), g([5, 0]));
+    close(f({ u: 0, v: 1 }), g([0, 1]));
+  });
+
+  it("the same reading repeated falls back to a translate", () => {
+    for (const n of [2, 3]) {
+      const pts = Array.from({ length: n }, () => ({
+        src: [1, 1],
+        plan: [4, 5],
+      }));
+      const f = fitTransform(pts, "xy");
+      close(f({ u: 1, v: 1 }), [4, 5]);
+      close(f({ u: 2, v: 3 }), [5, 7]);
+    }
+  });
 
   it("source kind other than xy is gps", () => {
     const a = { src: [45, 10], plan: [0, 0] };

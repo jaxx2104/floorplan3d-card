@@ -124,6 +124,14 @@ export function fitTransform(
   }));
 
   let f: (s: PlanPoint) => PlanPoint;
+  if (
+    pairs.length === 2 &&
+    pairs[0].s[0] === pairs[1].s[0] &&
+    pairs[0].s[1] === pairs[1].s[1]
+  ) {
+    // the same reading twice says nothing about scale or rotation: translate only
+    return fitTransform(points.slice(0, 1), sourceKind);
+  }
   if (pairs.length === 1) {
     const { s, d } = pairs[0];
     f = ([u, v]): PlanPoint => [d[0] + (u - s[0]), d[1] + (v - s[1])];
@@ -159,7 +167,24 @@ export function fitTransform(
     }
     const cx = solve3(A, bx),
       cy = solve3(A, by);
-    if (!cx || !cy) return fitTransform(points.slice(0, 2), sourceKind);
+    if (!cx || !cy) {
+      // collinear (or repeated) readings: similarity through the two readings farthest apart,
+      // so a repeated first reading cannot collapse the fit onto one plan point
+      let bi = 0,
+        bj = 0,
+        best = 0;
+      for (let i = 0; i < pairs.length; i++)
+        for (let j = i + 1; j < pairs.length; j++) {
+          const d2 =
+            (pairs[i].s[0] - pairs[j].s[0]) ** 2 +
+            (pairs[i].s[1] - pairs[j].s[1]) ** 2;
+          if (d2 > best) [bi, bj, best] = [i, j, d2];
+        }
+      return fitTransform(
+        best > 0 ? [points[bi], points[bj]] : [points[0]],
+        sourceKind,
+      );
+    }
     f = ([u, v]): PlanPoint => [
       cx[0] * u + cx[1] * v + cx[2],
       cy[0] * u + cy[1] * v + cy[2],
