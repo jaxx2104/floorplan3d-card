@@ -246,7 +246,7 @@ export class ObjectInput {
       popupSource: this._objectActions(id, o).popupSource,
       extra,
       badge: card._objectBadge(o.binding && o.binding.entity),
-      dark: !!(card._built.theme && card._built.theme.dark),
+      dark: !!(card._theme && card._theme.dark),
     };
   }
 

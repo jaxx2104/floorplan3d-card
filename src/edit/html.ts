@@ -151,7 +151,7 @@ export function slider(ed: EditMode, o: SliderOpts): TemplateResult {
 }
 
 const dark = (ed: EditMode): boolean =>
-  !!(ed.card._built && ed.card._built.theme && ed.card._built.theme.dark);
+  !!(ed.card._theme && ed.card._theme.dark);
 
 // The integration logo of a platform (none, or its logo failed: nothing). A failed dark logo falls back to the
 // light one, a failed light logo is not asked for again (badge-dom keeps the failures, markers share them).

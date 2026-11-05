@@ -8,7 +8,6 @@ import { Color } from "three";
 import { FloorplanView } from "./view.ts";
 import type { EditMode } from "./edit-mode.ts"; // loaded with import() on the first Edit (its own chunk)
 import { LayoutStore } from "./storage.ts";
-import { registrySignature } from "./registry.ts";
 import "./mower-auto.ts"; // registers the auto-mode kernel with the map worker
 import { ObjectLayer } from "./objects/layer.ts";
 import { TapHints } from "./objects/hints.ts";
@@ -26,11 +25,13 @@ import { MarkerLayer } from "./card/marker-layer.ts";
 import { ActionRunner } from "./card/action-runner.ts";
 import { ObjectInput } from "./card/object-input.ts";
 import { SkyController } from "./card/sky-controller.ts";
+import { CardState, type CardSteps } from "./card/state.ts";
 import { logConfigWarnings, parseCardConfig } from "./schema/config.ts";
 import type { CardConfig, ResolvedCardConfig } from "./types/config.ts";
-import type { Hass, HassEntity, HassThemes } from "./types/ha.ts";
+import type { Hass } from "./types/ha.ts";
 import type { Layout } from "./types/layout.ts";
 import type { LoadedModel, ModelOptions } from "./view/model.ts";
+import type { ModelBindings } from "./card/model-loader.ts";
 
 /** The card's colours from the HA theme (view.setTheme). */
 export interface CardTheme {
@@ -46,36 +47,6 @@ export interface CardTheme {
 export interface LongTask {
   start: number;
   ms: number;
-}
-
-/**
- * What the scene was last built from (by identity), so _update rebuilds only the parts whose inputs
- * changed. Filled lazily: every entry starts undefined.
- */
-export interface Built {
-  themes?: HassThemes;
-  theme?: CardTheme;
-  modelKeyIn?: unknown[];
-  modelKeyNow?: string;
-  modelKey?: string;
-  manifest?: unknown;
-  rooms?: Layout["rooms"];
-  roomLabels?: unknown;
-  lfloors?: Layout["floors"];
-  floors?: Hass["floors"];
-  areas?: Hass["areas"];
-  sig?: unknown[];
-  pins?: Layout["pins"];
-  hidden?: Layout["hidden"];
-  mowerKey?: string;
-  model?: Layout["model"];
-  mower?: Layout["mower"];
-  states?: Record<string, HassEntity>;
-  badges?: Layout["badges"];
-  viewInputs?: unknown[];
-  viewManifest?: unknown;
-  viewKey?: string;
-  viewsKey?: string;
 }
 
 /** The info a ModelLoader load hands to _afterModel. */
@@ -298,18 +269,18 @@ export class Floorplan3dCard extends HTMLElement {
   _actionRunner: ActionRunner;
   _objectInput: ObjectInput;
   _skyCtl: SkyController;
-  _layout: Layout | null;
+  /** The state flow: inputs as signals, the rebuild / refresh steps as effects (card/state.ts). */
+  _state: CardState<ModelBindings>;
   _layoutReady: Promise<void>;
-  _built: Built;
+  /** The theme colours of the last applied HA theme (undefined until the first build). */
+  _theme: CardTheme | undefined;
   _taps: TapSequencer;
   _objects: ObjectLayer | null;
   // Set later (declare: no own field until then). setConfig sets _config / _mode / _store before the
   // card renders, _render the DOM parts and the view, the hass setter _hass: the members that use them
   // run after that (the ones that may run earlier check them).
   declare _layoutLoaded: () => void;
-  declare _config: ResolvedCardConfig;
   declare _store: LayoutStore;
-  declare _hass: Hass;
   declare _view: FloorplanView;
   _edit: EditMode | null; // null until the first Edit has loaded it (_editing implies it is there)
   _editLoad: Promise<void> | null; // the running _toggleEdit while edit mode loads (headless checks await it)
@@ -324,12 +295,8 @@ export class Floorplan3dCard extends HTMLElement {
   declare _loadUI: ModelLoadUI;
   declare _popup: ObjectPopup;
   declare _hints: TapHints;
-  declare _editing: boolean | undefined;
   declare _loading: boolean | undefined;
-  declare _pending: boolean | undefined;
   declare _saveSeq: number | undefined;
-  declare _mb: ReturnType<ModelLoader["modelBindings"]> | undefined;
-  declare _labels: Record<string, { name: string }> | undefined;
   declare _labelsTried: boolean | undefined;
   declare _debug: DebugOverlay | null | undefined;
   declare _ltObs: PerformanceObserver | null | undefined;
@@ -349,15 +316,87 @@ export class Floorplan3dCard extends HTMLElement {
     this._actionRunner = new ActionRunner(this);
     this._objectInput = new ObjectInput(this);
     this._skyCtl = new SkyController(this);
-    this._layout = null;
+    this._state = new CardState<ModelBindings>();
+    this._state.connect(this._steps());
+    this._theme = undefined;
     this._layoutReady = new Promise<void>((r) => {
       this._layoutLoaded = r;
     }); // resolves once the stored layout has loaded (or failed)
-    this._built = {};
     this._taps = new TapSequencer(); // single vs double tap, per target
     this._objects = null; // ObjectLayer: model lamps and the real light pool
     this._edit = null;
     this._editLoad = null;
+  }
+
+  // The inputs of the state flow: reads are untracked (the card's own code), writes notify the graph.
+  get _hass(): Hass {
+    return this._state.hass.peek()!; // the members that run before the first hass check it
+  }
+  set _hass(h: Hass) {
+    this._state.hass.value = h;
+  }
+  get _config(): ResolvedCardConfig {
+    return this._state.config.peek()!; // set by setConfig before the card renders
+  }
+  set _config(c: ResolvedCardConfig) {
+    this._state.config.value = c;
+  }
+  get _layout(): Layout | null {
+    return this._state.layout.peek();
+  }
+  set _layout(l: Layout | null) {
+    this._state.layout.value = l;
+  }
+  get _editing(): boolean {
+    return this._state.editing.peek();
+  }
+  set _editing(on: boolean) {
+    this._state.editing.value = !!on;
+  }
+  get _labels(): Record<string, { name: string }> | undefined {
+    return this._state.labels.peek();
+  }
+  set _labels(v: Record<string, { name: string }> | undefined) {
+    this._state.labels.value = v;
+  }
+  /** The model bindings now (derived: model, layout, HA floors and areas, config). */
+  get _mb(): ModelBindings | null {
+    return this._state.mb.peek();
+  }
+  /** Updates are waiting for their microtask (the headless checks wait for a settled card). */
+  get _pending(): boolean {
+    return this._state.pending();
+  }
+
+  // What the state flow runs (card/state.ts decides when).
+  _steps(): CardSteps<ModelBindings> {
+    return {
+      applyTheme: () => this._applyTheme(),
+      modelBindings: () => this.modelBindings(),
+      modelKey: (mb) =>
+        mb ? JSON.stringify([mb.levels, mb.rooms, this._modelAlign()]) : "",
+      resolveViews: (mb) => this._resolveViewList(mb),
+      checkMergeKeep: () => this._checkMergeKeep(),
+      buildStructure: (mb, viewsChanged) =>
+        this._buildStructure(mb, viewsChanged),
+      refreshViews: () => this._refreshViews(),
+      syncBindings: () => this._syncBindings(),
+      buildMarkers: () => this._buildMarkers(),
+      loadModel: () => this._loadModel(),
+      mowerConfig: (m) => this._mowerCtl.configChanged(m),
+      refreshStates: () => {
+        this._refreshStates();
+        this._refreshMower();
+      },
+      tail: (rebuilt) => {
+        this._updateObjects();
+        this._popup.update();
+        if (this._editing) {
+          if (rebuilt) this._edit?.afterUpdate();
+          else this._edit?.onStates();
+        }
+      },
+    };
   }
 
   setConfig(config: CardConfig): void {
@@ -445,7 +484,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._applyWeather();
     if (this._view) this._view.setScreenStates(hass.states); // fp_anim screens follow their entities
     if (!this._layout && !this._loading) this._load();
-    this._schedule();
   }
 
   get hass(): Hass {
@@ -464,9 +502,8 @@ export class Floorplan3dCard extends HTMLElement {
         const out: Record<string, { name: string }> = {};
         for (const l of list as ({ label_id?: string; name: string } | null)[])
           if (l && l.label_id) out[l.label_id] = { name: l.name };
-        this._labels = out;
         this._objectInput.resetBindKey();
-        this._schedule();
+        this._labels = out;
       })
       .catch(() => {});
   }
@@ -493,8 +530,7 @@ export class Floorplan3dCard extends HTMLElement {
     this._observeLongTasks();
     // the map / image timers stopped on disconnect: re-arm them (refresh states and mower on the next update)
     this._mowerCtl.resume();
-    if (this._built) this._built.states = undefined;
-    this._schedule();
+    this._state.reconnects.value = this._state.reconnects.peek() + 1;
     this._scheduleSurfaces();
     // idle_reset: any touch, wheel or key on the card restarts the countdown
     if (!this._onActivity)
@@ -548,7 +584,6 @@ export class Floorplan3dCard extends HTMLElement {
       this._loading = false;
       this._layoutLoaded();
     }
-    this._schedule();
   }
 
   _render(): void {
@@ -680,6 +715,7 @@ export class Floorplan3dCard extends HTMLElement {
     );
     this._objectInput.wire(this._stage, canvas); // object taps, tap hints, hover
     this._syncToolbar();
+    this._state.rendered.value = true;
   }
 
   // A model load finished (ModelLoader._loadModel; err: its message, '' / undefined when fine): the
@@ -714,7 +750,8 @@ export class Floorplan3dCard extends HTMLElement {
       this._applyWeather();
     } else this._skyCtl.resetDay(); // no model: the toggle is hidden, so always day
     this._syncToolbar();
-    this._schedule(); // the manifest arrived: rebuild
+    this._state.model.value = this._view.model; // the manifest arrived: rebuild
+    this._schedule();
     if (this._layout && this._layout.mower && this._hass)
       this._refreshMapOverlay(); // the map lies on the model's lawn
     if (this._editing)
@@ -773,10 +810,8 @@ export class Floorplan3dCard extends HTMLElement {
       this._viewCtl.clearFloorOnly(); // back to the view the chips show (camera kept)
     }
     this._syncHints(); // no tap hints while editing
-    this._built.rooms = undefined; // model look: outlines and labels only while editing
     if (this._layout && this._layout.mower && this._hass)
       this._refreshMapOverlay(); // "map only in edit mode"
-    this._schedule();
     this._syncToolbar();
     // the panel changes the canvas size: resize once the layout has settled; the camera stays
     requestAnimationFrame(() => this._resize());
@@ -784,14 +819,13 @@ export class Floorplan3dCard extends HTMLElement {
 
   // Apply an edited layout: rebuild the plan and save it.
   _commit(layout: Layout): void {
-    this._layout = layout;
+    this._layout = layout; // the state flow rebuilds what the edit touched
     const seq = (this._saveSeq = (this._saveSeq || 0) + 1);
     this._edit?.setSaveState("saving");
     this._store.save(this._hass, layout).then((ok: boolean) => {
       if (seq === this._saveSeq)
         this._edit?.setSaveState(ok ? "saved" : "failed");
     });
-    this._schedule();
   }
 
   _resize(): void {
@@ -801,109 +835,9 @@ export class Floorplan3dCard extends HTMLElement {
     if (!this._fitted && this._roomList) this._initialCamera();
   }
 
+  // Something the state flow cannot see changed (e.g. a merged model tree): run the per-update steps again.
   _schedule(): void {
-    if (this._pending) return;
-    this._pending = true;
-    queueMicrotask(() => {
-      this._pending = false;
-      if (this._view && this._hass && this._layout) this._update();
-    });
-  }
-
-  // Rebuild only what changed. Edits replace just the layout parts they touch, so identity
-  // comparisons per part keep e.g. overlay slider changes from rebuilding the whole scene.
-  _update(): void {
-    const h = this._hass;
-    const b = this._built;
-    const l = this._layout!; // _schedule runs it only with a layout
-    let structure = false,
-      markers = false,
-      mower = false;
-
-    if (h.themes !== b.themes || !b.theme) {
-      b.themes = h.themes;
-      this._applyTheme();
-      structure = true;
-    }
-    const mb = this.modelBindings();
-    this._mb = mb;
-    const viewsChanged = this._resolveViewList(mb);
-    if (viewsChanged) this._checkMergeKeep();
-    const viewsOnly = viewsChanged === "views"; // only layout.views / view_order: no scene or marker rebuild
-    let viewRefreshed = false;
-    const mkIn = [mb, this._config, l.model];
-    const was = b.modelKeyIn;
-    if (!was || mkIn.some((x, i) => x !== was[i])) {
-      b.modelKeyIn = mkIn;
-      b.modelKeyNow = mb
-        ? JSON.stringify([mb.levels, mb.rooms, this._modelAlign()])
-        : "";
-    }
-    const modelKey = b.modelKeyNow;
-    if (
-      structure ||
-      (viewsChanged && !viewsOnly) ||
-      l.rooms !== b.rooms ||
-      (l.room_labels || null) !== (b.roomLabels ?? null) ||
-      l.floors !== b.lfloors ||
-      h.floors !== b.floors ||
-      h.areas !== b.areas ||
-      (mb && mb.manifest) !== b.manifest ||
-      modelKey !== b.modelKey
-    ) {
-      b.manifest = mb && mb.manifest;
-      b.modelKey = modelKey;
-      this._buildStructure(mb, !!viewsChanged);
-      markers = true;
-    } else if (viewsOnly) {
-      this._refreshViews();
-      viewRefreshed = true;
-    }
-    const sig = registrySignature(h);
-    const m = l.mower || null;
-    const mowerKey = m ? `${m.entity}|${m.floor_id}` : "";
-    const bsig = b.sig;
-    if (
-      this._syncBindings() ||
-      markers ||
-      !bsig ||
-      sig.some((x, i) => x !== bsig[i]) ||
-      l.pins !== b.pins ||
-      l.hidden !== b.hidden ||
-      mowerKey !== b.mowerKey
-    ) {
-      b.sig = sig;
-      b.pins = l.pins;
-      b.hidden = l.hidden;
-      b.mowerKey = mowerKey;
-      this._buildMarkers();
-      markers = true;
-    }
-    if (l.model !== b.model) {
-      b.model = l.model;
-      this._loadModel();
-    }
-    if (m !== b.mower) {
-      b.mower = m;
-      this._mowerCtl.configChanged(m);
-      mower = true;
-    }
-    if (
-      h.states !== b.states ||
-      markers ||
-      mower ||
-      l.badges !== b.badges ||
-      structure
-    ) {
-      b.states = h.states;
-      b.badges = l.badges;
-      this._refreshStates();
-      this._refreshMower();
-    }
-    this._updateObjects();
-    this._popup.update();
-    if ((markers || viewRefreshed) && this._editing) this._edit?.afterUpdate();
-    else if (this._editing) this._edit?.onStates();
+    this._state.schedule();
   }
 
   _applyTheme(): void {
@@ -914,7 +848,7 @@ export class Floorplan3dCard extends HTMLElement {
         ? this._hass.themes.darkMode
         : luminance(bg) < 0.4;
     const mix = (a: Color, c: Color, t: number): Color => a.clone().lerp(c, t);
-    const theme: CardTheme = (this._built.theme = {
+    const theme: CardTheme = (this._theme = {
       dark,
       floor: mix(bg, text, dark ? 0.09 : 0.05),
       outdoor: mix(bg, new Color("#5a9e4b"), dark ? 0.22 : 0.3),

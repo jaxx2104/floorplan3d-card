@@ -115,6 +115,13 @@ export class ViewController {
   _viewFresh: boolean | undefined;
   _fitted: boolean | undefined;
   _idleTimer: ReturnType<typeof setTimeout> | null | undefined;
+  /** What the view list was last resolved from (_resolveViewList). */
+  _resolved: {
+    inputs?: unknown[];
+    manifest?: unknown;
+    key?: string;
+    viewsKey?: string;
+  };
 
   /** @param card the Floorplan3dCard (host): read live, never captured */
   constructor(card: Floorplan3dCard) {
@@ -139,6 +146,7 @@ export class ViewController {
     this._viewFresh = undefined;
     this._fitted = undefined;
     this._idleTimer = undefined;
+    this._resolved = {};
   }
 
   // The node index of the model (views.js nodeIndex), null without one.
@@ -175,13 +183,7 @@ export class ViewController {
 
   _buildStructure(mb: ModelBindings | null, viewsChanged = false): void {
     const h = this.card._hass,
-      b = this.card._built,
-      l = this.card._layout!; // built from _update (layout loaded)
-    b.rooms = l.rooms;
-    b.roomLabels = l.room_labels || null;
-    b.lfloors = l.floors;
-    b.floors = h.floors;
-    b.areas = h.areas;
+      l = this.card._layout!; // built by the state flow (layout loaded)
     const align = this.card._modelAlign();
     // a level bound to an HA floor gives that floor its elevation and height (user overrides win);
     // untagged levels use their measured geometry
@@ -362,8 +364,8 @@ export class ViewController {
   // Views from the model (or HA floors without one) merged with layout + YAML overrides.
   // Returns true when they changed. A new model resets the node index and re-frames.
   _resolveViewList(mb: ModelBindings | null): boolean | "views" {
-    const l = this.card._layout!,
-      b = this.card._built; // from _update (layout loaded)
+    const l = this.card._layout!, // from the state flow (layout loaded)
+      b = this._resolved;
     // same inputs (by identity) as last time: nothing to resolve (the usual per-state-update case)
     const inputs = [
       mb,
@@ -374,9 +376,9 @@ export class ViewController {
       this.card._hass.floors,
       this.card._config,
     ];
-    const was = b.viewInputs;
+    const was = b.inputs;
     if (was && inputs.every((x, i) => x === was[i])) return false;
-    b.viewInputs = inputs;
+    b.inputs = inputs;
     const manifest = mb ? mb.manifest : null;
     const haFloors = mergeFloors(
       this.card._hass,
@@ -395,11 +397,11 @@ export class ViewController {
       mb ? mb.levels : null,
     ]);
     const vkey = JSON.stringify([l.views || null, l.view_order || null]);
-    if (manifest === b.viewManifest && key === b.viewKey && vkey === b.viewsKey)
+    if (manifest === b.manifest && key === b.key && vkey === b.viewsKey)
       return false;
     const onlyViews =
-      manifest === b.viewManifest && key === b.viewKey && !!this._floors;
-    if (manifest !== b.viewManifest) {
+      manifest === b.manifest && key === b.key && !!this._floors;
+    if (manifest !== b.manifest) {
       this._index =
         manifest && this.card._view.model
           ? nodeIndex(threeAdapter(this.card._view.model.root), manifest)
@@ -407,8 +409,8 @@ export class ViewController {
       this.card._tagIndex();
       this._viewFresh = true;
     }
-    b.viewManifest = manifest;
-    b.viewKey = key;
+    b.manifest = manifest;
+    b.key = key;
     b.viewsKey = vkey;
     this._views = orderViews(
       resolveViews({

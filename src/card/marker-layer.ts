@@ -402,7 +402,7 @@ export class MarkerLayer {
     const glows: GlowSpec[] = [];
     const bo = this.badgeOpts(),
       anyBadge = bo.integration || bo.status || bo.battery;
-    const dark = !!(this.card._built.theme && this.card._built.theme.dark);
+    const dark = !!(this.card._theme && this.card._theme.dark);
     for (const m of this._markers) {
       const el = this._markerEls.get(m.id);
       if (!el) continue;

@@ -61,7 +61,7 @@ function setup(layout = {}) {
     _floors: [{ id: "ground", name: "Ground", elevation: 0, height: 2.7 }],
     _config: { layout_key: "default" },
     _store: { backend: "shared" },
-    _built: { theme: { dark: false, primary: 0 } },
+    _theme: { dark: false, primary: 0 },
     _modelRooms: [],
     _floor: "ground",
     _viewState: null,

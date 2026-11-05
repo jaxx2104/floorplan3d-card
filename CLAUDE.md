@@ -14,7 +14,9 @@ position and map overlay.
   Relative imports use `.ts` specifiers (allowImportingTsExtensions); only erasable TS syntax
   (erasableSyntaxOnly), so bun (or node) runs src/ directly for scripts/ and tools/.
 - Structure: `src/floorplan3d-card.*` is the element shell (lifecycle, hass update diff, commit) over
-  parts in `src/card/`; `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
+  parts in `src/card/`; when a part rebuilds or refreshes is the signal graph in `src/card/state.ts`
+  (in-house core `src/signals.ts`: hass / config / layout / model / editing in, one effect per step);
+  `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
   coordinates the edit panel (`src/edit/tabs/*` registered by data-act / data-field, `src/edit/tools/*`)
 - OrbitControls, CSS2DRenderer (markers/labels as DOM, so `<ha-icon>` works), GLTFLoader
 - Companion integration `custom_components/floorplan3d/` for shared server-side storage

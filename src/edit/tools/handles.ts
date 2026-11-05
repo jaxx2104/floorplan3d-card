@@ -29,7 +29,7 @@ export function handleEl(
 export function refreshOverlay(ed: EditMode, preview?: LayoutRoom) {
   if (!ed.view) return;
   ed._syncStageClasses();
-  const color = ed.card._built.theme ? ed.card._built.theme.primary : 0x03a9f4;
+  const color = ed.card._theme ? ed.card._theme.primary : 0x03a9f4;
   const lines: OverlayLine[] = [],
     fills: OverlayFill[] = [],
     handles: OverlayHandle[] = [];

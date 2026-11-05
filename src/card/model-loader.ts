@@ -204,7 +204,7 @@ export class ModelLoader {
     if (!vw.model) return;
     if (
       this.card._index &&
-      this.card._built.viewManifest === vw.model.manifest
+      this.card._viewCtl._resolved.manifest === vw.model.manifest
     ) {
       this.card._viewCtl.setIndex(
         nodeIndex(threeAdapter(vw.model.root), vw.model.manifest),
