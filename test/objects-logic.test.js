@@ -17,12 +17,7 @@ import {
   floorAtHeight,
   effectiveGroups,
 } from "../src/objects/logic.ts";
-
-const st = (entity_id, state, attributes = {}) => ({
-  entity_id,
-  state,
-  attributes,
-});
+import { stateOf as st } from "./helpers/hass.js";
 
 describe("bindObjects", () => {
   const objects = [

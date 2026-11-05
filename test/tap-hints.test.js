@@ -6,8 +6,7 @@ import {
   HINT_RADIUS,
 } from "../src/objects/hints.ts";
 import { chainState } from "../src/objects/logic.ts";
-
-const st = (state, attributes = {}) => ({ state, attributes });
+import { st } from "./helpers/hass.js";
 
 describe("tapHintsMode", () => {
   it("layout.tap_hints: always / near (default) / off", () => {

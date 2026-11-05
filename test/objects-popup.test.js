@@ -11,8 +11,8 @@ import {
 import { resolveActions } from "../src/actions.ts";
 import { typeOf } from "../src/objects/types.ts";
 import { chainState } from "../src/objects/logic.ts";
+import { st } from "./helpers/hass.js";
 
-const st = (state, attributes = {}) => ({ state, attributes });
 const kinds = (rows) => rows.map((r) => r.kind);
 
 describe("popupRows", () => {

@@ -20,8 +20,7 @@ import {
   addTagToObjects,
   removeTagFromObjects,
 } from "../src/editor.ts";
-
-const st = (state, attributes = {}) => ({ state, attributes });
+import { st } from "./helpers/hass.js";
 
 describe("objectTags", () => {
   const hass = {

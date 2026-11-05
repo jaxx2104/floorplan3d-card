@@ -6,8 +6,8 @@ import {
   isActive,
   displayValue,
 } from "../src/registry.ts";
+import { st } from "./helpers/hass.js";
 
-const st = (state, attributes = {}) => ({ state, attributes });
 const hass = {
   areas: {
     kitchen: { area_id: "kitchen", name: "Kitchen", floor_id: "ground" },

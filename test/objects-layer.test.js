@@ -1,68 +1,14 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import * as THREE from "three";
 import { ObjectLayer } from "../src/objects/layer.ts";
+import { st } from "./helpers/hass.js";
+import {
+  fakeView,
+  lampModel as model,
+  bindings as bind,
+  allVisible as ctx,
+} from "./helpers/objects.js";
 
-const st = (state, attributes = {}) => ({ state, attributes });
-
-function fakeView() {
-  return {
-    objectsGroup: new THREE.Group(),
-    dirty: 0,
-    shadow: 0,
-    markDirty() {
-      this.dirty++;
-    },
-    floorElevation: (f) => (f === "up" ? 3 : 0),
-    flagged: [],
-    requestShadowUpdate(lights) {
-      this.shadow++;
-      this.dirty++;
-      this.flagged.push(...lights);
-    },
-  };
-}
-
-// a level node with lamps: { id, x, group?, hints?, type? }
-function model(lamps) {
-  const root = new THREE.Group();
-  const level = new THREE.Group();
-  root.add(level);
-  const objects = lamps.map((l) => {
-    const node = new THREE.Group();
-    node.position.set(l.x, 2, 0);
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.06, 0.06),
-      new THREE.MeshStandardMaterial(),
-    );
-    glow.name = "glow";
-    node.add(glow);
-    level.add(node);
-    return {
-      id: l.id,
-      type: l.type || "light",
-      level: "ground",
-      group: l.group || null,
-      glow: null,
-      hints: l.hints || {},
-      node,
-      suggest: {},
-    };
-  });
-  return {
-    id: "m",
-    root,
-    manifest: { levels: [{ id: "ground", node: level }], objects },
-  };
-}
-
-const bind = (ids) =>
-  new Map(
-    ids.map(([id, entity]) => [
-      id,
-      { entity, auto: true, missing: false, hidden: false },
-    ]),
-  );
-const ctx = { visibleLevel: () => true, lightsOn: true };
 const points = (layer) => layer.pool.points;
 const lit = (arr) => arr.filter((l) => l.intensity > 0);
 

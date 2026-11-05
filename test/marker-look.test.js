@@ -12,7 +12,6 @@ const m = (eid, extra = {}) => ({
   domain: eid.split(".")[0],
   ...extra,
 });
-const st = (state, attributes = {}) => ({ state, attributes });
 
 describe("markerLook", () => {
   it("controllable domains: circle", () => {
@@ -131,6 +130,7 @@ describe("markerLook", () => {
 });
 
 import { pictureKey } from "../src/registry.ts";
+import { st } from "./helpers/hass.js";
 describe("pictureKey", () => {
   const u = (t, c) =>
     `/api/media_player_proxy/media_player.tv?token=${t}&cache=${c}`;

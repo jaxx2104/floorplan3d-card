@@ -1,72 +1,18 @@
 // Final review fixes for lights-and-objects (v0.4.0): lights: off sub-group, idle redraws, per-light
 // shadow updates, tap order, charger power input, import keeping object bindings.
 import { describe, it, expect, beforeEach } from "bun:test";
-import * as THREE from "three";
 import { ObjectLayer } from "../src/objects/layer.ts";
 import { chargerInputs, TYPES } from "../src/objects/types.ts";
 import { screenByDistance } from "../src/objects/logic.ts";
 import { mergeImport } from "../src/editor.ts";
 import { parseLayout } from "../src/schema/layout.ts";
-
-const st = (state, attributes = {}) => ({ state, attributes });
-const ctx = { visibleLevel: () => true, lightsOn: true };
-
-function fakeView() {
-  return {
-    objectsGroup: new THREE.Group(),
-    dirty: 0,
-    shadow: 0,
-    flagged: [],
-    markDirty() {
-      this.dirty++;
-    },
-    floorElevation: () => 0,
-    requestShadowUpdate(lights) {
-      this.shadow++;
-      this.dirty++;
-      this.flagged.push(...lights);
-    },
-  };
-}
-
-function model(objs) {
-  const root = new THREE.Group();
-  const level = new THREE.Group();
-  root.add(level);
-  const objects = objs.map((l) => {
-    const node = new THREE.Group();
-    node.position.set(l.x, 2, 0);
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.1, 0.1),
-      new THREE.MeshStandardMaterial(),
-    );
-    glow.name = l.glowName || "glow";
-    node.add(glow);
-    level.add(node);
-    return {
-      id: l.id,
-      type: l.type || "light",
-      level: "ground",
-      group: l.group || null,
-      glow: null,
-      hints: l.hints || {},
-      node,
-      suggest: {},
-    };
-  });
-  return {
-    id: "m",
-    root,
-    manifest: { levels: [{ id: "ground", node: level }], objects },
-  };
-}
-const bind = (ids) =>
-  new Map(
-    ids.map(([id, entity]) => [
-      id,
-      { entity, auto: true, missing: false, hidden: false },
-    ]),
-  );
+import { st } from "./helpers/hass.js";
+import {
+  fakeView,
+  lampModel as model,
+  bindings as bind,
+  allVisible as ctx,
+} from "./helpers/objects.js";
 
 describe("lights: off hides the pool sub-group", () => {
   let view, layer;

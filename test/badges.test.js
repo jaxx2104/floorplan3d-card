@@ -11,12 +11,7 @@ import {
   statusKind,
   badgeInfo,
 } from "../src/badges.ts";
-
-const S = (entity_id, state, attributes = {}) => ({
-  entity_id,
-  state,
-  attributes,
-});
+import { stateOf as S } from "./helpers/hass.js";
 
 describe("badge options", () => {
   it("defaults, layout, YAML override per key", () => {

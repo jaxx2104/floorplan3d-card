@@ -7,12 +7,7 @@ import {
   stuckDueIn,
   parseOkValues,
 } from "../src/mower-warning.ts";
-
-const S = (entity_id, state, attributes = {}) => ({
-  entity_id,
-  state,
-  attributes,
-});
+import { stateOf as S } from "./helpers/hass.js";
 
 describe("error classification", () => {
   it("binary_sensor on is a problem, off is not", () => {
