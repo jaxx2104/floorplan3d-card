@@ -1,3 +1,6 @@
+// @vitest-environment happy-dom
+// (the router itself needs no DOM, but it loads the edit tabs and lit; in a serial run (bun test
+// --coverage) a DOM-less first load is shared with edit-panel and breaks it)
 import { describe, it, expect, vi } from "bun:test";
 import {
   clickRoute,

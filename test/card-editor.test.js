@@ -30,7 +30,8 @@ describe("card editor", () => {
   });
 
   // the leaf fields, through grids and expandables
-  const leaves = (list) => list.flatMap((x) => (x.schema ? leaves(x.schema) : [x]));
+  const leaves = (list) =>
+    list.flatMap((x) => (x.schema ? leaves(x.schema) : [x]));
   const fields = () => leaves(mod.SCHEMA);
   const RENDER_FORM_FIELDS = ["render_quality", "render_tone_mapping"]; // folded into render
 
