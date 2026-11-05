@@ -19,7 +19,8 @@ type Flags = {
 };
 
 // Objects the depth pre-pass draws: visible opaque meshes that write depth (not helpers, glass, sprites,
-// points, lines).
+// points, lines). A model material ghosted by model_opacity (blended, depth writes kept) still counts:
+// it was opaque in the file (userData.wasTransparent === false), only the card made it see-through.
 export function occludes(o: Drawable): boolean {
   const f = o as Flags;
   if (
@@ -37,7 +38,7 @@ export function occludes(o: Drawable): boolean {
       (m) =>
         m &&
         m.visible !== false &&
-        !m.transparent &&
+        (!m.transparent || m.userData?.wasTransparent === false) &&
         m.depthWrite !== false &&
         m.colorWrite !== false &&
         !(m.transmission! > 0),
