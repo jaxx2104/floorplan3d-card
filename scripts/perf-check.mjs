@@ -481,7 +481,7 @@ async function autoChecks() {
     // continuous rendering for ms (every animation frame renders, as while orbiting); level sampled at the end
     const run = (ms) =>
       ev(`new Promise((done) => { const v = ${card}._view, end = performance.now() + ${ms};
-      const f = () => { v.dirty = true; if (performance.now() < end) requestAnimationFrame(f); else done(v.auto.level); }; requestAnimationFrame(f); })`);
+      const f = () => { v.dirty = true; if (performance.now() < end) requestAnimationFrame(f); else { const a = v.auto.state(); done({ level: a.level, pending: a.pending, switches: v.stats.autoSwitches }); } }; requestAnimationFrame(f); })`);
     const T = {
       window: 15,
       settleMs: 500,
@@ -497,7 +497,11 @@ async function autoChecks() {
     const s1 = await state();
     check(
       "auto: slow frames under interaction: a step down proposed, not applied while rendering",
-      during === "high" && s1.pending === "standard" && s1.switches === 0,
+      // read inside the page at the end of the run: a slow runner can reach the idle switch before the next
+      // round trip, so the state after the run is not what was true while rendering
+      during.level === "high" &&
+        during.pending === "standard" &&
+        during.switches === 0,
       JSON.stringify({ during, ...s1 }),
     );
     await sleep(2500); // idle: applied after AUTO_IDLE_MS
@@ -719,9 +723,12 @@ try {
     );
   await until(`!!${card}._view.model`, "the model", 60000);
   check(
-    "the benchmark runs at the default render quality, high",
-    (await ev(`${card}._view.look.renderOpt.quality`)) === "high",
-    await ev(`${card}._view.look.renderOpt.quality`),
+    "the benchmark runs at the default render quality, auto at high",
+    (await ev(`${card}._view.look.renderOpt.quality`)) === "auto" &&
+      (await ev(`${card}._view.look.quality()`)) === "high",
+    await ev(
+      `${card}._view.look.renderOpt.quality + " / " + ${card}._view.look.quality()`,
+    ),
   );
   await ev("window.__demoMowerPaused = true");
   const n = await ev(
