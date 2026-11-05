@@ -7475,9 +7475,16 @@ sections.add(
           outline.length < 20480,
         String(outline).slice(0, 120),
       );
-      const gone = await page.evaluate(
-        `!${card}.shadowRoot.querySelector('.fp-loadplan') && !${card}._stage.querySelector('.fp-loadplan')`,
-      );
+      // the drawing fades out for 320 ms after the load, then is removed: waited for, not read at once
+      const gone = await page
+        .waitForFunction(
+          `!${card}.shadowRoot.querySelector('.fp-loadplan') && !${card}._stage.querySelector('.fp-loadplan')`,
+          { timeout: 5000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
       check("after the load the drawing overlay is gone", gone);
       // the same demo again, caches kept; the model's HEAD answered late so the drawing has time to show
       gets.length = 0;
