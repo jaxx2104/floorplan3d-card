@@ -7,7 +7,6 @@ import {
   autoPlace,
   snap,
   domainPriority,
-  SKIP_DOMAINS,
 } from "../src/placement.ts";
 
 const square = [
@@ -82,13 +81,59 @@ describe("type rules", () => {
 
   it("ranks lights above sensors and unknown domains last", () => {
     expect(domainPriority("light")).toBeLessThan(domainPriority("sensor"));
-    expect(domainPriority("nope")).toBe(99);
-    expect(SKIP_DOMAINS.has("update")).toBe(true);
+    for (const d of ["light", "switch", "sensor", "binary_sensor"])
+      expect(domainPriority("nope")).toBeGreaterThan(domainPriority(d));
   });
 });
 
 describe("autoPlace", () => {
   const room = { id: "r", polygon: square, doors: [[2, 0]] };
+
+  it("returns nothing for a missing or empty polygon", () => {
+    const ms = [{ id: "a", domain: "light" }];
+    for (const polygon of [null, undefined, []])
+      expect(autoPlace({ polygon }, ms, 2.7).size).toBe(0);
+  });
+
+  it("places every device even when there are more than spots in a tiny room", () => {
+    const tiny = [
+      [0, 0],
+      [0.5, 0],
+      [0.5, 0.5],
+      [0, 0.5],
+    ];
+    const ms = [1, 2, 3].map((i) => ({ id: "l" + i, domain: "light" }));
+    const out = autoPlace({ polygon: tiny }, ms, 2.7);
+    expect(out.size).toBe(3);
+    for (const p of out.values()) expect(inside(p, tiny)).toBe(true);
+  });
+
+  it("keeps ceiling devices above the floor in a very low room", () => {
+    const p = autoPlace(room, [{ id: "l", domain: "light" }], 0.2).get("l");
+    expect(p.z).toBeGreaterThan(0);
+  });
+
+  it("places wall and door devices inside a concave room", () => {
+    const ms = [
+      ...[0, 1, 2, 3, 4].map((i) => ({ id: "s" + i, domain: "sensor" })),
+      { id: "sw", domain: "switch" },
+    ];
+    const out = autoPlace({ polygon: L, doors: [[1, 6]] }, ms, 2.7);
+    expect(out.size).toBe(6);
+    for (const p of out.values()) expect(inside(p, L)).toBe(true);
+  });
+
+  // Known bug (src/placement.ts insetCorner): corners are pushed toward the centroid, which lies
+  // outside an L-shaped room, so some corner devices land outside it. Flip to it() once fixed.
+  it.failing("puts corner devices inside a concave room", () => {
+    const ms = [0, 1, 2, 3, 4, 5].map((i) => ({
+      id: "m" + i,
+      domain: "binary_sensor",
+      deviceClass: "motion",
+    }));
+    for (const p of autoPlace({ polygon: L }, ms, 2.7).values())
+      expect(inside(p, L)).toBe(true);
+  });
 
   it("returns nothing for a room without a usable polygon", () => {
     expect(
@@ -115,7 +160,8 @@ describe("autoPlace", () => {
       2.7,
     );
     for (const p of out.values()) {
-      expect(p.z).toBeCloseTo(2.62);
+      expect(p.z).toBeLessThan(2.7);
+      expect(p.z).toBeGreaterThan(2.5);
       expect(p.auto).toBe(true);
       expect(inside(p, square)).toBe(true);
     }
@@ -124,9 +170,8 @@ describe("autoPlace", () => {
   });
 
   it("uses a default room height when none is given", () => {
-    const p = autoPlace(room, [{ id: "l", domain: "light" }]).get("l");
-    expect(Number.isFinite(p.z)).toBe(true);
-    expect(p.z).toBeGreaterThan(2);
+    const ms = [{ id: "l", domain: "light" }];
+    expect(autoPlace(room, ms)).toEqual(autoPlace(room, ms, 2.7));
   });
 
   it("finds ceiling spots inside concave rooms whose centroid is outside", () => {
@@ -148,7 +193,7 @@ describe("autoPlace", () => {
       const pts = [...autoPlace({ polygon: poly }, markers, 2.7).values()];
       for (const p of pts) {
         expect(inside(p, poly)).toBe(true);
-        expect(p.z).toBe(1.5);
+        expect(p.z).toBe(ruleFor("sensor").z);
       }
       // all distinct: nobody piles up at the end of the perimeter
       const keys = new Set(

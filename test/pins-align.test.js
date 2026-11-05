@@ -62,13 +62,13 @@ describe("realignPins", () => {
   });
 
   it("follows offset, rotation and scale; z scales with scale", () => {
-    const oldA = { position: [1, 1, 0], rotation: 10, scale: 1 };
-    const newA = align;
+    // pin (1, 0) under old (90 deg, x0.5) is model point (0, -2); new (180 deg, x2, +[3, -2]) puts it at (3, 2)
+    const oldA = { position: [0, 0, 0], rotation: 90, scale: 0.5 };
+    const newA = { position: [3, -2, 0], rotation: 180, scale: 2 };
     const out = realignPins(layout, oldA, newA);
-    const exp = transformPoint(inverseTransformPoint([1, 0], oldA), newA);
-    expect(out.pins.a.x).toBeCloseTo(exp[0], 3);
-    expect(out.pins.a.y).toBeCloseTo(exp[1], 3);
-    expect(out.pins.a.z).toBeCloseTo(4, 6);
+    expect(out.pins.a.x).toBeCloseTo(3, 6);
+    expect(out.pins.a.y).toBeCloseTo(2, 6);
+    expect(out.pins.a.z).toBeCloseTo(8, 6); // z 2 scaled by 2 / 0.5
   });
 
   it("returns the same layout when nothing changes or no pins follow the model", () => {

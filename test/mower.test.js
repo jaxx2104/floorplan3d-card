@@ -75,6 +75,26 @@ describe("readSource", () => {
     ).toBeNull();
   });
 
+  it("gps state: separators, string attributes, junk", () => {
+    const gps = { source: "gps" };
+    const at = (state, attributes = {}) =>
+      readSource({ state, attributes }, gps);
+    expect(at("45.5 10.25")).toMatchObject({ lat: 45.5, lon: 10.25 });
+    expect(at("45.5;-10.25")).toMatchObject({ lat: 45.5, lon: -10.25 });
+    expect(at("x", { latitude: "45.5", longitude: "10" })).toMatchObject({
+      lat: 45.5,
+      lon: 10,
+    });
+    // half the attributes, or unreadable ones: the state is read instead
+    expect(at("1,2", { latitude: 45 })).toMatchObject({ lat: 1, lon: 2 });
+    expect(at("1,2", { latitude: "abc", longitude: 3 })).toMatchObject({
+      lat: 1,
+      lon: 2,
+    });
+    for (const junk of ["abc", "45.0", "", "unknown", "unavailable"])
+      expect(at(junk)).toBeNull();
+  });
+
   it("returns null without a state object", () => {
     expect(readSource(undefined, {})).toBeNull();
   });
@@ -180,6 +200,53 @@ describe("fitTransform", () => {
     close(f({ u: 0, v: 1 }), [0, 2]);
   });
 
+  it("diagonal collinear points fall back to the 2-point similarity", () => {
+    const pts = [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ].map((s) => ({ src: s, plan: [s[0] + 1, s[1] + 1] }));
+    const f = fitTransform(pts, "xy");
+    close(f({ u: 5, v: 5 }), [6, 6]);
+    close(f({ u: 1, v: 0 }), [2, 1]); // off the line: the similarity, not a collapse
+  });
+
+  it("a repeated point among non-collinear ones still fits the affine", () => {
+    const g = ([u, v]) => [2 * u + 1, v - 3];
+    const srcs = [
+      [0, 0],
+      [0, 0],
+      [4, 0],
+      [0, 4],
+    ];
+    const f = fitTransform(
+      srcs.map((s) => ({ src: s, plan: g(s) })),
+      "xy",
+    );
+    close(f({ u: 3, v: 7 }), g([3, 7]));
+  });
+
+  // Known bug (src/mower.ts fitTransform): the collinear fallback takes the first two points, and
+  // when those are the same reading every position collapses onto one plan point. Flip to it() once
+  // the fallback picks two distinct points.
+  it.failing(
+    "a repeated first point with collinear others keeps the line",
+    () => {
+      const pts = [
+        { src: [0, 0], plan: [0, 0] },
+        { src: [0, 0], plan: [0, 0] },
+        { src: [1, 0], plan: [2, 0] },
+      ];
+      close(fitTransform(pts, "xy")({ u: 1, v: 0 }), [2, 0]);
+    },
+  );
+
+  it("source kind other than xy is gps", () => {
+    const a = { src: [45, 10], plan: [0, 0] };
+    const f = fitTransform([a], undefined);
+    close(f({ lat: 45, lon: 10 }), [0, 0]);
+  });
+
   it("gps with 2 points recovers a rotated plan", () => {
     // plan is rotated 90°: plan x points north
     const o = { lat: 45.0, lon: 10.0 };
@@ -230,6 +297,22 @@ describe("overlayUrl", () => {
     expect(overlayUrl(h, "image.d", 42)).toBe("data:image/png;base64,AAAA");
   });
 
+  it("camera entities and pictures without a query; no hassUrl keeps the path", () => {
+    const h = {
+      states: {
+        "camera.live": {
+          attributes: { entity_picture: "/api/camera_proxy/camera.live" },
+        },
+        "image.b": { attributes: { entity_picture: "blob:http://x/1" } },
+      },
+    };
+    expect(overlayUrl(h, "camera.live", 7)).toBe(
+      "/api/camera_proxy/camera.live?_t=7",
+    );
+    expect(overlayUrl(h, "camera.live")).toBe("/api/camera_proxy/camera.live");
+    expect(overlayUrl(h, "image.b", 7)).toBe("blob:http://x/1");
+  });
+
   it("returns null without a picture", () => {
     expect(overlayUrl(hass, "image.none")).toBeNull();
     expect(overlayUrl(hass, "image.missing")).toBeNull();
@@ -266,6 +349,11 @@ describe("mowerTransform", () => {
     expect(mowerTransform({ source: "xy" })({ u: 2, v: 3 })).toEqual([2, 3]);
   });
 
+  it("uncalibrated xy gives nothing for a gps reading or none", () => {
+    const f = mowerTransform({ source: "xy", calibration: [] });
+    expect(f({ lat: 45, lon: 10 })).toBeNull();
+    expect(f(null)).toBeNull();
+  });
   it("needs calibration for gps", () => {
     expect(mowerTransform({ source: "gps" })).toBeNull();
     const f = mowerTransform({
