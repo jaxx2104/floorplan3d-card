@@ -34,6 +34,13 @@ import {
   STILL_TRANSMISSIVE_BOUNCES,
 } from "./still.ts";
 
+// three-gpu-pathtracer 0.0.28 still includes <cube_uv_reflection_fragment> in CubeToEquirectGenerator (used for
+// a cube environment / background), a chunk three r187 removed with CubeUVReflectionMapping. That shader only
+// samples the cube with textureCube, so an empty chunk is enough; the raster programs never include it.
+if (!("cube_uv_reflection_fragment" in THREE.ShaderChunk))
+  (THREE.ShaderChunk as Record<string, string>).cube_uv_reflection_fragment =
+    "";
+
 /** What a session traces. */
 export interface TraceSource {
   /** roots of the traced geometry (visible meshes under them) */
@@ -120,7 +127,8 @@ export function clampSamples(material: THREE.ShaderMaterial): void {
 function quietly<T>(make: () => T): T {
   const warn = console.warn;
   console.warn = (...args: unknown[]) => {
-    if (!/deprecated/i.test(String(args[0]))) warn.apply(console, args);
+    if (!/deprecated|has been replaced/i.test(String(args[0])))
+      warn.apply(console, args);
   };
   try {
     return make();
@@ -342,7 +350,7 @@ export class PathTraceSession {
       const t = this.tracer,
         inner = t as unknown as TracerInternals;
       if (src.geometryKey !== this._geometryKey) {
-        t.setScene(this._proxy, camera);
+        quietly(() => t.setScene(this._proxy, camera));
         this._geometryKey = src.geometryKey;
         this._envKey = src.envKey;
         this._matSig = this._materialsSig();
@@ -350,15 +358,15 @@ export class PathTraceSession {
         return true;
       }
       t.setCamera(camera);
-      t.updateLights();
+      quietly(() => t.updateLights());
       if (src.envKey !== this._envKey) {
         inner._previousEnvironment = null; // the same cube texture with new contents
         this._envKey = src.envKey;
       }
-      t.updateEnvironment(); // its intensity too (a uniform)
+      quietly(() => t.updateEnvironment()); // its intensity too (a uniform)
       const sig = this._materialsSig();
       if (sig !== this._matSig) {
-        t.updateMaterials();
+        quietly(() => t.updateMaterials());
         this._matSig = sig;
       }
       return false;
