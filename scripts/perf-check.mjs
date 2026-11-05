@@ -2,7 +2,7 @@
 // probes baked, bloom passes, model material ids, shader programs, path tracer sessions / steps, auto switches),
 // state flags and condition waits; no frame-time budget blocks. Section groups (scripts/lib/sections.mjs):
 // - mower-map: a 1600 x 1600 live map (camera) with a moving mower, then refreshes where nothing changed: no
-//   shadow-map update from the mower, renders per unchanged refresh <= per moving one, the debug overlay.
+//   shadow-map update from the mower, no frame for an unchanged picture, the debug overlay.
 // - quality-standard, quality-high: the same light in both tiers (sky environment light, physical lamps, contact
 //   shadows, physical materials, light probe grids, AgX); 'high' adds the selective bloom and a finer probe grid
 //   (QualityTier.probeSpacing): what each tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
@@ -769,16 +769,19 @@ async function mowerMapSetup(page, frames, refresh) {
 }
 const MAP_STATS = `(() => { const c = ${card}, v = c._view, p = c._perf && c._perf.last; return { frames: v.stats.frames, shadow: v.stats.shadow, lights: v.stats.shadowLights, refreshAt: p ? p.at : 0 }; })()`;
 // a new picture (set: the demo camera's entity_picture) and the map refresh it causes (the card fetches a picture
-// when its URL changes). -> true once refreshed
+// when its URL changes), then quiet again, so the frames it caused (and nothing still settling from before, e.g. a
+// probe pass after the mower commit) land in its own count. -> true once refreshed
 async function showPicture(page, set) {
   const at = (await page.evaluate(MAP_STATS)).refreshAt;
   await page.evaluate(set);
-  return until(
+  const ok = await until(
     page,
     `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at}; })()`,
     "the map refresh",
     30000,
   );
+  await waitQuiet(page, "after a map refresh");
+  return ok;
 }
 
 const MOVE_STEPS = 5,
@@ -836,8 +839,8 @@ sections.add(
       `${moving} frames over ${MOVE_STEPS} pictures`,
     );
     check(
-      "renders per unchanged picture <= per moving one",
-      same / SAME_STEPS <= moving / MOVE_STEPS,
+      "an unchanged picture renders no frame",
+      same === 0,
       `${same} over ${SAME_STEPS} vs ${moving} over ${MOVE_STEPS}`,
     );
     check(
