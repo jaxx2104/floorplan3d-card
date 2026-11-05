@@ -94,6 +94,12 @@ export function setSurface(
   return true;
 }
 
+// type is read-only and defines undeclared in three's typings; both are plain fields at runtime
+interface Writable {
+  type: string;
+  defines: Record<string, unknown> | undefined;
+}
+
 function promote(m: Promoted, surface: Surface): void {
   m.dispose(); // the renderer drops its program and uniforms: the physical shader has its own
   const fresh = new THREE.MeshPhysicalMaterial();
@@ -110,8 +116,9 @@ function promote(m: Promoted, surface: Surface): void {
     configurable: true,
     enumerable: true,
   });
-  p.type = "MeshPhysicalMaterial";
-  p.defines = { ...p.defines, PHYSICAL: "" };
+  const w = p as unknown as Writable;
+  w.type = "MeshPhysicalMaterial";
+  w.defines = { ...w.defines, PHYSICAL: "" };
   p.userData.fpSurface = surface;
   if (surface === "glass") {
     const L = SURFACE_LOOK.glass;
@@ -142,10 +149,11 @@ function restore(m: Promoted): void {
     delete (m as unknown as Record<string, unknown>)[k];
   delete (m as unknown as Record<string, unknown>).isMeshPhysicalMaterial;
   Object.setPrototypeOf(m, THREE.MeshStandardMaterial.prototype);
-  m.type = "MeshStandardMaterial";
-  const defines = { ...m.defines };
+  const w = m as unknown as Writable;
+  w.type = "MeshStandardMaterial";
+  const defines = { ...w.defines };
   delete defines.PHYSICAL;
-  m.defines = defines;
+  w.defines = defines;
   if (base) {
     m.roughness = base.roughness;
     m.metalness = base.metalness;
