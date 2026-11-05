@@ -81,8 +81,18 @@ const viewStats = (page) =>
   return { frames: s.frames, env: s.envBuilds, bloom: s.bloomPasses, skipped: b ? b.stats.skipped : 0, contact: s.contactBuilds, shadow: s.shadow, lights: s.shadowLights,
     mats: (() => { let n = 0; const seen = new Set(); v.model && v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) if (!seen.has(m)) { seen.add(m); n += m.id; } }); return n; })(), caps: s.probeCaptures, passes: p ? p.stats.passes : 0, probes: p ? p.size : 0,
     grids: p ? p.live.map((g) => g.resolution.x * g.resolution.y * g.resolution.z) : [], probeOn: p ? p.uniforms.fpProbeOn.value : 0, programs: v.renderer.info.programs.length }; })()`);
+// per-key change between two viewStats; a list (probes per grid) counts as 0 unchanged, 1 changed
 const diff = (a, b) =>
-  Object.fromEntries(Object.keys(b).map((k) => [k, b[k] - a[k]]));
+  Object.fromEntries(
+    Object.keys(b).map((k) => [
+      k,
+      Array.isArray(b[k])
+        ? JSON.stringify(b[k]) === JSON.stringify(a[k])
+          ? 0
+          : 1
+        : b[k] - a[k],
+    ]),
+  );
 const surfaces = (page) =>
   page.evaluate(`(() => { const out = { glass: 0, floor: 0, fabric: 0, physical: 0 }, seen = new Set();
   ${card}._view.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (seen.has(m)) continue; seen.add(m);
