@@ -82,6 +82,11 @@ const renderFrames = (page, n) =>
   page.evaluate(`new Promise((done) => { let i = 0;
   const f = () => { if (i++ >= ${n}) { done(); return; } const v = ${card}._view; if (v) v.dirty = true; requestAnimationFrame(f); };
   requestAnimationFrame(f); })`);
+// Lamps that got a real light draw no wash (the real light lights that wall or floor itself); washes stand in only
+// for lit lamps left without one. The demo's lamps all fit the pool, so the wash checks take these lamps out of
+// it, as a lamp whose hints give no real light (part.pool false, like a light strip without hints.max).
+const noRealLight = (ids) =>
+  `(() => { const c = ${card}; for (const id of ${JSON.stringify(ids)}) c._objects.parts.get(id).part.pool = false; c._updateObjects(); })()`;
 // until a page predicate holds (instead of a fixed sleep) -> true, or false after timeout (logged)
 const waitTrue = (page, expr, label, timeout = 30000) =>
   page.waitForFunction(expr, { timeout, polling: 50 }).then(
@@ -3614,10 +3619,42 @@ sections.add(
       page.evaluate(`(() => { const c = ${card}, l = c._objects; return { shown: [...l.washes.meshes].filter((m) => m.visible).length,
     walls: [...l.parts].filter(([, p]) => p.wash && p.wash.placements.some((pl, i) => pl.surface === 'wall' && p.wash.meshes[i].visible)).map(([id]) => id),
     quads: Object.fromEntries([...l.parts].filter(([, p]) => p.wash).map(([id, p]) => [id, p.wash.meshes.filter((m) => m.visible).length])),
-    made: l.washes.stats.created, programs: c._view.renderer.info.programs.length }; })()`);
+    made: l.washes.stats.created, programs: c._view.renderer.info.programs.length, real: [...l._slots.keys()] }; })()`);
+    const lamps = [
+      "facade_1",
+      "facade_2",
+      "facade_3",
+      "wall_uplight_1",
+      "wall_uplight_2",
+    ];
     let w = await W();
     check(
-      "washes: lit facade lamps and uplights wash the south wall",
+      "washes: the lit facade lamps and uplights have real lights and draw no wash",
+      lamps.every((id) => w.real.includes(id)) &&
+        Object.entries(w.quads).every(
+          ([id, n]) => n === 0 || !w.real.includes(id),
+        ) &&
+        lamps.every((id) => !w.quads[id]),
+      JSON.stringify(w),
+    );
+    // the point light keeps 0.15 m off the wall it faces (no hot spot on the wall / door behind it): checked
+    // while the facade lamps (the lamps next to a wall) still have their real lights
+    const gap =
+      await page.evaluate(`(() => { const l = ${card}._objects; let worst = Infinity; for (const [id, s] of l._slots) {
+    const p = l.parts.get(id), h = p.wallHit && p.wallHit.hit; if (!h || s.light.isSpotLight) continue;
+    const d = (s.light.position.x - h.point[0]) * h.normal[0] + (s.light.position.y - h.point[1]) * h.normal[1] + (s.light.position.z - h.point[2]) * h.normal[2];
+    worst = Math.min(worst, d); } return worst; })()`);
+    check(
+      "real point lights stay >= 0.15 m off their wall",
+      gap !== Infinity && gap >= 0.149,
+      String(gap),
+    );
+    // without their real lights the same lamps wash the south wall instead
+    await page.evaluate(noRealLight(lamps));
+    await idle(page);
+    w = await W();
+    check(
+      "washes: lit facade lamps and uplights without a real light wash the south wall",
       ["facade_1", "facade_3", "wall_uplight_1", "wall_uplight_2"].every((id) =>
         w.walls.includes(id),
       ),
@@ -3688,17 +3725,6 @@ sections.add(
       "Light on wall: object none beats tag both",
       w.quads.facade_2 === 0 && w.quads.facade_1 === 2,
       JSON.stringify(w.quads),
-    );
-    // the point light keeps 0.15 m off the wall it faces (no hot spot on the wall / door behind it)
-    const gap =
-      await page.evaluate(`(() => { const l = ${card}._objects; let worst = Infinity; for (const [id, s] of l._slots) {
-    const p = l.parts.get(id), h = p.wallHit && p.wallHit.hit; if (!h || s.light.isSpotLight) continue;
-    const d = (s.light.position.x - h.point[0]) * h.normal[0] + (s.light.position.y - h.point[1]) * h.normal[1] + (s.light.position.z - h.point[2]) * h.normal[2];
-    worst = Math.min(worst, d); } return worst; })()`);
-    check(
-      "real point lights stay >= 0.15 m off their wall",
-      gap === Infinity || gap >= 0.149,
-      String(gap),
     );
     await page.evaluate(
       `${card}._commit({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: (({ wash, ...r }) => r)((${card}._layout.objects || {}).facade_2 || {}) } })`,
@@ -3864,21 +3890,30 @@ sections.add(
     const pools = [...l.parts].filter(([, p]) => p.wash).flatMap(([id, p]) => p.wash.placements.map((pl, i) => ({ id, variant: pl.variant, real: l._slots.has(id), shown: p.wash.meshes[i].visible })));
     return { option: v.look.renderOpt.quality, quality: v.look.quality(), tm: v.renderer.toneMapping, physical: l.physical, env: !!(v.look._env && v.look._env.enabled !== false),
       kitchen: kitchen ? +kitchen.light.intensity.toFixed(2) : null, hemi: +v.hemi.intensity.toFixed(3),
-      realPools: pools.filter((x) => x.variant === 'pool' && x.real && x.shown).map((x) => x.id), walls: pools.filter((x) => x.variant !== 'pool' && x.shown).length }; })()`);
-    const hi = await look();
+      real: [...l._slots.keys()], realWashes: pools.filter((x) => x.real && x.shown).map((x) => x.id + ':' + x.variant), walls: pools.filter((x) => x.variant !== 'pool' && x.shown).length }; })()`);
+    let hi = await look();
     check(
-      "default quality is auto at high: AgX, physical lamps (800 lm kitchen lamp = 15.92), hemisphere x 0.35",
+      "default quality is auto at high: AgX, physical lamps (800 lm kitchen lamp = 15.92), no hemisphere light",
       hi.option === "auto" &&
         hi.quality === "high" &&
         hi.tm === 6 &&
         hi.physical &&
         hi.kitchen === 15.92 &&
-        Math.abs(hi.hemi - 0.049) < 0.001,
+        hi.hemi === 0,
       JSON.stringify(hi),
     );
     check(
-      "high: no floor pool under a lamp with a real light, wall washes stay",
-      hi.realPools.length === 0 && hi.walls > 0,
+      "high: lamps with a real light draw no wash (no floor pool, no wall wash)",
+      hi.real.length > 0 && hi.realWashes.length === 0,
+      JSON.stringify(hi),
+    );
+    // lamps left without a real light keep their washes (see noRealLight)
+    await page.evaluate(noRealLight(["facade_1", "facade_3"]));
+    await idle(page);
+    hi = await look();
+    check(
+      "high: lit lamps without a real light wash their wall",
+      hi.realWashes.length === 0 && hi.walls > 0,
       JSON.stringify(hi),
     );
     await page.evaluate(
@@ -3888,12 +3923,13 @@ sections.add(
     await idle(page);
     const std = await look();
     check(
-      "quality standard: ACES, recipe lamps (max 20), no floor pool under a lamp with a real light",
+      "quality standard: ACES, recipe lamps (max 20), hemisphere light, no wash from a lamp with a real light, washes from lamps without",
       std.quality === "standard" &&
         std.tm === 4 &&
         !std.physical &&
         std.kitchen === 20 &&
-        std.realPools.length === 0 &&
+        std.hemi > 0 &&
+        std.realWashes.length === 0 &&
         std.walls > 0,
       JSON.stringify(std),
     );
