@@ -68,6 +68,7 @@ function setup(layout = {}) {
     _mode: "3d",
     _editing: true,
     _stage: document.createElement("div"),
+    _syncMarkerMode() {},
     _setFloor: vi.fn(),
     _setMode: vi.fn(),
     _applyMarkerSelection: vi.fn(),

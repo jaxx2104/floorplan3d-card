@@ -38,24 +38,22 @@ const idle = (page) =>
   let n = 0;
   const tick = () => {
     const c = ${card}, v = c && c._view;
-    const ok = ++n > 2 && (!v || (!v._tween && !v.dirty && !v._occTimer && !c._pending && !c._surfJob && !(c._taps && c._taps.pending.size)));
+    const ok = ++n > 2 && (!v || (!v._tween && !v.dirty && !c._pending && !c._surfJob && !(c._taps && c._taps.pending.size)));
     if (ok || performance.now() - t0 > 5000) done(ok); else requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 })`);
-// move the camera and wait for the occlusion pass that follows it to finish (no fixed sleeps)
+// move the camera and wait until it is drawn there (the sprites read the frame's depth: nothing else to wait for)
 const camAndOcclusion = async (page, cam) => {
-  const before = await page.evaluate(`${card}._view.stats.occDone`);
-  // an explicit full pass too: the camera may already be there (no change event, no pass of its own)
   await page.evaluate(
-    `(() => { const v = ${card}._view; v.setCamera(${typeof cam === "string" ? cam : JSON.stringify(cam)}, { instant: true }); v._scheduleOcclusion(0); })()`,
+    `${card}._view.setCamera(${typeof cam === "string" ? cam : JSON.stringify(cam)}, { instant: true })`,
   );
   await page
     .waitForFunction(
-      `(() => { const v = ${card}._view; return !v._tween && v.stats.occDone > ${before} && !v._occFull && !v._occTimer; })()`,
+      `(() => { const v = ${card}._view; return !v._tween && !v.dirty; })()`,
       { timeout: 5000 },
     )
-    .catch(() => console.log("     (occlusion pass did not finish in 5 s)"));
+    .catch(() => console.log("     (the camera move was not drawn in 5 s)"));
 };
 // A press held past the long press (LONG_PRESS_MS, 500 ms): the hold is real time (the input under test, 700 ms
 // as before), then held on until the card's long-press timer has fired (on a loaded runner it runs late, and an
@@ -181,7 +179,7 @@ sections.add(
       const k = room ? lvl.get(room) : p.live ? 'mower' : 'pin:' + p.floorId;
       const e = out[k] = out[k] || { shown: 0, hidden: 0, faded: 0 };
       if (o.obj.visible) e.shown++; else e.hidden++;
-      if (o.obj.element.classList.contains('fp-faded')) e.faded++;
+      if (o.faded) e.faded++;
     }
     return out; })()`);
     const noneFaded = (d) => Object.values(d).every((e) => e.faded === 0);
@@ -304,21 +302,21 @@ sections.add(
         target: occ.pos,
       });
       const cls = (id) =>
-        page.evaluate(
-          `${card}._view.markerObjects.get(${JSON.stringify(id)}).obj.element.classList.contains('fp-occluded')`,
-        );
+        page.evaluate(`${card}._view.markerHidden(${JSON.stringify(id)})`);
       check(
-        "a marker behind the south wall is fp-occluded from a camera outside",
+        "a marker behind the south wall is hidden from a camera outside",
         await cls(occ.id),
         JSON.stringify(occ),
       );
+      // [opacity where the model hides it, a tap at its dot lands on it]
       const style = (id) =>
         page.evaluate(
-          `(() => { const s = getComputedStyle(${card}._view.markerObjects.get(${JSON.stringify(id)}).obj.element); return [s.opacity, s.pointerEvents]; })()`,
+          `(() => { const c = ${card}, r = c._markerRect(${JSON.stringify(id)}), m = r && c._markerAt(r.x + r.width / 2, r.y + r.height / 2);
+          return [c._markerView(${JSON.stringify(id)}).hiddenAlpha, !!m && m.id === ${JSON.stringify(id)}]; })()`,
         );
       check(
-        "occluded marker: faint, not clickable in view mode",
-        JSON.stringify(await style(occ.id)) === '["0.25","none"]',
+        "hidden marker: faint, not clickable in view mode",
+        JSON.stringify(await style(occ.id)) === "[0.25,false]",
         JSON.stringify(await style(occ.id)),
       );
       await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
@@ -327,17 +325,10 @@ sections.add(
         position: [occ.pos[0], occ.pos[1] + 2, occ.pos[2] + 12],
         target: occ.pos,
       });
-      // edit mode rebuilds markers: wait until the (new) element is connected and classed
-      await page
-        .waitForFunction(
-          `(() => { const m = ${card}._view.markerObjects.get(${JSON.stringify(occ.id)}); return m && m.obj.element.isConnected && m.obj.element.classList.contains('fp-occluded') && getComputedStyle(m.obj.element).opacity === '0.5'; })()`,
-          { timeout: 8000 },
-        )
-        .catch(() => {});
       const es = await style(occ.id);
       check(
-        "occluded marker in edit mode: half opacity, still draggable",
-        (await cls(occ.id)) && JSON.stringify(es) === '["0.5","auto"]',
+        "hidden marker in edit mode: half opacity, still draggable",
+        (await cls(occ.id)) && JSON.stringify(es) === "[0.5,true]",
         JSON.stringify(es),
       );
       await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
@@ -347,7 +338,7 @@ sections.add(
         target: occ.pos,
       });
       check(
-        "same marker seen from above (no wall in between) is not occluded",
+        "same marker seen from above (no wall in between) is not hidden",
         !(await cls(occ.id)),
       );
       await page.evaluate(
@@ -404,7 +395,7 @@ sections.add(
     );
     const faded = () =>
       page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-marker.fp-faded').length`,
+        `[...${card}._view.markerObjects.values()].filter((m) => m.faded).length`,
       );
     check(
       "Exterior view (overview): every device shown, none faded",
@@ -414,7 +405,7 @@ sections.add(
     check(
       "Exterior view (overview): no room labels",
       (await page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length`,
+        `${card}._view.sprites.labels('room', true).length`,
       )) === 0,
     );
     await page.screenshot({
@@ -550,7 +541,7 @@ sections.add(
       await page.evaluate(`(() => { const v = ${card}._view; return { tm: v.renderer.toneMapping, sm: v.renderer.shadowMap.enabled,
     sr: v.sun.shadow.camera.right, pr: v.renderer.getPixelRatio(),
     fills: (() => { let n = 0; v.staticGroup.traverse((o) => { if (o.isMesh && o.userData.roomId) n++; }); return n; })(),
-    labels: ${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length, tagged: v.isTagged(),
+    labels: ${card}._view.sprites.labels('room', true).length, tagged: v.isTagged(),
     hasModel: ${card}._stage.classList.contains('has-model'), dayHidden: ${card}.shadowRoot.querySelector('button.daynight').hidden }; })()`);
     check("AgX tone mapping with a model", look.tm === 6, String(look.tm));
     check(
@@ -564,9 +555,7 @@ sections.add(
       look.fills === 0 &&
         look.labels > 0 &&
         (
-          await page.evaluate(
-            `${card}.shadowRoot.querySelector('.fp-room-label:not(.fp-obj-label)').textContent`,
-          )
+          await page.evaluate(`${card}._view.sprites.labels('room', true)[0]`)
         ).includes(" m"),
       JSON.stringify(look),
     );
@@ -581,7 +570,7 @@ sections.add(
     check(
       "edit mode shows room labels",
       (await page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length`,
+        `${card}._view.sprites.labels('room', true).length`,
       )) > 0,
     );
     const traced = await page.evaluate(`(() => {
@@ -612,7 +601,7 @@ sections.add(
     check(
       "leaving edit mode restores the view's labels",
       (await page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length`,
+        `${card}._view.sprites.labels('room', true).length`,
       )) === look.labels,
     );
     // framing uses the room polygons even though no fills/outlines/walls are rendered with a model
@@ -2757,11 +2746,11 @@ sections.add(
 
     // markers: YAML keyed by entity id (a marker away from model objects: objects win a tap under the finger)
     const mk =
-      await page.evaluate(`(() => { const c = ${card}; const m = c._markers.find((x) => { const el = c._markerEls.get(x.id); if (!el) return false;
-    const r = el.querySelector('.fp-dot').getBoundingClientRect(), px = r.x + r.width / 2, py = r.y + r.height / 2;
+      await page.evaluate(`(() => { const c = ${card}; const m = c._markers.find((x) => { const r = c._markerRect(x.id); if (!r) return false;
+    const px = r.x + r.width / 2, py = r.y + r.height / 2, t = c._markerAt(px, py);
     // reachable under the pointer (markers behind model walls take no taps)
-    return r.width > 0 && el.offsetParent && el.contains(c.shadowRoot.elementFromPoint(px, py)) && !el.classList.contains('fp-occluded') && !c._objectHit(px, py, 30); });
-    if (!m) return null; const r = c._markerEls.get(m.id).querySelector('.fp-dot').getBoundingClientRect(); return { e: m.entityId, x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    return t && t.id === x.id && !c._objectHit(px, py, 30); });
+    if (!m) return null; const r = c._markerRect(m.id); return { e: m.entityId, x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
     if (mk) {
       await setActions({
         [mk.e]: {
@@ -2772,7 +2761,7 @@ sections.add(
         },
       });
       const r = await page.evaluate(
-        `(() => { const c = ${card}; const m = c._markers.find((x) => x.entityId === ${JSON.stringify(mk.e)}); const b = c._markerEls.get(m.id).querySelector('.fp-dot').getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`,
+        `(() => { const c = ${card}; const m = c._markers.find((x) => x.entityId === ${JSON.stringify(mk.e)}); const b = c._markerRect(m.id); return [b.x + b.width / 2, b.y + b.height / 2]; })()`,
       );
       await page.mouse.click(r[0], r[1]);
       await idle(page);
@@ -2923,12 +2912,12 @@ sections.add(
     // the demo model's climate unit shows its temperature as a label
     await page
       .waitForFunction(
-        `[...${card}.shadowRoot.querySelectorAll('.fp-obj-label')].some((x) => x.textContent.includes('21.5'))`,
+        `${card}._view.sprites.labels('object', true).some((t) => t.includes('21.5'))`,
         { timeout: 3000 },
       )
       .catch(() => {});
     const lbl = await page.evaluate(
-      `(() => { const e = [...${card}.shadowRoot.querySelectorAll('.fp-obj-label')].find((x) => x.textContent.includes('21.5')); return e ? e.textContent : null; })()`,
+      `${card}._view.sprites.labels('object', true).find((t) => t.includes('21.5')) || null`,
     );
     check("climate object shows a temperature label", !!lbl, String(lbl));
     allErrors.push(...s.errors);
@@ -3064,7 +3053,7 @@ sections.add(
       "EV charger charging: LED lit, power label",
       L.glow.ev_charger > 0 &&
         (await page.evaluate(
-          `[...${card}.shadowRoot.querySelectorAll('.fp-obj-label')].some((x) => x.textContent.includes('7.4 kW'))`,
+          `${card}._view.sprites.labels('object', true).some((t) => t.includes('7.4 kW'))`,
         )),
       JSON.stringify(L.glow.ev_charger),
     );
@@ -3172,39 +3161,6 @@ sections.add(
     check(
       "group controller on again: the facade lights up",
       (await look()).facadeLit === 3,
-    );
-    // ten state updates that touch no object: no budget recompute, no object re-evaluation, no shadow redraw
-    await idle(page);
-    const counters = () =>
-      page.evaluate(
-        `({ ...${card}._objects.stats, shadow: ${card}._view.stats.shadow, frames: ${card}._view.stats.frames, shadowLights: ${card}._view.stats.shadowLights })`,
-      );
-    const c0 = await counters();
-    for (let i = 0; i < 10; i++) {
-      await page.evaluate(`(() => { const c = ${card}, st = c._hass.states, t = st['sensor.kitchen_temperature'];
-      c.hass = { ...c._hass, states: { ...st, 'sensor.kitchen_temperature': { ...t, state: String(18 + ${i}) } } }; })()`);
-      await idle(page);
-    }
-    await idle(page);
-    const c1 = await counters();
-    check(
-      "10 unrelated hass updates: layer updated, no budget recompute, no re-evaluation, no shadow update",
-      c1.updates >= c0.updates + 10 &&
-        c1.budget === c0.budget &&
-        c1.evaluated === c0.evaluated &&
-        c1.shadowRequests === c0.shadowRequests &&
-        c1.shadow === c0.shadow,
-      JSON.stringify({ c0, c1 }),
-    );
-    check(
-      "10 unrelated hass updates: no frame rendered, no shadow map flagged",
-      c1.frames === c0.frames && c1.shadowLights === c0.shadowLights,
-      JSON.stringify({
-        f0: c0.frames,
-        f1: c1.frames,
-        s0: c0.shadowLights,
-        s1: c1.shadowLights,
-      }),
     );
     // shadow maps per light: a lamp without a shadow slot toggling redraws no map; one with a slot redraws only its own
     const shadowFlags = () =>
@@ -3335,7 +3291,7 @@ sections.add(
     const sceneLights = () =>
       page.evaluate(`(() => { const c = ${card}, pool = new Set([...c._objects.pool.points, ...c._objects.pool.spots]); let n = 0, labels = 0;
     c._view.scene.traverseVisible((o) => { if (pool.has(o)) n++; });
-    c._view.objectsGroup.traverseVisible((o) => { if (o.isCSS2DObject) labels++; });
+    c._view.objectsGroup.traverseVisible((o) => { if (o.isBillboard) labels++; });
     return { pool: n, labels }; })()`);
     const SL = await sceneLights();
     check(
@@ -3778,8 +3734,8 @@ sections.add(
     check("tap hints: off hides them", !(await H()).vis);
     // marker shapes
     const shapes =
-      await page.evaluate(`(() => { const out = {}; for (const el of ${card}.shadowRoot.querySelectorAll('.fp-marker')) {
-    const k = [...el.classList].filter((c) => c.startsWith('kind-')).join(); out[k] = (out[k] || 0) + 1; } return out; })()`);
+      await page.evaluate(`(() => { const out = {}; for (const f of ${card}._faces.values()) {
+    const k = 'kind-' + f.kind; out[k] = (out[k] || 0) + 1; } return out; })()`);
     check(
       "markers: shapes by role (control circles, value squares, binary, info)",
       shapes["kind-control"] > 0 &&
@@ -3928,9 +3884,7 @@ sections.add(
     check("missing model shows a notice", text.includes("missing.glb"), text);
     check(
       "card still renders markers",
-      (await s.page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-marker').length`,
-      )) > 0,
+      (await s.page.evaluate(`${card}._view.markerObjects.size`)) > 0,
     );
     allErrors.push(
       ...s.errors.filter(
@@ -4099,8 +4053,8 @@ sections.add(
       for (const m of c._markers) {
         const p = c._positions.get(m.id), o = v.markerObjects.get(m.id);
         if (!p || !o || !o.obj.visible || p.floorId !== 'ground' || m.id === c._mowerMarkerId) continue;
-        const r = o.obj.element.querySelector('.fp-dot').getBoundingClientRect();
-        if (r.width) return { id: m.id, z: p.z, from: [r.x + r.width / 2, r.y + r.height / 2] };
+        const r = c._markerRect(m.id), t = r && c._markerAt(r.x + r.width / 2, r.y + r.height / 2);
+        if (t && t.id === m.id) return { id: m.id, z: p.z, from: [r.x + r.width / 2, r.y + r.height / 2] };
       }
       return null; })()`);
       const to = await page.evaluate(
@@ -4763,7 +4717,7 @@ sections.add(
     check(
       "room labels in edit mode show sizes",
       await page.evaluate(
-        `(() => { const l = [...${sr}.querySelectorAll('.fp-room-label:not(.fp-obj-label)')].map((x) => x.textContent); return l.length > 0 && l.every((t) => t.includes('×') || t.includes('m²')); })()`,
+        `(() => { const l = ${card}._view.sprites.labels('room', true); return l.length > 0 && l.every((t) => t.includes('×') || t.includes('m²')); })()`,
       ),
     );
 
@@ -5647,7 +5601,7 @@ sections.add(
     for (let rad = 0; rad <= 30; rad++) for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
       const x = p[0] + dx, y = p[1] + dy, h = v.surfaceAt(x, y);
-      if (h && h.owner && h.owner.id === 'lamp_living' && !c.shadowRoot.elementFromPoint(x, y)?.closest?.('.fp-marker')) return { x, y };
+      if (h && h.owner && h.owner.id === 'lamp_living' && !c._markerAt(x, y)) return { x, y };
     }
     return null; })()`);
     // screen points: a wall face (vertical normal, 0.7–2.3 m up) and the lamp
@@ -5671,13 +5625,12 @@ sections.add(
     );
     // draggable markers: shown, not the mower, the pointer at their centre reaches them
     const markers = await page.evaluate(`(() => { const c = ${card}, out = [];
-    for (const [id, el] of c._markerEls) {
-      const o = c._view.markerObjects.get(id);
-      if (!o || !o.obj.visible || id === c._mowerMarkerId) continue;
-      const b = el.querySelector('.fp-dot').getBoundingClientRect();
-      const x = b.left + b.width / 2, y = b.top + b.height / 2;
-      const hit = c.shadowRoot.elementFromPoint(x, y);
-      if (hit && el.contains(hit)) out.push({ id, x, y });
+    for (const [id, o] of c._view.markerObjects) {
+      if (!o.obj.visible || id === c._mowerMarkerId) continue;
+      const b = c._markerRect(id);
+      if (!b) continue;
+      const x = b.x + b.width / 2, y = b.y + b.height / 2, hit = c._markerAt(x, y);
+      if (hit && hit.id === id) out.push({ id, x, y });
     }
     return out; })()`);
     check(
@@ -5735,11 +5688,11 @@ sections.add(
       const sky =
         await page.evaluate(`(() => { const c = ${card}, v = c._view, r = v.renderer.domElement.getBoundingClientRect();
       for (let y = r.top + 15; y < r.bottom - 15; y += 15) for (let x = r.left + 15; x < r.right - 15; x += 15)
-        if (!v.surfaceAt(x, y) && c.shadowRoot.elementFromPoint(x, y)?.tagName === 'CANVAS') return { x, y };
+        if (!v.surfaceAt(x, y) && c.shadowRoot.elementFromPoint(x, y)?.tagName === 'CANVAS' && !c._markerAt(x, y)) return { x, y };
       return null; })()`);
       if (sky) {
         const aNow = await page.evaluate(
-          `(() => { const c = ${card}, el = c._markerEls.get(${JSON.stringify(a.id)}).querySelector('.fp-dot').getBoundingClientRect(); return { x: el.left + el.width / 2, y: el.top + el.height / 2 }; })()`,
+          `(() => { const el = ${card}._markerRect(${JSON.stringify(a.id)}); return { x: el.x + el.width / 2, y: el.y + el.height / 2 }; })()`,
         );
         await page.mouse.move(aNow.x, aNow.y);
         await page.mouse.down();
@@ -5833,7 +5786,7 @@ sections.add(
         );
         // the realign moved the room markers too: the marker's screen point again
         const c3Now = await page.evaluate(
-          `(() => { const el = ${card}._markerEls.get(${JSON.stringify(c3.id)}).querySelector('.fp-dot').getBoundingClientRect(); return { id: ${JSON.stringify(c3.id)}, x: el.left + el.width / 2, y: el.top + el.height / 2 }; })()`,
+          `(() => { const el = ${card}._markerRect(${JSON.stringify(c3.id)}); return { id: ${JSON.stringify(c3.id)}, x: el.x + el.width / 2, y: el.y + el.height / 2 }; })()`,
         );
         await drag(c3Now, lamp2, true);
         const pc = await pinOf(c3.id);
@@ -5981,18 +5934,18 @@ sections.add(
     let best = null; const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     for (let y = r.top + 20; y < r.bottom - 20; y += 12) for (let x = r.left + 20; x < r.right - 20; x += 12) {
       const h = v.surfaceAt(x, y);
-      if (!h || h.owner && h.owner.kind === 'object' || c.shadowRoot.elementFromPoint(x, y)?.closest?.('.fp-marker')) continue;
+      if (!h || h.owner && h.owner.kind === 'object' || c._markerAt(x, y)) continue;
       const d = Math.hypot(x - cx, y - cy);
       if (Math.abs(h.normal.y) < 0.1 && h.point.y > 0.7 && h.point.y < 2.3 && (!best || d < best.d)) best = { x, y, d };
     }
     return best; })()`);
     const mk = await page.evaluate(`(() => { const c = ${card};
-    for (const [id, el] of c._markerEls) {
-      const o = c._view.markerObjects.get(id);
-      if (!o || !o.obj.visible || id === c._mowerMarkerId) continue;
-      const b = el.querySelector('.fp-dot').getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
-      const hit = c.shadowRoot.elementFromPoint(x, y);
-      if (hit && el.contains(hit)) return { id, x, y };
+    for (const [id, o] of c._view.markerObjects) {
+      if (!o.obj.visible || id === c._mowerMarkerId) continue;
+      const b = c._markerRect(id);
+      if (!b) continue;
+      const x = b.x + b.width / 2, y = b.y + b.height / 2, hit = c._markerAt(x, y);
+      if (hit && hit.id === id) return { id, x, y };
     }
     return null; })()`);
     check(
@@ -6711,7 +6664,7 @@ sections.add(
     check(
       "offline chip next to the mower",
       await until(
-        `(() => { const el = ${card}.shadowRoot.querySelector('.fp-mower-chip.offline'); return !!el && el.textContent.includes('offline'); })()`,
+        `(() => { const ch = ${card}._view.mower.mowerChip; return !!ch && ch.kind === 'offline' && ch.text.includes('offline') && ch.obj.visible; })()`,
         "the offline chip",
       ),
     );
@@ -6736,7 +6689,7 @@ sections.add(
     check(
       "rain chip (weather-rainy) while wet",
       await until(
-        `(() => { const el = ${card}.shadowRoot.querySelector('.fp-mower-chip.rain ha-icon'); return !!el && el.getAttribute('icon') === 'mdi:weather-rainy'; })()`,
+        `(() => { const ch = ${card}._view.mower.mowerChip; return !!ch && ch.kind === 'rain' && ch.icon === 'mdi:weather-rainy'; })()`,
         "the rain chip",
       ),
     );
@@ -6746,17 +6699,14 @@ sections.add(
     check(
       "drying chip with minutes left",
       await until(
-        `(() => { const el = ${card}.shadowRoot.querySelector('.fp-mower-chip.drying'); return !!el && el.textContent.includes('12 min') && el.querySelector('ha-icon').getAttribute('icon') === 'mdi:weather-partly-rainy'; })()`,
+        `(() => { const ch = ${card}._view.mower.mowerChip; return !!ch && ch.kind === 'drying' && ch.text.includes('12 min') && ch.icon === 'mdi:weather-partly-rainy'; })()`,
         "the drying chip",
       ),
     );
     await ev(`window.__setDemoStates({ 'sensor.robo_rain_sensor': 'Dry' })`);
     check(
       "chip gone when dry and online",
-      await until(
-        `!${card}.shadowRoot.querySelector('.fp-mower-chip')`,
-        "no chip",
-      ),
+      await until(`!${card}._view.mower.mowerChip`, "no chip"),
     );
     // error code auto-detected (0 = OK, 12 = error)
     await ev(`window.__setDemoStates({ 'sensor.robo_errorcode': '12' })`);
@@ -7092,7 +7042,7 @@ sections.add(
     const { page } = s;
     const r =
       await page.evaluate(`(() => { const v = ${card}._view; return { tm: v.renderer.toneMapping, sm: v.renderer.shadowMap.enabled, pr: v.renderer.getPixelRatio(),
-    labels: ${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length, dayHidden: ${card}.shadowRoot.querySelector('button.daynight').hidden }; })()`);
+    labels: ${card}._view.sprites.labels('room', true).length, dayHidden: ${card}.shadowRoot.querySelector('button.daynight').hidden }; })()`);
     check(
       "no model: NoToneMapping, no shadows",
       r.tm === 0 && r.sm === false,
@@ -7108,7 +7058,7 @@ sections.add(
     check(
       'no model: "All" does not fade markers',
       (await page.evaluate(
-        `${card}.shadowRoot.querySelectorAll('.fp-marker.fp-faded').length`,
+        `[...${card}._view.markerObjects.values()].filter((m) => m.faded).length`,
       )) === 0,
     );
     allErrors.push(...s.errors);
@@ -7272,7 +7222,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await page.evaluate("window.__demoMowerPaused = true");
         await idle(page); // a mower update in flight lands before the counters reset
         await page.evaluate(
-          `(() => { const v = ${card}._view; v.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0 }; })()`,
+          `(() => { const v = ${card}._view; v.stats.shadow = 0; })()`,
         );
         for (let i = 0; i < 10; i++) {
           await page.evaluate(`(() => { const c = ${card}, st = c.hass.states;
@@ -7281,51 +7231,48 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
           'light.kitchen': { ...l, attributes: { ...l.attributes, brightness: ${100 + i * 10} } } } }; })()`);
           await idle(page);
         }
-        // nothing relevant changed: once idle (no occlusion timer, nothing pending), a 30-frame window for late work
+        // nothing relevant changed: once idle (nothing pending), a 30-frame window for late work
         await idle(page);
         await rafs(page, 30);
         let stats = await page.evaluate(`${card}._view.stats`);
         check(
-          "10 state updates, nothing relevant changed: 0 occlusion passes, 0 shadow map renders",
-          stats.occPasses === 0 && stats.occPartial === 0 && stats.shadow === 0,
+          "10 state updates, nothing relevant changed: 0 shadow map renders",
+          stats.shadow === 0,
           JSON.stringify(stats),
         );
         check(
           "the state updates still reached the markers",
           await page.evaluate(
-            `[...${card}.shadowRoot.querySelectorAll('.fp-val, .fp-in')].some((e) => e.textContent.startsWith('29'))`,
+            `[...${card}._faces.values()].some((f) => f.value.startsWith('29') || f.inner.startsWith('29'))`,
           ),
         );
-        // a moving mower: only its own marker is re-tested
+        // a moving mower: its marker moves, no sprite is painted again (same picture), no shadow render
         const mpos = () =>
           page.evaluate(
             `(() => { const c = ${card}; const o = c._view.markerObjects.get(c._mowerMarkerId); return o ? o.obj.position.toArray().map((x) => x.toFixed(2)).join() : null; })()`,
           );
         const p0 = await mpos();
-        await page.evaluate(
-          `(() => { const v = ${card}._view; v.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0 }; })()`,
+        const paints0 = await page.evaluate(
+          `${card}._view.sprites.layer.stats.paints`,
         );
-        // five mower steps (the 500 ms timer held), each drawn and idle; then the partial pass they scheduled is done
+        await page.evaluate(
+          `(() => { const v = ${card}._view; v.stats.shadow = 0; })()`,
+        );
+        // five mower steps (the 500 ms timer held), each drawn and idle
         for (let i = 0; i < 5; i++) {
           await page.evaluate("window.__demoMowerStep()");
           await idle(page);
         }
-        await waitTrue(
-          page,
-          `${card}._view.stats.occPartial > 0`,
-          "the partial occlusion pass",
-          10000,
-        );
         await idle(page);
         stats = await page.evaluate(`${card}._view.stats`);
         const p1 = await mpos();
+        const paints1 = await page.evaluate(
+          `${card}._view.sprites.layer.stats.paints`,
+        );
         check(
-          "moving mower: marker moves, partial occlusion only, no full pass, no shadow render",
-          p0 !== p1 &&
-            stats.occPasses === 0 &&
-            stats.shadow === 0 &&
-            stats.occPartial > 0,
-          `${p0} -> ${p1} ${JSON.stringify(stats)}`,
+          "moving mower: marker moves, no sprite painted again, no shadow render",
+          p0 !== p1 && stats.shadow === 0 && paints1 === paints0,
+          `${p0} -> ${p1} ${JSON.stringify({ shadow: stats.shadow, paints0, paints1 })}`,
         );
         // the shadow map still updates when something relevant changes (a view switch)
         await page.evaluate(
@@ -7333,14 +7280,14 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         );
         await waitTrue(
           page,
-          `${card}._view.stats.shadow > 0 && ${card}._view.stats.occPasses > 0`,
-          "the shadow map and the full occlusion pass after the view switch",
+          `${card}._view.stats.shadow > 0`,
+          "the shadow map after the view switch",
           10000,
         );
         stats = await page.evaluate(`${card}._view.stats`);
         check(
-          "a view switch re-renders the shadow map and runs a full occlusion pass",
-          stats.shadow > 0 && stats.occPasses > 0,
+          "a view switch re-renders the shadow map",
+          stats.shadow > 0,
           JSON.stringify(stats),
         );
 

@@ -162,6 +162,7 @@ describe("night_markers", () => {
     const s = new SkyController({
       _config: config,
       _stage: document.createElement("div"),
+      _syncMarkerMode() {},
     });
     s._daylight = daylight;
     return s;

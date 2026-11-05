@@ -63,13 +63,14 @@ const waitQuiet = (page, label, streak = 10, timeout = 90000) =>
       return ok;
     });
 // n frames rendered back to back (dirty every animation frame). timed: each frame's time (the view's frame from its
-// start to the label render, after a 1 px readPixels so the GPU work of the scene, the bloom and the finish counts).
+// start to after the sprites, markers and labels included, with a 1 px readPixels so the GPU work of the scene, the
+// bloom, the finish and the sprites counts).
 const forced = (page, n, timed = false) =>
   page.evaluate(`new Promise((done) => {
-  const v = ${card}._view, gl = v.renderer.getContext(), lr = v.labelRenderer, orig = lr.render, out = [], px = new Uint8Array(4);
-  if (${timed}) { lr.render = function (scene, camera) { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return orig.call(this, scene, camera); }; v.onFrameTime = (ms) => out.push(ms); }
+  const v = ${card}._view, gl = v.renderer.getContext(), sp = v.sprites, orig = sp.draw, out = [], px = new Uint8Array(4);
+  if (${timed}) { sp.draw = function (depth) { const n = orig.call(this, depth); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return n; }; v.onFrameTime = (ms) => out.push(ms); }
   let i = 0;
-  const tick = () => { if (i++ >= ${n} + 5) { lr.render = orig; v.onFrameTime = null; done(out.slice(5)); return; } v.dirty = true; requestAnimationFrame(tick); };
+  const tick = () => { if (i++ >= ${n} + 5) { sp.draw = orig; v.onFrameTime = null; done(out.slice(5)); return; } v.dirty = true; requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
 })`);
 // two rendered frames, then the GL error state

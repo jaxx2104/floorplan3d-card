@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from "bun:test";
 import * as THREE from "three";
 import { FloorplanView } from "../src/view.ts";
 import { CameraRig } from "../src/view/camera.ts";
-import { MarkerOcclusion, OCCLUSION_DELAY_MS } from "../src/view/occlusion.ts";
+import { MarkerOcclusion } from "../src/view/occlusion.ts";
 import { RenderLook } from "../src/view/look.ts";
 import { SkyLayer } from "../src/view/sky.ts";
 
@@ -31,6 +31,7 @@ const facade = () => {
     structure: {},
     mower: {},
     occlusion: {},
+    sprites: {},
   });
   return v;
 };
@@ -50,7 +51,6 @@ describe("FloorplanView facade", () => {
     skyLayer: ["skySprites", "skyRing", "weather", "_cloudU", "_precip"],
     structure: ["stems"],
     mower: ["mapPlane", "warning", "_ground", "_mowerGround"],
-    occlusion: ["_occTimer", "_occFull"],
   };
   for (const [part, names] of Object.entries(fields)) {
     it(`${part} fields read and write the part's own objects`, () => {
@@ -85,7 +85,7 @@ describe("FloorplanView facade", () => {
     v.look._shadowDirty = vi.fn();
     v.skyLayer._roomHull = vi.fn(() => [[1, 2]]);
     v.mower.setMapCanvas = vi.fn();
-    v.occlusion._scheduleOcclusion = vi.fn();
+    v.sprites.markersAt = vi.fn(() => ["m1"]);
     expect(v.setCamera({ position: [1, 1, 1] }, { instant: true })).toBe(
       "moved",
     );
@@ -106,8 +106,8 @@ describe("FloorplanView facade", () => {
     expect(v._roomHull()).toEqual([[1, 2]]);
     v.setMapCanvas("c", 4, 2);
     expect(v.mower.setMapCanvas).toHaveBeenCalledWith("c", 4, 2, undefined);
-    v._scheduleOcclusion(0, "m1");
-    expect(v.occlusion._scheduleOcclusion).toHaveBeenCalledWith(0, "m1");
+    expect(v.markersAt(3, 4)).toEqual(["m1"]);
+    expect(v.sprites.markersAt).toHaveBeenCalledWith(3, 4);
   });
 
   it("a light marker's floor glow shows on the plan alone, never over a 3D model (its real light is there)", () => {
@@ -217,62 +217,33 @@ describe("CameraRig", () => {
 });
 
 describe("MarkerOcclusion", () => {
-  const occView = () => ({
-    _disposed: false,
-    _raf: 1,
+  const occView = (o = {}) => ({
     mode: "3d",
-    model: null,
-    cssObjects: [],
-    stats: { occPasses: 0, occPartial: 0, occDone: 0 },
+    model: { opacity: 1 },
+    dirty: false,
+    ...o,
   });
 
-  it("schedules nothing while the card is detached or disposed", () => {
-    vi.useFakeTimers();
-    const view = occView();
-    const occ = new MarkerOcclusion(view);
-    view._raf = null;
-    occ._scheduleOcclusion(0);
-    expect(occ._occTimer).toBe(null);
-    view._raf = 1;
-    view._disposed = true;
-    occ._scheduleOcclusion(0);
-    expect(occ._occTimer).toBe(null);
-  });
-
-  it("a full pass covers pending partial ones; partial ids collect until a full one", () => {
-    vi.useFakeTimers();
+  it("the model hides markers in the 3D view only, with the option on and a model that is not see-through", () => {
     const occ = new MarkerOcclusion(occView());
-    occ._scheduleOcclusion(OCCLUSION_DELAY_MS, "a");
-    occ._scheduleOcclusion(OCCLUSION_DELAY_MS, "b");
-    expect([...occ._occIds]).toEqual(["a", "b"]);
-    expect(occ._occFull).toBe(false);
-    const gen = occ._occGen;
-    occ._scheduleOcclusion(0);
-    expect(occ._occFull).toBe(true);
-    expect(occ._occIds).toBe(null);
-    expect(occ._occGen).toBe(gen + 1);
-    occ._scheduleOcclusion(OCCLUSION_DELAY_MS, "c");
-    expect(occ._occIds).toBe(null); // the pending full pass has it
-    occ._cancelOcclusion();
-    expect(occ._occTimer).toBe(null);
-    expect(occ._occFull).toBe(false);
+    expect(occ.active()).toBe(true);
+    occ.setOcclusion(false);
+    expect(occ.active()).toBe(false);
+    expect(occ.view.dirty).toBe(true);
+    occ.setOcclusion(undefined); // the default: on
+    expect(occ.active()).toBe(true);
+    expect(new MarkerOcclusion(occView({ mode: "top" })).active()).toBe(false);
+    expect(new MarkerOcclusion(occView({ model: null })).active()).toBe(false);
+    expect(
+      new MarkerOcclusion(occView({ model: { opacity: 0.5 } })).active(),
+    ).toBe(false);
   });
 
-  it("without a model a pass only clears the dimming", () => {
-    vi.useFakeTimers();
-    const view = occView();
-    const remove = vi.fn();
-    view.cssObjects = [
-      { kind: "marker", obj: { element: { classList: { remove } } } },
-      { kind: "label", obj: { element: { classList: { remove } } } },
-    ];
-    const occ = new MarkerOcclusion(view);
-    occ._scheduleOcclusion(0);
-    vi.runAllTimers();
-    expect(remove).toHaveBeenCalledTimes(1);
-    expect(remove).toHaveBeenCalledWith("fp-occluded");
-    expect(occ._occFull).toBe(false);
-    expect(view.stats.occPasses).toBe(0);
+  it("without a model or with a see-through one no point is hidden (no raycast)", () => {
+    const occ = new MarkerOcclusion(occView({ model: null }));
+    expect(occ.pointHidden(new THREE.Vector3())).toBe(false);
+    occ.view.model = { opacity: 0.4 };
+    expect(occ.pointHidden(new THREE.Vector3())).toBe(false);
   });
 });
 

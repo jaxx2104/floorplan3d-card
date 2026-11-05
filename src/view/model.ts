@@ -486,7 +486,6 @@ export class ModelLayer {
       if (this.view.model) this.view.look._fitShadow();
       this.view.look._shadowDirty();
       this.view._applyFloorVisibility();
-      this.view.occlusion._scheduleOcclusion(0);
       this.view._objectsInvalid();
       this.view.dirty = true;
     };
@@ -792,7 +791,6 @@ export class ModelLayer {
     this.view.cam._bounds = this.view.cam._sceneBounds();
     this.view.look._fitShadow();
     this.view.look._shadowDirty();
-    this.view.occlusion._scheduleOcclusion(0);
     this.view._objectsInvalid();
     this.view.dirty = true;
   }
@@ -1167,8 +1165,6 @@ export class ModelLayer {
     this._surfMeshes = null;
     this.view.mower._ground.clear();
     this.view.mower._mowerGround.clear();
-    this.view.occlusion._cancelOcclusion();
-    this.view.occlusion._clearOcclusion();
     if (!keepLook) {
       this.view.look.renderFrom = null;
       this.view.look._setRender(mergeRender(null));

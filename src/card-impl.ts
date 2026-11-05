@@ -182,10 +182,15 @@ const MARKER_METHODS = [
   "_applyMarkerSelection",
   "_scheduleSurfaces",
   "_refreshAttached",
+  "_syncMarkerMode",
+  "_markerAt",
+  "_markerRect",
+  "_markerView",
+  "_endMarkerGesture",
 ] as const satisfies readonly (keyof MarkerLayer)[];
 const MARKER_FIELDS = [
   "_markers",
-  "_markerEls",
+  "_faces",
   "_positions",
   "_mowerMarkerId",
   "_surf",
@@ -724,6 +729,7 @@ export class Floorplan3dCard extends HTMLElement {
       (e) => this._editing && this._edit?.canvasUp(e),
     );
     this._objectInput.wire(this._stage, canvas); // object taps, tap hints, hover
+    this._markerLayer.wire(this._stage, canvas); // marker taps / holds / edit drags, hover (after the objects)
     this._syncToolbar();
     this._state.rendered.value = true;
   }
@@ -804,6 +810,7 @@ export class Floorplan3dCard extends HTMLElement {
     const edit = this._edit!; // _toggleEdit loads it before the first entry
     this._objectInput.clearHover();
     this._endGesture();
+    this._endMarkerGesture();
     this._taps.cancel();
     this._popup.close();
     this._editing = !this._editing;
@@ -818,6 +825,7 @@ export class Floorplan3dCard extends HTMLElement {
       edit.exit();
       this._viewCtl.clearFloorOnly(); // back to the view the chips show (camera kept)
     }
+    this._syncMarkerMode(); // marker opacity / taps of edit mode
     this._syncHints(); // no tap hints while editing
     if (this._layout && this._layout.mower && this._hass)
       this._refreshMapOverlay(); // "map only in edit mode"

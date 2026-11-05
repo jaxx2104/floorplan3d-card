@@ -129,6 +129,7 @@ export async function interceptBrands(page) {
       req.respond({
         status: 404,
         contentType: "text/plain",
+        headers: { "access-control-allow-origin": "*" }, // as the real server (the card loads logos with CORS)
         body: "not found",
       });
       return;
@@ -170,8 +171,8 @@ export async function waitForDemo(page) {
       return (
         c &&
         c.shadowRoot &&
-        c.shadowRoot.querySelectorAll(".fp-marker").length > 0 &&
         c._view &&
+        c._view.markerObjects.size > 0 &&
         c._view.stats.frames > 0
       );
     },

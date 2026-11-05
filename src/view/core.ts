@@ -2,6 +2,7 @@
 
 import * as THREE from "three";
 import type { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import type { Billboard } from "./billboards.ts";
 import type { LayoutRoom, Vec3 } from "../types/layout.ts";
 
 declare global {
@@ -52,9 +53,9 @@ export type ModelMaterial = THREE.Material &
 
 // --- the view's contract with its parts and callers ---
 
-/** A CSS2D object the view tracks for floor visibility: marker, room label or editor handle. */
+/** An overlay object the view tracks for floor visibility: marker and room label (GPU sprites), editor handle (DOM). */
 export interface CssEntry {
-  obj: CSS2DObject;
+  obj: CSS2DObject | Billboard;
   floorId: string;
   kind: "marker" | "label" | "handle";
   id?: string;
@@ -65,10 +66,17 @@ export interface ViewRoom {
   floorId: string;
   label?: string | null;
 }
-/** view.markerObjects value. */
+/** view.markerObjects value: the marker's sprite and its draw state (view/sprites.ts). */
 export interface MarkerEntry {
-  obj: CSS2DObject;
+  obj: Billboard;
   floorId: string;
+  /** other floors of the All view / rooms the view fades */
+  faded?: boolean;
+  /** an alert that is on (shown at night) */
+  alert?: boolean;
+  pickable?: boolean;
+  /** takes taps while the model hides it (edit mode) */
+  pickHidden?: boolean;
 }
 /** view.glows value: the glow under a light that is on. */
 export interface GlowEntry {

@@ -18,7 +18,9 @@ position and map overlay.
   (in-house core `src/signals.ts`: hass / config / layout / model / editing in, one effect per step);
   `src/view.*` is the Three.js scene facade over `src/view/`; `src/edit-mode.*`
   coordinates the edit panel (`src/edit/tabs/*` registered by data-act / data-field, `src/edit/tools/*`)
-- OrbitControls, CSS2DRenderer (markers/labels as DOM, so `<ha-icon>` works), GLTFLoader
+- OrbitControls, GLTFLoader. Markers, room / object labels and the mower chip are GPU sprites (instanced
+  billboards from a Canvas 2D atlas: `src/view/billboards.ts`, `src/marker-sprite.ts`); icons are read from a
+  hidden `<ha-state-icon>` / `<ha-icon>` (`src/view/icons.ts`). CSS2DRenderer only for edit-mode handles.
 - Companion integration `custom_components/floorplan3d/` for shared server-side storage
 - Respect HA theme CSS vars (--card-background-color, --primary-color, --primary-text-color,
   --divider-color, --state-light-active-color). Light and dark themes must both look right.
@@ -103,7 +105,8 @@ Edit mode (side panel, tabs Rooms / Devices / Mower / Data):
 - Click vs orbit: pointer move < 5 px counts as a click. Disable OrbitControls while dragging.
 - Render loop only while connected; render when controls change or state dirty.
 - Rebuild markers only when registry objects change identity; per-hass-update just refresh states.
-- Remove CSS2D elements from the DOM on dispose (removing the object does not remove the element).
+- Remove CSS2D elements (edit handles) from the DOM on dispose (removing the object does not remove the
+  element); billboards leave the sprite layer with them (`view._removeCss` / `_clearGroup`).
 
 ## Sunseeker
 

@@ -302,6 +302,7 @@ export function syncStageClasses(ed: EditMode) {
     "picking-views",
     picking && ed.tab === "views",
   );
+  ed.card._syncMarkerMode(); // the tools dim the markers and let clicks through
 }
 
 // Overlay move tool: grab the pointer before OrbitControls sees it (capture phase on the stage).

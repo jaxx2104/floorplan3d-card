@@ -90,13 +90,14 @@ const drag = async (from, to) => {
 const dotOffset = () =>
   ev(`(() => { const c = ${card}, v = c._view; const r = v.renderer.domElement.getBoundingClientRect();
   let worst = -1, n = 0;
-  for (const [, m] of v.markerObjects) {
-    const val = m.obj.element.querySelector('.fp-val');
-    if (!m.obj.visible || !val || !val.textContent) continue;
+  for (const [id, m] of v.markerObjects) {
+    const f = c._faces.get(id);
+    if (!m.obj.visible || !f || !f.value) continue;
     const p = m.obj.position.clone().project(v.camera);
     if (Math.abs(p.x) > 0.95 || Math.abs(p.y) > 0.95 || Math.abs(p.z) > 1) continue; // off screen or behind the camera
     const sx = r.left + ((p.x + 1) / 2) * r.width, sy = r.top + ((1 - p.y) / 2) * r.height;
-    const d = m.obj.element.querySelector('.fp-dot').getBoundingClientRect();
+    const d = c._markerRect(id);
+    if (!d) continue;
     worst = Math.max(worst, Math.hypot(d.x + d.width / 2 - sx, d.y + d.height / 2 - sy)); n++;
   }
   return { worst, n }; })()`);
@@ -141,8 +142,8 @@ try {
     JSON.stringify(off),
   );
   await ev(`(() => { const v = ${card}._view; // zoom in on a value marker
-    const m = [...v.markerObjects.values()].find((x) => x.obj.visible && x.obj.element.querySelector('.fp-val').textContent);
-    const t = m.obj.position; v.setCamera({ position: [t.x + 2.5, t.y + 2.5, t.z + 2], target: t.toArray() }, { instant: true }); })()`);
+    const id = [...v.markerObjects.keys()].find((k) => v.markerObjects.get(k).obj.visible && (${card}._faces.get(k) || {}).value);
+    const t = v.markerObjects.get(id).obj.position; v.setCamera({ position: [t.x + 2.5, t.y + 2.5, t.z + 2], target: t.toArray() }, { instant: true }); })()`);
   await settle();
   off = await dotOffset();
   check(
@@ -198,10 +199,7 @@ try {
   );
 
   // Rooms tab: room labels (Name and size / Name only / None) stored in the layout
-  const labelTexts = () =>
-    ev(
-      `[...${card}.shadowRoot.querySelectorAll('.fp-room-label')].map((e) => e.textContent).filter(Boolean)`,
-    );
+  const labelTexts = () => ev(`${card}._view.sprites.labels("room", true)`);
   const setLabels = (v) =>
     ev(
       `(() => { const el = ${card}.shadowRoot.querySelector('[name=room-labels]'); el.value = '${v}'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
@@ -335,7 +333,7 @@ try {
 
   // marker drag pins it
   const kettle = await ev(
-    `(() => { const m = [...${card}.shadowRoot.querySelectorAll(".fp-marker")].find(x => x.title.startsWith("Kettle plug")); const r = m.querySelector(".fp-dot").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`,
+    `(() => { const r = ${card}._markerRect("device:kettle_plug"); return [r.x + r.width / 2, r.y + r.height / 2]; })()`,
   );
   const target = await at(10.5, 1.0, 1.1);
   await drag(kettle, target);
@@ -377,9 +375,7 @@ try {
   check("hidden", (await layout()).hidden.includes("device:kettle_plug"));
   check(
     "hidden marker gone from plan",
-    !(await ev(
-      `[...${card}.shadowRoot.querySelectorAll(".fp-marker")].some(x => x.title.startsWith("Kettle plug"))`,
-    )),
+    !(await ev(`${card}._view.markerObjects.has("device:kettle_plug")`)),
   );
   await rowButton("Kettle plug", "Unhide");
   check("unhidden", !(await layout()).hidden.includes("device:kettle_plug"));
@@ -900,14 +896,13 @@ try {
   await panelClick("Devices");
   await sleep(300);
   const badgeState = () =>
-    ev(`(() => { const s = ${card}.shadowRoot, el = (id) => ${card}._markerEls.get(id);
-    const q = (id, sel) => { const e = el(id); return e ? e.querySelector(':scope > ' + sel) : null; };
-    const img = q('device:front_lock', '.fp-logo');
-    return { logos: s.querySelectorAll('.fp-marker > .fp-logo').length, dots: s.querySelectorAll('.fp-marker > .fp-status').length,
-      batt: s.querySelectorAll('.fp-marker > .fp-batt').length,
-      smoke: (q('device:smoke_hall', '.fp-status') || {}).dataset?.status, lock: (q('device:front_lock', '.fp-status') || {}).dataset?.status,
-      chip: (q('device:front_lock', '.fp-batt') || {}).textContent, lockLogo: !!img && img.complete && img.naturalWidth > 0,
-      cover: !!q('device:living_blinds', '.fp-logo'), checks: [...s.querySelectorAll('[name=badge]')].map((c) => c.dataset.key + ':' + c.checked) }; })()`);
+    ev(`(() => { const c = ${card}, s = c.shadowRoot, faces = [...c._faces.keys()].map((id) => c._markerView(id));
+    const mv = (id) => c._markerView(id) || {};
+    return { logos: faces.filter((f) => f.logoLoaded).length, dots: faces.filter((f) => f.status).length,
+      batt: faces.filter((f) => f.battery !== null).length,
+      smoke: mv('device:smoke_hall').status, lock: mv('device:front_lock').status,
+      chip: mv('device:front_lock').battery !== null ? mv('device:front_lock').battery + ' %' : null, lockLogo: !!mv('device:front_lock').logoLoaded,
+      cover: !!mv('device:living_blinds').logoLoaded, checks: [...s.querySelectorAll('[name=badge]')].map((c) => c.dataset.key + ':' + c.checked) }; })()`);
   let bs = await badgeState();
   check(
     "badges: status dots and low battery chip by default, no logos",
@@ -932,7 +927,7 @@ try {
   await toggle("integration");
   await page
     .waitForFunction(
-      `(() => { const e = ${card}._markerEls.get('device:front_lock'); const i = e && e.querySelector('.fp-logo'); return !!i && i.complete && i.naturalWidth > 0; })()`,
+      `!!(${card}._markerView('device:front_lock') || {}).logoLoaded`,
       { timeout: 5000 },
     )
     .catch(() => {});

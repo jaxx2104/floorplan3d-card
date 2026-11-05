@@ -1,6 +1,7 @@
 // Device markers of the card: built from the registry, positioned (auto, pins, attached, the live
-// mower), their DOM element and gestures, state refresh (icons, values, badges, light glows) and the
-// move of auto-placed markers onto the model's surfaces. _buildMarkers replaces the _positions Map:
+// mower), their face (the GPU sprite's picture: icon, value, badges, state colours; marker-sprite.ts),
+// the gestures on them (picked on screen: tap, hold, edit drag), state refresh (faces, light glows) and
+// the move of auto-placed markers onto the model's surfaces. _buildMarkers replaces the _positions Map:
 // other parts read card._positions each time, never keep it.
 
 import {
@@ -12,6 +13,8 @@ import {
   pictureKey,
   type Marker,
 } from "../registry.ts";
+import { markerSprite, type MarkerFace } from "../marker-sprite.ts";
+import { logoSrc, logoFailed } from "../badge-dom.ts";
 import { markerPositions, lightGlow, type MarkerPosition } from "../layout.ts";
 import {
   surfaceKind,
@@ -25,9 +28,7 @@ import {
 } from "../surface.ts";
 import { attachedPosition } from "../objects/logic.ts";
 import { badgeOptions, badgeInfo } from "../badges.ts";
-import { applyBadges } from "../badge-dom.ts";
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from "./constants.ts";
-import { paintStateIcon } from "./state-icon.ts";
 import type { Floorplan3dCard } from "../card-impl.ts";
 import type { LayoutPin } from "../types/layout.ts";
 import type { GlowSpec } from "../view/structure.ts";
@@ -35,37 +36,98 @@ import type { GlowSpec } from "../view/structure.ts";
 /** A pin attached to a model object: the object id and the offset from its anchor. */
 type AttachPin = LayoutPin & { attach?: string; offset?: unknown };
 
-/** The marker element with the look / badge keys cached on it (DOM writes only on a change). */
-type MarkerEl = HTMLDivElement & { _fpLook?: string; _fpBadgeSig?: string };
+/** A marker tap in progress (pointer down until up / move / cancel). */
+interface MarkerGesture {
+  id: string;
+  x: number;
+  y: number;
+  pointerId: number;
+  long: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  move: (ev: PointerEvent) => void;
+  up: (ev: PointerEvent) => void;
+  cancel: () => void;
+  menu: (ev: Event) => void;
+}
+
+/** A marker as the headless checks see it (_markerView). */
+export interface MarkerViewInfo extends MarkerFace {
+  title: string;
+  /** in the scene and visible (floor rules, view state, section) */
+  shown: boolean;
+  alpha: number;
+  hiddenAlpha: number;
+  faded: boolean;
+  /** the model hides its anchor now (a tap in view mode passes through) */
+  hidden: boolean;
+  pickable: boolean;
+  logoLoaded: boolean;
+  pictureLoaded: boolean;
+  iconResolved: boolean;
+}
 
 export class MarkerLayer {
   card: Floorplan3dCard;
   _markers: Marker[];
-  _markerEls: Map<string, MarkerEl>;
+  /** marker id -> its face (what the sprite shows) */
+  _faces: Map<string, MarkerFace>;
+  _titles: Map<string, string>;
   _positions: Map<string, MarkerPosition> | undefined;
   _mowerMarkerId: string | null | undefined;
   _surf: { key: string; map: Map<string, PlanXYZ | null> } | undefined;
   _surfJob: ReturnType<typeof setTimeout> | null | undefined;
+  _selected: string | null;
+  _gesture: MarkerGesture | null;
+  _hoverId: string | null;
+  _hoverAt: [number, number] | null;
+  _hoverRaf: number | null;
+  /** picture identity (registry pictureKey) -> the URL first seen for it: rotating tokens load nothing new */
+  _pictureUrls: Map<string, string>;
+  /** integration logo URL -> its platform (a failed logo falls back / hides, badge-dom.ts logoFailed) */
+  _logoPlatforms: Map<string, string>;
 
   /** @param card the Floorplan3dCard (host): read live, never captured */
   constructor(card: Floorplan3dCard) {
     this.card = card;
     this._markers = [];
-    this._markerEls = new Map();
+    this._faces = new Map();
+    this._titles = new Map();
     this._positions = undefined; // marker id -> plan position (replaced by each _buildMarkers)
     this._mowerMarkerId = undefined;
     this._surf = undefined; // { key, map } surface spots per model placement
     this._surfJob = undefined;
+    this._selected = null;
+    this._gesture = null;
+    this._hoverId = null;
+    this._hoverAt = null;
+    this._hoverRaf = null;
+    this._pictureUrls = new Map();
+    this._logoPlatforms = new Map();
   }
 
   dispose(): void {
     clearTimeout(this._surfJob ?? undefined);
     this._surfJob = null;
+    this._endMarkerGesture();
+    if (this._hoverRaf) cancelAnimationFrame(this._hoverRaf);
+    this._hoverRaf = null;
   }
 
+  // Edit mode: the selected marker wears the selection ring (its face changes, nothing else).
   _applyMarkerSelection(id: string | null): void {
-    for (const [mid, el] of this._markerEls)
-      el.classList.toggle("selected", mid === id);
+    if (this._selected === id) return;
+    const was = this._selected;
+    this._selected = id;
+    for (const mid of [was, id]) {
+      const f = mid && this._faces.get(mid);
+      if (!f || !mid) continue;
+      this._setFace(mid, { ...f, selected: mid === id });
+    }
+  }
+
+  _setFace(id: string, face: MarkerFace): void {
+    this._faces.set(id, face);
+    this.card._view.setMarkerSprite(id, markerSprite(face), !!face.alert);
   }
 
   _buildMarkers(): void {
@@ -146,17 +208,20 @@ export class MarkerLayer {
       }
     }
 
-    this._markerEls.clear();
-    const list: ({ id: string; element: MarkerEl } & MarkerPosition)[] = [];
+    const list: ({ id: string } & MarkerPosition)[] = [];
     for (const m of this._markers) {
       const p = positions.get(m.id);
-      if (!p) continue;
-      const element = this._markerElement(m);
-      this._markerEls.set(m.id, element);
-      list.push({ id: m.id, element, ...p });
+      if (p) list.push({ id: m.id, ...p });
     }
-    this.card._view.setMarkers(list);
+    this.card._view.setMarkers(list); // a marker kept keeps its face until the refresh
+    const ids = new Set(list.map((x) => x.id));
+    for (const id of [...this._faces.keys()])
+      if (!ids.has(id)) {
+        this._faces.delete(id);
+        this._titles.delete(id);
+      }
     this.card._applyMarkerStates();
+    this._syncMarkerMode();
   }
 
   // ---------- auto-placed markers on the model's surfaces ----------
@@ -319,60 +384,200 @@ export class MarkerLayer {
     }
   }
 
-  _markerElement(m: Marker): MarkerEl {
-    const el: MarkerEl = document.createElement("div");
-    el.className = "fp-marker " + m.domain;
-    el.innerHTML =
-      '<div class="fp-dot"><span class="fp-in"></span></div><div class="fp-val"></div>';
-    el.title = m.name;
-    let start: [number, number] | null = null,
-      timer: ReturnType<typeof setTimeout> | null = null,
-      long = false;
-    const cancel = (): void => {
-      clearTimeout(timer ?? undefined);
-      timer = null;
+  // ---------- gestures (the markers are GPU sprites: picked on screen, view/sprites.ts markersAt) ----------
+
+  // Stage listeners, after the object input's (an object under the finger wins): tap / hold / edit drag on a
+  // marker, the hover look and the tooltip.
+  wire(stage: HTMLElement, canvas: HTMLCanvasElement): void {
+    stage.addEventListener(
+      "pointerdown",
+      (e: PointerEvent) => this._markerDown(e, canvas),
+      true,
+    );
+    stage.addEventListener("pointermove", (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      this._hoverAt =
+        e.buttons || e.target !== canvas ? null : [e.clientX, e.clientY];
+      if (!this._hoverRaf)
+        this._hoverRaf = requestAnimationFrame(() => {
+          this._hoverRaf = null;
+          this._markerHover();
+        });
+    });
+    stage.addEventListener("pointerleave", () => {
+      this._hoverAt = null;
+      this._markerHover();
+    });
+  }
+
+  /** The marker a tap at a client point lands on (the one drawn on top; hidden ones skipped in view mode). */
+  _markerAt(x: number, y: number): Marker | null {
+    const v = this.card._view;
+    if (!v) return null;
+    for (const id of v.markersAt(x, y)) {
+      const m = this._markers.find((k) => k.id === id);
+      if (m) return m;
+    }
+    return null;
+  }
+
+  // Tap = moved < 5 px and not held; hold 500 ms = hold action; edit mode: select / drag (edit/tools/drag.ts).
+  _markerDown(e: PointerEvent, canvas: HTMLCanvasElement): void {
+    if (this._gesture) {
+      this._endMarkerGesture(); // a second finger: pinch / orbit, no tap
+      return;
+    }
+    if (e.target !== canvas || !e.isPrimary) return; // toolbar, popup, panel, edit handles
+    if (this.card._objectInput._gesture) return; // the object under the finger won
+    if (this.card._popup.closedBy === e) return; // this tap closed the popup
+    const m = this._markerAt(e.clientX, e.clientY);
+    if (!m) return;
+    e.stopPropagation(); // the marker takes the pointer: no orbit, no click on the plan
+    if (this.card._editing) {
+      this.card._edit?.markerDown(m, e);
+      return;
+    }
+    if (e.button !== 0) return;
+    const g: MarkerGesture = {
+      id: m.id,
+      x: e.clientX,
+      y: e.clientY,
+      pointerId: e.pointerId,
+      long: false,
+      timer: null,
+      move: (ev: PointerEvent) => {
+        if (
+          ev.pointerId === g.pointerId &&
+          Math.hypot(ev.clientX - g.x, ev.clientY - g.y) >= CLICK_SLOP_PX
+        )
+          this._endMarkerGesture();
+      },
+      up: (ev: PointerEvent) => {
+        if (ev.pointerId !== g.pointerId) return;
+        const tap =
+          !g.long &&
+          Math.hypot(ev.clientX - g.x, ev.clientY - g.y) < CLICK_SLOP_PX;
+        this._endMarkerGesture();
+        if (tap)
+          this.card._taps.tap(
+            `marker:${m.id}`,
+            !!this.card._markerActions(m).double_tap,
+            () => this.card._runMarkerAction(m, "tap"),
+            () => this.card._runMarkerAction(m, "double_tap"),
+          );
+      },
+      cancel: () => this._endMarkerGesture(),
+      menu: (ev: Event) => ev.preventDefault(), // a touch hold opens no context menu
     };
-    el.addEventListener("pointerdown", (e) => {
-      if (this.card._editing) {
-        this.card._edit?.markerDown(m, e);
-        return;
-      }
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      start = [e.clientX, e.clientY];
-      long = false;
-      timer = setTimeout(() => {
-        long = true;
-        this.card._runMarkerAction(m, "hold");
-      }, LONG_PRESS_MS);
+    g.timer = setTimeout(() => {
+      g.long = true;
+      g.timer = null;
+      this.card._runMarkerAction(m, "hold");
+    }, LONG_PRESS_MS);
+    window.addEventListener("pointermove", g.move, true);
+    window.addEventListener("pointerup", g.up, true);
+    window.addEventListener("pointercancel", g.cancel, true);
+    window.addEventListener("contextmenu", g.menu, true);
+    this._gesture = g;
+  }
+
+  _endMarkerGesture(): void {
+    const g = this._gesture;
+    if (!g) return;
+    this._gesture = null;
+    clearTimeout(g.timer ?? undefined);
+    window.removeEventListener("pointermove", g.move, true);
+    window.removeEventListener("pointerup", g.up, true);
+    window.removeEventListener("pointercancel", g.cancel, true);
+    // the contextmenu of a touch hold follows the pointerup
+    setTimeout(
+      () => window.removeEventListener("contextmenu", g.menu, true),
+      400,
+    );
+  }
+
+  // Desktop hover: the marker grows a little, a pointer (grab in edit mode) cursor, its name as the tooltip.
+  _markerHover(): void {
+    const p = this._hoverAt;
+    const m =
+      p && !this._gesture && this.card._view
+        ? this._markerAt(p[0], p[1])
+        : null;
+    const id = m ? m.id : null;
+    if (id === this._hoverId) return;
+    this._hoverId = id;
+    const stage = this.card._stage,
+      canvas = this.card._view && this.card._view.renderer.domElement;
+    if (stage) stage.classList.toggle("fp-marker-hover", !!m);
+    if (canvas) {
+      const t = m ? this._titles.get(m.id) || m.name : "";
+      if (t) canvas.title = t;
+      else canvas.removeAttribute("title");
+    }
+    this._syncMarkerMode();
+  }
+
+  // The markers' common draw state: night quiet, edit mode and its tools (the stage classes), the hovered one.
+  _syncMarkerMode(): void {
+    const v = this.card._view,
+      st = this.card._stage;
+    if (!v || !st) return;
+    const c = st.classList;
+    const editing = !!this.card._editing;
+    v.setMarkerMode({
+      quiet: c.contains("night-quiet") && !c.contains("awake"),
+      editing,
+      tool: !editing
+        ? null
+        : c.contains("drawing")
+          ? "draw"
+          : c.contains("picking")
+            ? "pick"
+            : c.contains("moving")
+              ? "move"
+              : null,
+      hover: this._hoverId || null,
     });
-    el.addEventListener("pointermove", (e) => {
-      if (
-        start &&
-        Math.hypot(e.clientX - start[0], e.clientY - start[1]) >= CLICK_SLOP_PX
-      )
-        cancel();
-    });
-    el.addEventListener("pointerup", (e) => {
-      const wasClick =
-        start &&
-        !long &&
-        timer &&
-        Math.hypot(e.clientX - start[0], e.clientY - start[1]) < CLICK_SLOP_PX;
-      cancel();
-      start = null;
-      if (wasClick)
-        this.card._taps.tap(
-          `marker:${m.id}`,
-          !!this.card._markerActions(m).double_tap,
-          () => this.card._runMarkerAction(m, "tap"),
-          () => this.card._runMarkerAction(m, "double_tap"),
-        );
-    });
-    el.addEventListener("pointerleave", cancel);
-    el.addEventListener("pointercancel", cancel);
-    el.addEventListener("contextmenu", (e) => e.preventDefault());
-    return el;
+  }
+
+  // ---------- for the headless checks ----------
+
+  /** The dot of a marker on screen (client px), null when it is not drawn. */
+  _markerRect(
+    id: string,
+  ): { x: number; y: number; width: number; height: number } | null {
+    const s = this.card._view && this.card._view.markerScreen(id);
+    if (!s || !s.hits.length) return null;
+    const d = s.hits[0];
+    return {
+      x: s.x + d.x * s.scale,
+      y: s.y + d.y * s.scale,
+      width: d.w * s.scale,
+      height: d.h * s.scale,
+    };
+  }
+
+  /** What a marker shows and how it is drawn (the face, opacity, faded / hidden, its tooltip). */
+  _markerView(id: string): MarkerViewInfo | null {
+    const v = this.card._view,
+      e = v && v.markerObjects.get(id),
+      f = this._faces.get(id);
+    if (!e || !f) return null;
+    let shown = e.obj.visible;
+    for (let p = e.obj.parent; p && shown; p = p.parent) shown = p.visible;
+    return {
+      ...f,
+      title: this._titles.get(id) || "",
+      shown,
+      alpha: e.obj.alpha,
+      hiddenAlpha: e.obj.hiddenAlpha,
+      faded: !!e.faded,
+      hidden: v.markerHidden(id),
+      pickable: e.pickable !== false,
+      logoLoaded: !!(f.logo && v.sprites.layer.image(f.logo)),
+      pictureLoaded: !!(f.picture && v.sprites.layer.image(f.picture)),
+      iconResolved: !!v.sprites.icons.glyph(f.icon),
+    };
   }
 
   // Badge toggles: layout (Edit -> Devices), then the card YAML `badges:` per key.
@@ -399,97 +604,94 @@ export class MarkerLayer {
   }
 
   _refreshStates(): void {
-    const h = this.card._hass;
+    const h = this.card._hass,
+      vw = this.card._view;
     const glows: GlowSpec[] = [];
     const bo = this.badgeOpts(),
       anyBadge = bo.integration || bo.status || bo.battery;
     const dark = !!(this.card._theme && this.card._theme.dark);
+    const layer = vw.sprites.layer;
+    if (!layer.onImageError)
+      layer.onImageError = (url: string) => {
+        // an integration logo that failed: the dark one falls back to the light one, a light one hides
+        const p = this._logoPlatforms.get(url);
+        if (p === undefined) return;
+        logoFailed(p, url);
+        this._refreshStates();
+      };
+    const icons = new Set<string>(),
+      images = new Set<string>();
     for (const m of this._markers) {
-      const el = this._markerEls.get(m.id);
-      if (!el) continue;
+      if (!vw.markerObjects.has(m.id)) continue;
       const st = h.states[m.entityId];
-      el.classList.toggle("active", isActive(st));
-      el.classList.toggle("unavailable", !st || st.state === "unavailable");
-      el.classList.toggle(
-        "offline",
-        m.id === this._mowerMarkerId && !!this.card._mowerOffline,
-      );
-      const dot = el.querySelector(".fp-dot")!; // the markup of _markerElement
-      paintStateIcon(
-        dot,
+      const mower = m.id === this._mowerMarkerId;
+      const look = markerLook(h, m);
+      const icon = vw.sprites.icons.stateIcon(
+        m.id,
         h,
         m.entityId,
-        m.id === this._mowerMarkerId ? "mdi:robot-mower" : null,
+        mower ? "mdi:robot-mower" : null,
       );
-      const look = markerLook(h, m);
-      this._applyLook(el, look);
-      const color = markerColor(st, m.domain, look.alert);
-      if (el.style.getPropertyValue("--fp-state") !== color)
-        el.style.setProperty("--fp-state", color);
+      icons.add(icon);
       const own = look.kind === "value" ? "" : displayValue(h, m.entityId);
       const val =
         own ||
         (look.kind !== "value" && m.secondaryId
           ? displayValue(h, m.secondaryId)
           : "");
-      const ve = el.querySelector(".fp-val")!;
-      if (ve.textContent !== val) ve.textContent = val;
-      const inner = el.querySelector(".fp-in")!;
-      if (inner.textContent !== look.value) inner.textContent = look.value;
-      const name = st && st.attributes.friendly_name;
-      el.title = m.name + (name && name !== m.name ? " – " + name : "");
-      if (anyBadge || el._fpBadgeSig)
-        applyBadges(el, anyBadge ? badgeInfo(h, m, bo) : null, dark);
-
+      const badge = anyBadge ? badgeInfo(h, m, bo) : null;
+      const logo =
+        badge && badge.platform ? logoSrc(badge.platform, dark) : null;
+      if (logo && badge && badge.platform) {
+        this._logoPlatforms.set(logo, badge.platform);
+        images.add(logo);
+      }
+      // a picture counts by path + cache hash (registry pictureKey): rotating access tokens do not reload it
+      let picture: string | null = null;
+      if (look.picture) {
+        const k = pictureKey(look.picture, look.pictureStamp);
+        picture = this._pictureUrls.get(k) || look.picture;
+        this._pictureUrls.set(k, picture);
+        images.add(picture);
+      }
+      let lightColor = "";
       if (m.domain === "light") {
         const g = lightGlow(st);
-        el.style.setProperty(
-          "--fp-light",
-          g && st.attributes.rgb_color ? `rgb(${g.rgb.join(",")})` : "",
-        );
+        lightColor =
+          g && st.attributes.rgb_color ? `rgb(${g.rgb.join(",")})` : "";
         const p = this._positions && this._positions.get(m.id); // set with the markers
         if (g && p)
           glows.push({ id: m.id, x: p.x, y: p.y, floorId: p.floorId, ...g });
       }
-    }
-    this.card._view.setGlows(glows);
-  }
-
-  // Marker shape / kind classes and the entity picture (registry.js markerLook); DOM writes only on a change.
-  _applyLook(el: MarkerEl, look: ReturnType<typeof markerLook>): void {
-    // a picture counts by path + cache hash (registry.js pictureKey): rotating access tokens do not reload it
-    const pic = look.picture ? pictureKey(look.picture, look.pictureStamp) : "";
-    const key = `${look.shape}|${look.kind}|${look.alert || ""}|${pic}`;
-    if (el._fpLook === key) return;
-    el._fpLook = key;
-    for (const c of [...el.classList])
-      if (/^(shape|kind|alert)-/.test(c)) el.classList.remove(c);
-    el.classList.add(`shape-${look.shape}`, `kind-${look.kind}`);
-    if (look.alert) el.classList.add(`alert-${look.alert}`);
-    const dot = el.querySelector(".fp-dot")!; // the markup of _markerElement
-    let img = dot.querySelector<HTMLImageElement>("img.fp-pic");
-    if (!look.picture) {
-      if (img) img.remove();
-      dot.classList.remove("has-pic");
-      return;
-    }
-    if (!img) {
-      const pic = (img = document.createElement("img"));
-      pic.className = "fp-pic";
-      pic.alt = "";
-      pic.draggable = false;
-      pic.addEventListener(
-        "load",
-        () => pic.parentElement && pic.parentElement.classList.add("has-pic"),
+      this._setFace(m.id, {
+        shape: look.shape,
+        kind: look.kind,
+        light: m.domain === "light",
+        active: isActive(st),
+        alert: look.alert,
+        unavailable: !st || st.state === "unavailable",
+        offline: mower && !!this.card._mowerOffline,
+        stateColor: markerColor(st, m.domain, look.alert),
+        lightColor,
+        icon,
+        inner: look.value,
+        value: val,
+        picture,
+        logo,
+        status: badge ? badge.status : null,
+        battery: badge ? badge.battery : null,
+        selected: this._selected === m.id,
+      });
+      const name = st && st.attributes.friendly_name;
+      this._titles.set(
+        m.id,
+        m.name + (name && name !== m.name ? " – " + name : ""),
       );
-      pic.addEventListener(
-        "error",
-        () =>
-          pic.parentElement && pic.parentElement.classList.remove("has-pic"),
-      ); // the icon stays
-      dot.prepend(pic);
     }
-    dot.classList.remove("has-pic");
-    img.src = look.picture;
+    vw.sprites.icons.keep(icons); // hosts of markers that went
+    layer.keepImages(images);
+    for (const k of this._pictureUrls.keys())
+      if (!images.has(this._pictureUrls.get(k)!)) this._pictureUrls.delete(k);
+    vw.setGlows(glows);
   }
 }

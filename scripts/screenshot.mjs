@@ -19,11 +19,17 @@ try {
   await new Promise((r) => setTimeout(r, 300));
   const stats = await page.evaluate(() =>
     [...document.querySelectorAll("floorplan3d-card-impl")].map((c) => ({
-      markers: c.shadowRoot.querySelectorAll(".fp-marker").length,
-      labels: c.shadowRoot.querySelectorAll(".fp-room-label").length,
-      badges: [".fp-logo", ".fp-status", ".fp-batt"].map(
-        (q) => c.shadowRoot.querySelectorAll(".fp-marker > " + q).length,
-      ),
+      markers: c._view.markerObjects.size,
+      drawn: c._view.sprites.layer.stats.drawn,
+      labels: c._view.sprites.labels("room").length,
+      badges: (() => {
+        const f = [...c._faces.keys()].map((id) => c._markerView(id));
+        return [
+          f.filter((x) => x.logoLoaded).length,
+          f.filter((x) => x.status).length,
+          f.filter((x) => x.battery !== null).length,
+        ];
+      })(),
       chips: [...c.shadowRoot.querySelectorAll(".chip")].map(
         (b) => b.textContent + (b.classList.contains("on") ? "*" : ""),
       ),

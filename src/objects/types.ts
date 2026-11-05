@@ -1,7 +1,8 @@
 // Object types: how a model object looks for its HA state. prepare() once per model load,
 // update() when the object's state changed. Real lights come from the layer's fixed pool.
 import * as THREE from "three";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { Billboard } from "../view/billboards.ts";
+import { labelSprite } from "../label-sprite.ts";
 import { lightColor, lightLevel } from "./logic.ts";
 import { physicalColor } from "../photometry.ts";
 import { findLamp, lampOf, type ModelLamp } from "./model-lamps.ts";
@@ -21,6 +22,11 @@ export type ModelObject = ManifestObject<THREE.Object3D | null>;
 /** What the object types need from the view (a narrow interface: tests pass fakes). */
 export interface ObjectViewHost {
   objectsGroup: THREE.Object3D;
+  /** the view's GPU sprites (object labels) */
+  sprites?: {
+    layer: { add(b: Billboard): Billboard };
+    remove(b: Billboard): void;
+  };
   render?: Partial<Pick<RenderSettings, "glowIntensityPerBrightness">> | null;
   floorElevation(floorId: string | null | undefined): number;
   _shadowDirty?(): void;
@@ -85,7 +91,7 @@ export interface BasePart {
   glowK?: number;
   root?: THREE.Object3D;
   view?: ObjectViewHost | null;
-  label?: CSS2DObject | null;
+  label?: Billboard | null;
   text?: string | null;
   moving?: THREE.Object3D | null;
   /** Spot aim point (model root frame), set by the layer. */
@@ -103,7 +109,7 @@ interface StatusPart extends LightPart {
   root: THREE.Object3D;
   view: ObjectViewHost | null | undefined;
   levels: readonly Pick<ManifestLevel, "id" | "elevation">[];
-  label: CSS2DObject | null;
+  label: Billboard | null;
   text: string | null;
 }
 interface MowerPart extends StatusPart {
@@ -523,11 +529,11 @@ function prepareStatus(
   part.anchor = obj.node
     ? anchorOf(obj, glow, ctx.root, part.hints.offset)
     : new THREE.Vector3();
-  if (withLabel && ctx.view && typeof document !== "undefined") {
-    const el = document.createElement("div");
-    el.className = "fp-room-label fp-obj-label";
-    const label = new CSS2DObject(el);
-    label.center.set(0.5, 1.2);
+  if (withLabel && ctx.view) {
+    const label = new Billboard();
+    if (ctx.view.sprites) ctx.view.sprites.layer.add(label);
+    label.userData.labelKind = "object";
+    label.userData.objectId = obj.id;
     label.visible = false;
     ctx.view.objectsGroup.add(label);
     part.label = label;
@@ -548,7 +554,11 @@ function setLabel(part: StatusPart, text: string | null): void {
   if (next === part.text) return; // no DOM writes when nothing changed
   part.text = next;
   if (part.label) {
-    part.label.element.textContent = part.text || "";
+    // above the anchor: the point sits at 1.2 x the label's height from its top
+    part.label.userData.text = part.text || "";
+    part.label.spec = part.text
+      ? labelSprite(part.text, { anchorY: 1.2 })
+      : null;
     part.label.visible = !!part.text;
   }
 }
@@ -562,9 +572,8 @@ function relayout(part: BasePart): void {
 function disposeStatus(part: BasePart): void {
   disposeLight(part);
   if (part.label) {
-    const el = part.label.element;
     if (part.label.parent) part.label.parent.remove(part.label);
-    if (el && el.parentNode) el.parentNode.removeChild(el); // removing the object leaves its element behind
+    if (part.view && part.view.sprites) part.view.sprites.remove(part.label);
     part.label = null;
   }
 }

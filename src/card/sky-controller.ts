@@ -184,6 +184,7 @@ export class SkyController {
       this.card._config.night_markers === "hide" &&
       this._daylight === false;
     this.card._stage.classList.toggle("night-quiet", quiet);
+    this.card._syncMarkerMode();
   }
 
   _wakeMarkers(): void {
@@ -194,12 +195,14 @@ export class SkyController {
     )
       return;
     this.card._stage.classList.add("awake");
+    this.card._syncMarkerMode();
     clearTimeout(this._wakeTimer ?? undefined);
     const r = this.card._config.idle_reset,
       sec = r && r > 0 ? r : 30;
     this._wakeTimer = setTimeout(() => {
       this._wakeTimer = null;
       if (this.card._stage) this.card._stage.classList.remove("awake");
+      this.card._syncMarkerMode();
     }, sec * 1000);
   }
 

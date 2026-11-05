@@ -86,6 +86,22 @@ describe("ObjectLayer", () => {
     expect(view.shadow).toBe(s);
   });
 
+  it("ten hass updates that touch no object: no budget recompute, no re-evaluation, no shadow request", () => {
+    layer.setModel(model([{ id: "a", x: 1 }]));
+    layer.setBindings(bind([["a", "light.a"]]), {});
+    const lamp = st("on", { brightness: 200 });
+    layer.update({ "light.a": lamp, "sensor.t": st("18") }, ctx);
+    const s0 = { ...layer.stats },
+      shadow = view.shadow;
+    for (let i = 0; i < 10; i++)
+      layer.update({ "light.a": lamp, "sensor.t": st(String(19 + i)) }, ctx);
+    expect(layer.stats.updates).toBe(s0.updates + 10);
+    expect(layer.stats.budget).toBe(s0.budget);
+    expect(layer.stats.evaluated).toBe(s0.evaluated);
+    expect(layer.stats.shadowRequests).toBe(s0.shadowRequests);
+    expect(view.shadow).toBe(shadow);
+  });
+
   it("a brightness change updates the pooled light without a new assignment", () => {
     layer.setModel(model([{ id: "a", x: 1 }]));
     layer.setBindings(bind([["a", "light.a"]]), {});

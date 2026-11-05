@@ -81,7 +81,7 @@ export class CameraRig {
     this.view = view;
     this._tween = null; // camera tween { t0, from, to } (top: { top: true, ... })
     this._framed = false; // the 3D camera was placed once (the first move is instant)
-    this._camMovedAt = 0; // last controls change (occlusion waits for a still camera)
+    this._camMovedAt = 0; // last controls change (auto quality waits for a still camera)
     this._minDistance = null; // zoom limit from the last fit()
     this._orthoHalf = null; // top view: half height (m) at zoom 1
     this._lastCam3d = null; // the 3D camera before switching to Top
@@ -121,7 +121,6 @@ export class CameraRig {
     c.addEventListener("change", () => {
       this.view.dirty = true;
       this._camMovedAt = performance.now();
-      this.view.occlusion._scheduleOcclusion();
     });
     c.addEventListener("start", () => {
       this._tween = null;
@@ -383,13 +382,8 @@ export class CameraRig {
     if (this.view.mode === "3d") this._lastCam3d = this.getCamera();
     this.view.mode = mode;
     this.view.camera = mode === "top" ? this.view.ortho : this.view.persp;
-    if (mode === "top") {
-      this.view.occlusion._cancelOcclusion();
-      this.view.occlusion._clearOcclusion();
-    } // no occlusion in top view
     this._makeControls();
     this.fit();
-    if (mode === "3d") this.view.occlusion._scheduleOcclusion(0);
   }
 
   // Frame the rooms of the visible floor(s); the model when there are no rooms (or asked to).

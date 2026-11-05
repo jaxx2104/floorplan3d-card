@@ -1,6 +1,7 @@
 // Plan structure of the floorplan view: floors, room fills / outlines / labels and cut-away walls, the
-// DOM markers and their edit-mode stems, light glows, the editor overlay and the theme. The scene
-// groups and the marker / glow / css object maps stay on the view (visibility runs over them).
+// markers (GPU sprites, view/billboards.ts) and their edit-mode stems, light glows, the editor overlay
+// (DOM handles) and the theme. The scene groups and the marker / glow / css object maps stay on the view
+// (visibility runs over them).
 
 import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
@@ -9,7 +10,8 @@ import { wallSegments } from "../layout.ts";
 import { planToWorld, type ViewRoom, type ViewTheme } from "./core.ts";
 import type { FloorplanView } from "../view.ts";
 import type { Floor, PlanPoint } from "../types/layout.ts";
-import { OCCLUSION_DELAY_MS } from "./occlusion.ts";
+import { Billboard } from "./billboards.ts";
+import { labelSprite } from "../label-sprite.ts";
 
 const WALL_THICKNESS = 0.12;
 const GLOW_RADIUS = 2.2;
@@ -38,10 +40,9 @@ export interface OverlaySpec {
   fills?: OverlayFill[];
   handles?: OverlayHandle[];
 }
-/** A marker to show (setMarkers). */
+/** A marker to show (setMarkers); its picture comes with setMarkerSprite. */
 export interface MarkerSpec {
   id: string;
-  element: HTMLElement;
   x: number;
   y: number;
   z: number;
@@ -181,7 +182,7 @@ export class PlanStructure {
       g.mesh.position.copy(
         planToWorld(x, y, 0.03, this.view.floorElevation(floorId)),
       );
-    // only this marker: visibility (it may have crossed the section cut) and its own occlusion
+    // only this marker: visibility (it may have crossed the section cut)
     const c = this.view.cssObjects.find(
       (o) => o.kind === "marker" && o.id === id,
     );
@@ -190,13 +191,13 @@ export class PlanStructure {
     const st = this.stems.get(id);
     if (st) st.disc.visible = m.obj.visible;
     this._placeStem(id, m.obj.position, floorId);
-    this.view.occlusion._scheduleOcclusion(OCCLUSION_DELAY_MS, id);
     this.view.dirty = true;
   }
 
   setTheme(theme: ViewTheme): void {
     this.view.theme = theme;
     this.view.look._applyLook();
+    this.view.sprites.invalidate(); // the sprites' colours come from the card's CSS
     for (const g of this.view.glows.values()) {
       g.mesh.material.blending = theme.dark
         ? THREE.AdditiveBlending
@@ -280,13 +281,12 @@ export class PlanStructure {
           group.add(outline);
         }
         if (label && labels) {
-          const el = document.createElement("div");
-          el.className = "fp-room-label" + (room.outdoor ? " outdoor" : "");
-          el.textContent = label;
-          const obj = new CSS2DObject(el);
+          const obj = this.view.sprites.layer.add(new Billboard());
+          obj.spec = labelSprite(label, { italic: !!room.outdoor });
+          obj.userData.text = label;
+          obj.userData.labelKind = "room";
           const [cx, cy] = centroid(room.polygon);
           obj.position.set(cx, 0.02, -cy);
-          obj.center.set(0.5, 0.5);
           group.add(obj);
           this.view.cssObjects.push({ obj, floorId: f.id, kind: "label" });
         }
@@ -318,21 +318,32 @@ export class PlanStructure {
     this.view.dirty = true;
   }
 
-  // markers: [{id, element, x, y, z, floorId}]
+  // markers: [{id, x, y, z, floorId}]; an id kept keeps its sprite (setMarkerSprite)
   setMarkers(markers: MarkerSpec[]): void {
-    for (const { obj } of this.view.markerObjects.values())
-      this.view._removeCss(obj);
+    const was = new Map(this.view.markerObjects);
+    for (const { obj } of was.values()) this.view._removeCss(obj);
     this.view.markerObjects.clear();
     this.view.cssObjects = this.view.cssObjects.filter(
       (c) => c.kind !== "marker",
     );
     for (const m of markers) {
-      const obj = new CSS2DObject(m.element);
+      const old = was.get(m.id);
+      const obj = this.view.sprites.layer.add(new Billboard());
+      obj.pickId = m.id;
+      if (old) {
+        obj.spec = old.obj.spec;
+        obj.alpha = old.obj.alpha;
+        obj.hiddenAlpha = old.obj.hiddenAlpha;
+      }
       obj.position.copy(
         planToWorld(m.x, m.y, m.z, this.view.floorElevation(m.floorId)),
       );
       this.view.markerGroup.add(obj);
-      this.view.markerObjects.set(m.id, { obj, floorId: m.floorId });
+      this.view.markerObjects.set(m.id, {
+        obj,
+        floorId: m.floorId,
+        alert: old ? old.alert : false,
+      });
       this.view.cssObjects.push({
         obj,
         floorId: m.floorId,
@@ -341,7 +352,6 @@ export class PlanStructure {
       });
     }
     if (this._stemsOn) this._buildStems();
-    this.view._occSig = null; // new elements carry no occlusion state yet
     this.view._applyFloorVisibility();
     this.view.dirty = true;
   }

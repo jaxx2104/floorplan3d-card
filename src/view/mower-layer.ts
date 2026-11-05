@@ -3,7 +3,8 @@
 // outdoors when a model is loaded.
 
 import * as THREE from "three";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { Billboard } from "./billboards.ts";
+import { chipSprite } from "../label-sprite.ts";
 import { outdoorShown } from "../views.ts";
 import { GroundCache } from "../surface.ts";
 import { planToWorld } from "./core.ts";
@@ -93,7 +94,13 @@ export class MowerLayer {
     floorId: string;
     timer: ReturnType<typeof setInterval>;
   } | null;
-  mowerChip: { obj: CSS2DObject; floorId?: string } | null;
+  mowerChip: {
+    obj: Billboard;
+    floorId?: string;
+    kind?: string;
+    icon?: string;
+    text?: string;
+  } | null;
   mowerTrack: {
     mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
     sig: string | null;
@@ -522,13 +529,13 @@ export class MowerLayer {
   }
 
   // Chip next to the mower: { kind ('offline' | 'rain' | 'drying'), icon, text, x, y, floorId } or null.
-  // A DOM label (CSS2D) 0.5 m above the ground under the mower; its element is removed with it.
+  // A GPU sprite (view/billboards.ts) 0.5 m above the ground under the mower, never hidden by the model.
   setMowerChip(c: MowerChipSpec | null | undefined): void {
     const cur = this.mowerChip;
     if (!c) {
       if (cur) {
         this.view.mowerGroup.remove(cur.obj);
-        cur.obj.element.remove();
+        this.view.sprites.remove(cur.obj);
         this.mowerChip = null;
         this.view.dirty = true;
       }
@@ -536,19 +543,17 @@ export class MowerLayer {
     }
     let obj = cur && cur.obj;
     if (!obj) {
-      const el = document.createElement("div");
-      el.innerHTML = "<ha-icon></ha-icon><span></span>";
-      obj = new CSS2DObject(el);
-      obj.userData.helper = true;
-      obj.raycast = () => {};
+      obj = this.view.sprites.layer.add(new Billboard());
       this.view.mowerGroup.add(obj);
       this.mowerChip = { obj };
     }
-    const el = obj.element;
-    el.className = `fp-mower-chip ${c.kind}`;
-    const ic = el.querySelector("ha-icon")!; // the chip's markup is made above
-    if (ic.getAttribute("icon") !== c.icon) ic.setAttribute("icon", c.icon);
-    el.querySelector("span")!.textContent = c.text || "";
+    const spec = chipSprite(c.kind, c.icon, c.text || "");
+    if (!obj.spec || obj.spec.key !== spec.key) obj.spec = spec;
+    Object.assign(this.mowerChip!, {
+      kind: c.kind,
+      icon: c.icon,
+      text: c.text || "",
+    }); // set above when it was missing
     obj.position.set(c.x, this.mowerHeight(c.x, c.y, c.floorId) + 0.5, -c.y);
     obj.visible = this._mowerShows(c.floorId);
     this.mowerChip!.floorId = c.floorId; // set above when it was missing

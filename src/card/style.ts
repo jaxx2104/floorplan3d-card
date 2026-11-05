@@ -29,69 +29,14 @@ export const STYLE: string = `
     background: var(--card-background-color, #fff); color: var(--error-color, #db4437);
     border: 1px solid var(--divider-color, rgba(0,0,0,.12)); pointer-events: none; }
 
-  .fp-room-label { font-size: 11px; letter-spacing: .02em; color: var(--secondary-text-color, #727272);
-    white-space: nowrap; pointer-events: none; opacity: .9; }
-  .fp-room-label.outdoor { font-style: italic; }
   .fp-attach-label { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; pointer-events: none;
     transform: translateY(-22px); background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); }
-  /* the marker box is just the dot (CSS2D centres the box on the 3D point); the value hangs below it */
-  .fp-marker { position: relative; display: flex; flex-direction: column; align-items: center; pointer-events: auto;
-    cursor: pointer; transform-origin: center; }
-  .fp-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    background: var(--card-background-color, #fff); color: var(--secondary-text-color, #727272);
-    border: 1.5px solid var(--divider-color, rgba(0,0,0,.15)); box-shadow: 0 1px 4px rgba(0,0,0,.25);
-    transition: background .2s, color .2s, transform .1s; --mdc-icon-size: 17px; }
-  .fp-marker:hover .fp-dot { transform: scale(1.12); }
-  /* --fp-state: HA's state colour (registry.ts markerColor), --fp-light: the light's own colour */
-  .fp-marker.active .fp-dot { background: var(--fp-state, var(--primary-color)); border-color: var(--fp-state, var(--primary-color));
-    color: var(--text-primary-color, #fff); }
-  .fp-marker.active.light .fp-dot { background: var(--fp-light, var(--fp-state, #ffb74d));
-    border-color: var(--fp-light, var(--fp-state, #ffb74d)); color: #fff; }
-  .fp-marker.unavailable .fp-dot { opacity: .45; border-style: dashed; }
-  .fp-marker.offline .fp-dot { opacity: .5; filter: grayscale(1); }
-  .fp-mower-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px; border-radius: 10px; font-size: 11px; font-weight: 600;
-    white-space: nowrap; pointer-events: none; transform: translate(20px, -18px); box-shadow: 0 1px 3px rgba(0,0,0,.35);
-    background: var(--card-background-color, #fff); color: var(--primary-text-color); --mdc-icon-size: 14px; }
-  .fp-mower-chip.offline { color: var(--secondary-text-color, #727272); }
-  .fp-mower-chip.rain, .fp-mower-chip.drying { color: #1e88e5; }
-  .fp-marker.fp-occluded { opacity: .25; pointer-events: none; }
-  .editing .fp-marker.fp-occluded { opacity: .5; pointer-events: auto; }
-  .body:not(.editing) .stage.night-quiet:not(.awake) .fp-marker:not(.alert-red):not(.alert-yellow) { opacity: 0; pointer-events: none; }
-  .fp-val { position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
-    font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 8px; white-space: nowrap;
-    background: var(--card-background-color, #fff); color: var(--primary-text-color);
-    box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-  .fp-val:empty { display: none; }
-  /* marker shapes by role (registry.js markerLook) */
-  .fp-dot { position: relative; }
-  .fp-marker.shape-square .fp-dot { border-radius: 7px; }
-  .fp-marker.shape-diamond .fp-dot { border-radius: 4px; transform: rotate(45deg) scale(.9); }
-  .fp-marker.shape-diamond .fp-dot > :is(ha-icon, ha-state-icon) { transform: rotate(-45deg); }
-  .fp-marker.shape-diamond:hover .fp-dot { transform: rotate(45deg) scale(1.02); }
-  .fp-marker.alert-red .fp-dot { background: var(--fp-state, #e53935); border-color: var(--fp-state, #e53935); color: #fff; }
-  .fp-marker.alert-yellow .fp-dot { background: var(--fp-state, #fbc02d); border-color: var(--fp-state, #fbc02d); color: #212121; }
-  .fp-in:empty { display: none; }
-  .fp-marker.kind-value .fp-dot { width: auto; min-width: 28px; padding: 0 6px 0 4px; gap: 2px; --mdc-icon-size: 13px; }
-  .fp-marker.kind-value .fp-in { font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--primary-text-color); line-height: 1; }
-  .fp-marker.kind-value.active .fp-in { color: inherit; }
-  .fp-marker.kind-info .fp-dot::after { content: 'i'; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%;
-    font: italic 700 8px/10px Georgia, serif; text-align: center; color: var(--card-background-color, #fff); background: var(--secondary-text-color, #727272); }
-  .fp-dot > img.fp-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: none; }
-  .fp-dot.has-pic > img.fp-pic { display: block; }
-  .fp-dot.has-pic > :is(ha-icon, ha-state-icon) { visibility: hidden; }
-  .fp-marker.kind-picture .fp-dot { overflow: hidden; padding: 0; }
-  /* device badges: integration logo (top right), status dot (bottom right), low battery chip (above) */
-  .fp-marker > .fp-logo { position: absolute; top: -6px; right: -8px; width: 14px; height: 14px; box-sizing: border-box; padding: 1px;
-    object-fit: contain; border-radius: 4px; background: var(--card-background-color, #fff); box-shadow: 0 0 0 1px var(--divider-color, rgba(0,0,0,.15)), 0 1px 2px rgba(0,0,0,.25); pointer-events: none; }
   .fp-status { display: inline-block; width: 7px; height: 7px; border-radius: 50%; box-sizing: content-box;
     border: 1.5px solid var(--card-background-color, #fff); background: #9e9e9e; pointer-events: none; }
-  .fp-marker > .fp-status { position: absolute; right: -1px; bottom: -1px; }
   .fp-status[data-status="green"] { background: #43a047; }
   .fp-status[data-status="grey"] { background: #9e9e9e; }
   .fp-status[data-status="red"] { background: #e53935; }
   .fp-status[data-status="yellow"] { background: #fbc02d; }
-  .fp-batt { position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%); font-size: 9.5px; font-weight: 700; line-height: 13px;
-    padding: 0 4px; border-radius: 7px; white-space: nowrap; background: #fbc02d; color: #212121; box-shadow: 0 1px 2px rgba(0,0,0,.35); pointer-events: none; }
   .fp-pop-badges { display: inline-flex; align-items: center; gap: 4px; }
   .fp-pop-badges:empty { display: none; }
   .fp-pop-badges .fp-logo { width: 16px; height: 16px; object-fit: contain; }
@@ -183,7 +128,7 @@ export const STYLE: string = `
   .panel .pill { font-size: 10.5px; padding: 1px 7px; border-radius: 9px; }
   .panel .pill.ok { background: rgba(76,175,80,.16); color: var(--success-color, #43a047); }
   .panel tr.sel td { background: rgba(3,169,244,.12); }
-  .stage.picking .fp-marker, .stage.picking .fp-handle { pointer-events: none; opacity: .45; }
+  .stage.picking .fp-handle { pointer-events: none; opacity: .45; }
   .panel details.report { margin: 6px 0; font-size: 12px; }
   .panel details.report summary { cursor: pointer; color: var(--secondary-text-color); }
   .panel details.report ul, .panel .msg { user-select: text; -webkit-user-select: text; cursor: text; }
@@ -233,12 +178,10 @@ export const STYLE: string = `
   .fp-handle.cursor { pointer-events: none; width: 7px; height: 7px; border: none; background: var(--primary-color, #03a9f4); }
   .fp-handle.cursor.vertex { width: 15px; height: 15px; background: none; border: 2px solid var(--primary-color, #03a9f4); }
   .fp-handle.cursor.align { width: 9px; height: 9px; }
-  .editing .fp-marker { cursor: grab; }
   .stage.drawing { cursor: crosshair; }
-  .stage.drawing .fp-marker { pointer-events: none; opacity: .4; }
   .stage.drawing .fp-handle { pointer-events: none; }
   .stage.moving { cursor: move; }
-  .stage.moving .fp-marker, .stage.moving .fp-handle { pointer-events: none; }
+  .stage.moving .fp-handle { pointer-events: none; }
   .panel input[type=range] { width: 100%; margin: 0; accent-color: var(--primary-color); }
   .panel label .lab { display: flex; justify-content: space-between; }
   .panel label .val { color: var(--primary-text-color); }
@@ -261,17 +204,9 @@ export const STYLE: string = `
   .panel .entin { position: relative; display: block; }
   .panel .entin .lg { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); pointer-events: none; }
   .panel .entin > input { width: 100%; box-sizing: border-box; padding-left: 28px; }
-  .fp-marker.selected .fp-dot { outline: 3px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
-  .has-model .fp-dot { width: 22px; height: 22px; --mdc-icon-size: 14px;
-    background: color-mix(in srgb, var(--card-background-color, #fff) 85%, transparent); }
-  .fp-marker.fp-faded { opacity: .3; }
-  .compact .fp-dot { width: 21px; height: 21px; --mdc-icon-size: 13px; border-width: 1px; }
-  .compact .fp-val { font-size: 9.5px; padding: 0 4px; }
-  .has-model .fp-marker.kind-value .fp-dot { width: auto; min-width: 22px; padding: 0 5px 0 3px; }
-  .compact .fp-marker.kind-value .fp-dot { width: auto; min-width: 21px; padding: 0 4px 0 2px; --mdc-icon-size: 11px; }
-  .compact .fp-marker.kind-value .fp-in { font-size: 9.5px; }
   .stage.picking-views { cursor: pointer; }
-  .stage.fp-hover canvas { cursor: pointer; }
+  .stage.fp-hover canvas, .stage.fp-marker-hover canvas { cursor: pointer; }
+  .editing .stage.fp-marker-hover canvas { cursor: grab; }
   .panel details.advanced { margin: 12px 0 4px; }
   .panel details.advanced summary { cursor: pointer; color: var(--secondary-text-color); font-size: 12px; }
   .panel .floor-links { display: flex; flex-wrap: wrap; gap: 0 12px; }

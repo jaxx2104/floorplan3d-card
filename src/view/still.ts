@@ -139,6 +139,7 @@ export class StillTrace {
     const fade = stillFade(s.samples, this.budget);
     if (fade > 0) {
       s.draw(fade);
+      v._drawOverlay(); // the sprites over the trace
       v.stats.stillDraws++;
     } // before the fade: nothing drawn, the raster frame stays
     if (stillDone(s.samples, now - this._tracingAt, this.budget))
@@ -174,6 +175,7 @@ export class StillTrace {
       if (s.prepare(this._source(), v.camera)) v.stats.stillBuilds++;
       v._drawGl(false); // the raster frame as it is on screen
       s.keepRaster();
+      v._drawOverlay(); // the sprites over it (not in the kept raster: the trace fades in under them)
       s.begin(v.camera);
     } catch (e) {
       this._fail(e);

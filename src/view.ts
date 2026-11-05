@@ -1,11 +1,11 @@
-// Three.js scene for the floorplan: floors, rooms, cut-away walls, DOM markers, light glow.
+// Three.js scene for the floorplan: floors, rooms, cut-away walls, GPU markers and labels, light glow.
 // Plan (x, y, z) maps to world (x, floorElevation + z, -y) so north is up in top view.
 //
 // FloorplanView is the facade the card, the editor and the checks talk to. It owns the scene graph
 // (renderer, cameras, lights, groups), floor / marker visibility, the section and the render loop;
 // the rest lives in parts under src/view/, each with a back-reference to the view:
 //   cam (camera.js), modelLayer (model.js), look (look.js), skyLayer (sky.js), structure (structure.js),
-//   mower (mower-layer.js), occlusion (occlusion.js).
+//   mower (mower-layer.js), occlusion (occlusion.js), sprites (sprites.ts: markers, labels, the mower chip).
 // Members used outside the class keep their names here: methods delegate to their part, fields are
 // accessors that return the part's own object.
 
@@ -41,6 +41,9 @@ import { SkyLayer } from "./view/sky.ts";
 import { PlanStructure } from "./view/structure.ts";
 import { MowerLayer } from "./view/mower-layer.ts";
 import { MarkerOcclusion } from "./view/occlusion.ts";
+import { ViewSprites, type MarkerMode } from "./view/sprites.ts";
+import { isBillboard } from "./view/billboards.ts";
+import type { SpriteSpec } from "./sprite-atlas.ts";
 import { StillTrace } from "./view/still.ts";
 import { AutoQualityView } from "./view/auto-quality.ts";
 import type { ObjectLayer } from "./objects/layer.ts";
@@ -51,14 +54,10 @@ export { fallbackOutline, mergeStaticMeshes } from "./view/model.ts";
 export { drawMoon } from "./view/sky.ts";
 export { orbitStep } from "./view/camera.ts";
 
-const COMPACT_PPM = 30;
 const PICK_LINE_M = 0.02; // raycast threshold for lines / points (three's default is 1 m)
 
 /** Counters for the headless checks. */
 export interface ViewStats {
-  occPasses: number;
-  occPartial: number;
-  occDone: number; // full occlusion passes finished
   shadow: number;
   frames: number;
   shadowLights: number; // per-light shadow map redraws requested
@@ -107,6 +106,8 @@ export class FloorplanView {
   structure: PlanStructure;
   mower: MowerLayer;
   occlusion: MarkerOcclusion;
+  /** GPU markers, labels and the mower chip */
+  sprites: ViewSprites;
   /** idle path tracing (render quality 'still') */
   still: StillTrace;
   /** render quality 'auto': measured frames -> the level in use */
@@ -151,7 +152,9 @@ export class FloorplanView {
   raycaster: THREE.Raycaster;
   mowerMarkerId: string | null;
   mowerOnFloor: boolean;
-  _occSig: string | null;
+  _cssShown: boolean;
+  /** the frame (stats.frames) the depth pre-pass was drawn for */
+  _depthFrame: number;
   _shadowSig: string | null;
   stats: ViewStats;
   floors: Floor[];
@@ -185,6 +188,7 @@ export class FloorplanView {
     this.structure = new PlanStructure(this);
     this.mower = new MowerLayer(this);
     this.occlusion = new MarkerOcclusion(this);
+    this.sprites = new ViewSprites(this);
     this.still = new StillTrace(this);
     this.auto = new AutoQualityView(this);
     this.auto.sync(this.look.renderOpt.quality === "auto");
@@ -197,7 +201,7 @@ export class FloorplanView {
       inset: "0",
       pointerEvents: "none",
       isolation: "isolate",
-    }); // own stacking context: label z-indexes stay under the popup
+    }); // own stacking context: the edit handles' z-indexes stay under the popup
     container.append(this.renderer.domElement, this.labelRenderer.domElement);
 
     this.persp = new THREE.PerspectiveCamera(35, 1, 0.3, 500);
@@ -255,12 +259,10 @@ export class FloorplanView {
     this.raycaster.params.Points.threshold = PICK_LINE_M;
     this.mowerMarkerId = null; // the live mower's marker (shown with the outdoors)
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
-    this._occSig = null; // inputs of the last occlusion pass (shown markers, model visibility, cut, section)
+    this._cssShown = false; // DOM overlay objects (edit handles) were drawn last frame
+    this._depthFrame = -1;
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
     this.stats = {
-      occPasses: 0,
-      occPartial: 0,
-      occDone: 0,
       shadow: 0,
       frames: 0,
       shadowLights: 0,
@@ -274,7 +276,7 @@ export class FloorplanView {
       stillDraws: 0,
       stillBuilds: 0,
       autoSwitches: 0,
-    }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
+    }; // counters for the headless checks (shadowLights: per-light map redraws requested)
 
     this.floors = [];
     this._rooms = null; // [{ room, floorId, label }] of setStructure
@@ -458,19 +460,6 @@ export class FloorplanView {
   }
   set _mowerGround(v) {
     this.mower._mowerGround = v;
-  }
-
-  get _occTimer() {
-    return this.occlusion._occTimer;
-  }
-  set _occTimer(v) {
-    this.occlusion._occTimer = v;
-  }
-  get _occFull() {
-    return this.occlusion._occFull;
-  }
-  set _occFull(v) {
-    this.occlusion._occFull = v;
   }
 
   // --- facade: camera (camera.js) ---
@@ -790,8 +779,23 @@ export class FloorplanView {
   pointHidden(world: THREE.Vector3, own?: THREE.Object3D | null) {
     return this.occlusion.pointHidden(world, own);
   }
-  _scheduleOcclusion(delay?: number, id?: string | null) {
-    return this.occlusion._scheduleOcclusion(delay, id);
+
+  // --- facade: GPU markers (sprites.ts) ---
+
+  setMarkerSprite(id: string, spec: SpriteSpec | null, alert: boolean) {
+    return this.sprites.setMarkerSprite(id, spec, alert);
+  }
+  setMarkerMode(mode: Partial<MarkerMode>) {
+    return this.sprites.setMarkerMode(mode);
+  }
+  markersAt(x: number, y: number) {
+    return this.sprites.markersAt(x, y);
+  }
+  markerScreen(id: string) {
+    return this.sprites.markerScreen(id);
+  }
+  markerHidden(id: string) {
+    return this.sprites.markerHidden(id);
   }
 
   // --- the view's own: visibility, section, render loop, lifecycle ---
@@ -941,29 +945,21 @@ export class FloorplanView {
         top = c.floorId;
       }
     }
-    for (const c of this.cssObjects) {
-      if (c.kind !== "marker") continue;
-      const st = stateOf(c.id);
-      c.obj.element.classList.toggle(
-        "fp-faded",
-        st
-          ? !!st.faded
-          : !!this.model && this.visibleFloor === "all" && c.floorId !== top,
-      );
+    for (const [id, m] of this.markerObjects) {
+      const st = stateOf(id);
+      m.faded = st
+        ? !!st.faded
+        : !!this.model && this.visibleFloor === "all" && m.floorId !== top;
     }
+    this.sprites.applyMarkerDraw();
     if (this.mower.mapPlane && this.mower.mapPlane.material.map)
       this.mower.mapPlane.visible = this.mower._mapShown(this.mower.mapPlane);
-    // shadow map and occlusion only when their inputs changed (not on every state update)
+    // the shadow map only when its inputs changed (not on every state update)
     const model = this._modelSig();
     if (model !== this._shadowSig) {
       this._shadowSig = model;
       if (this.model) this.look._shadowDirty();
       this._objectsInvalid(); // lamps on hidden levels give their pool lights to visible ones
-    }
-    const occ = model + "|" + this.mode + "|" + this._shownMarkersSig();
-    if (occ !== this._occSig) {
-      this._occSig = occ;
-      this.occlusion._scheduleOcclusion(0);
     }
   }
 
@@ -1016,17 +1012,6 @@ export class FloorplanView {
     ].join("|");
   }
 
-  // Shown markers and where they are (occlusion input).
-  _shownMarkersSig(): string {
-    const out: string[] = [];
-    for (const c of this.cssObjects) {
-      if (c.kind !== "marker" || !c.obj.visible) continue;
-      const p = c.obj.position;
-      out.push(`${c.id}@${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
-    }
-    return out.join(";");
-  }
-
   _flagShadows(lights: THREE.Light[] | null | undefined): void {
     if (!lights || !lights.length) return;
     for (const l of lights)
@@ -1052,6 +1037,7 @@ export class FloorplanView {
     if (fin && fin.needsDepth) {
       if (!look._depthPass) look._depthPass = new DepthPrepass(this.renderer);
       const depth = look._depthPass.render(this.scene, this.camera, 0.5);
+      this._depthFrame = this.stats.frames; // the sprites read it too
       this.camera.updateMatrixWorld();
       fin.setFocus(look._focusBox());
       fin.prepare(depth, this.camera);
@@ -1100,13 +1086,9 @@ export class FloorplanView {
       if (look._env && look._env.flush()) this.stats.envBuilds++; // a due sky environment (never more than one per ENV_THROTTLE_MS)
       sky._placeSkyBodies();
       if (look._updateContact()) this.stats.contactBuilds++; // the casters changed since the last frame (quality high)
-      this.labelRenderer.domElement.classList.toggle(
-        "compact",
-        cam.pixelsPerMetre() < COMPACT_PPM,
-      );
       this._drawGl(true);
       if (this.model) this.stats.probeCaptures += look.indirect.step(); // a slice of the probe grids, after the frame drew its shadow maps
-      this.labelRenderer.render(this.scene, this.camera);
+      this._drawOverlay();
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
       this.auto.burn(); // test hook: artificial frame cost
       const ms = performance.now() - t0;
@@ -1114,7 +1096,31 @@ export class FloorplanView {
       this.auto.frame(ts, true, ms);
     };
     this._raf = requestAnimationFrame(loop);
-    this.occlusion._scheduleOcclusion(0);
+  }
+
+  // Over the frame in the drawing buffer: the GPU sprites (markers, labels, the mower chip), then the DOM
+  // overlay of edit mode (handles) when there is one. The sprites read the scene's depth at their anchor:
+  // the depth pre-pass of the frame (drawn for the finish already, or here; the 'still' tier's trace draws
+  // reuse the one of the frame they show).
+  _drawOverlay(): void {
+    let depth: THREE.Texture | null = null;
+    if (this.occlusion.active() && this.markerObjects.size) {
+      if (!this.look._depthPass)
+        this.look._depthPass = new DepthPrepass(this.renderer);
+      if (this._depthFrame !== this.stats.frames) {
+        this.look._depthPass.render(this.scene, this.camera, 0.5);
+        this._depthFrame = this.stats.frames;
+      }
+      depth = this.look._depthPass.target.depthTexture;
+    }
+    this.sprites.draw(depth);
+    // CSS2D only for edit handles and the drag preview label (DOM); one more frame after the last hides them
+    const css =
+      this.cssObjects.some((c) => c.kind === "handle") ||
+      !!(this.modelLayer._preview && this.modelLayer._preview.visible);
+    if (css || this._cssShown)
+      this.labelRenderer.render(this.scene, this.camera);
+    this._cssShown = css;
   }
 
   setOnScreen(on: unknown): void {
@@ -1131,11 +1137,12 @@ export class FloorplanView {
     this.skyLayer.weather.frameAt = 0;
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
-    this.occlusion._cancelOcclusion(); // a detached card runs no passes
   }
 
-  _removeCss(obj: CSS2DObject): void {
+  _removeCss(obj: CSS2DObject | THREE.Object3D): void {
+    if (isBillboard(obj)) this.sprites.remove(obj);
     if (obj.parent) obj.parent.remove(obj);
+    if (!isCss2d(obj)) return;
     // removing the object does not reliably remove its DOM element
     if (obj.element && obj.element.parentNode)
       obj.element.parentNode.removeChild(obj.element);
@@ -1143,6 +1150,7 @@ export class FloorplanView {
 
   _clearGroup(group: THREE.Object3D): void {
     group.traverse((obj) => {
+      if (isBillboard(obj)) this.sprites.remove(obj);
       if (isCss2d(obj) && obj.element && obj.element.parentNode)
         obj.element.parentNode.removeChild(obj.element);
       const o = obj as Drawable;
@@ -1157,7 +1165,6 @@ export class FloorplanView {
     this.stop();
     this.mower.setMowerChip(null);
     this._disposed = true;
-    this.occlusion._cancelOcclusion();
     this.renderer.domElement.removeEventListener("wheel", this.cam._onWheel);
     this.cam.controls.dispose();
     this._clearGroup(this.staticGroup);
@@ -1178,6 +1185,7 @@ export class FloorplanView {
     this.markerObjects.clear();
     this.glows.clear();
     this.cssObjects = [];
+    this.sprites.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.labelRenderer.domElement.remove();
