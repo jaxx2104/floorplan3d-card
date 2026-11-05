@@ -511,7 +511,8 @@ export interface QualityTier {
   toneMapping: string | null;
   /** Image-based light from the sky (view/env-light.ts). */
   envLight: boolean;
-  /** Hemisphere light factor (with envLight the sky's environment light takes over most of the fill). */
+  /** Hemisphere light factor: 1 without envLight; 0 with it (the sky's environment light is the fill, and indoors the
+   * room probes: a hemisphere light on top lit every surface a second time, unoccluded, closed rooms included). */
   hemiScale: number;
   /** Lamps in physical units: blackbody colour from color_temp_kelvin, candela from lumens (photometry.ts). */
   physicalLights: boolean;
@@ -548,7 +549,7 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
     high: Object.freeze({
       toneMapping: "AgX",
       envLight: true,
-      hemiScale: 0.35,
+      hemiScale: 0,
       physicalLights: true,
       bloom: true,
       softShadows: true,
@@ -562,7 +563,7 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
     still: Object.freeze({
       toneMapping: "AgX",
       envLight: true,
-      hemiScale: 0.35,
+      hemiScale: 0,
       physicalLights: true,
       bloom: true,
       softShadows: true,

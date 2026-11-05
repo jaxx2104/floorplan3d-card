@@ -112,7 +112,7 @@ describe("normRenderOption", () => {
     expect(QUALITY_TIERS.high.bloom).toBe(true);
     expect(QUALITY_TIERS.high.toneMapping).toBe("AgX");
     expect(QUALITY_TIERS.high.envLight).toBe(true);
-    expect(QUALITY_TIERS.high.hemiScale).toBeLessThan(1);
+    expect(QUALITY_TIERS.high.hemiScale).toBe(0); // the sky environment (and indoors the probes) is the fill
   });
 });
 
