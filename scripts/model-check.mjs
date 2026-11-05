@@ -55,6 +55,42 @@ const camAndOcclusion = async (page, cam) => {
     )
     .catch(() => console.log("     (occlusion pass did not finish in 5 s)"));
 };
+// A press held past the long press (LONG_PRESS_MS, 500 ms): the hold is real time (the input under test, 700 ms
+// as before), then held on until the card's long-press timer has fired (on a loaded runner it runs late, and an
+// early release would be a tap), then released and idle.
+const holdAt = async (page, p) => {
+  await page.mouse.move(p[0], p[1]);
+  await page.mouse.down();
+  await sleep(700);
+  await waitTrue(
+    page,
+    `(() => { const g = ${card}._objectInput._gesture; return !g || g.long; })()`,
+    "the long press",
+    10000,
+  );
+  await page.mouse.up();
+  await idle(page);
+};
+// n animation frames, nothing forced: the window of a "nothing happens" check, counted in frames (not ms), taken
+// once the pending work it is about is clear
+const rafs = (page, n) =>
+  page.evaluate(
+    `new Promise((done) => { let i = 0; const f = () => (++i >= ${n} ? done() : requestAnimationFrame(f)); requestAnimationFrame(f); })`,
+  );
+// n rendered frames: the view marked dirty on each of n animation frames
+const renderFrames = (page, n) =>
+  page.evaluate(`new Promise((done) => { let i = 0;
+  const f = () => { if (i++ >= ${n}) { done(); return; } const v = ${card}._view; if (v) v.dirty = true; requestAnimationFrame(f); };
+  requestAnimationFrame(f); })`);
+// until a page predicate holds (instead of a fixed sleep) -> true, or false after timeout (logged)
+const waitTrue = (page, expr, label, timeout = 30000) =>
+  page.waitForFunction(expr, { timeout, polling: 50 }).then(
+    () => true,
+    () => {
+      console.log(`     (timed out waiting for ${label})`);
+      return false;
+    },
+  );
 let allErrors = [];
 const sections = new Sections();
 // The sections check the card against the render recipe's own numbers (ACES, exposure, hemisphere, lamp
@@ -164,7 +200,7 @@ sections.add(
         noneFaded(d),
       JSON.stringify(d),
     );
-    await sleep(500);
+    await settle(page, card);
     await sh("look-day.png");
     await sh("model-ground.png");
 
@@ -404,7 +440,7 @@ sections.add(
     const sides0 = await sides();
     const cam0 = await page.evaluate(`${card}._view.getCamera()`);
     await page.evaluate(`${secBtn}.click()`);
-    await sleep(700);
+    // (the camera glide to the cut is awaited below: camera changed, then settled)
     const secState = () =>
       page.evaluate(`(() => { const c = ${card}, v = c._view, p = v.sectionClip;
     let removedHidden = 0, removedShown = 0, keptShown = 0;
@@ -462,7 +498,13 @@ sections.add(
       JSON.stringify(pk),
     );
     await page.evaluate(`${secBtn}.click()`);
-    await sleep(600);
+    await waitTrue(
+      page,
+      `${card}._view.renderer.clippingPlanes.length === 0`,
+      "the section off",
+      10000,
+    );
+    await settle(page, card);
     sec = await secState();
     v = await st();
     check(
@@ -587,11 +629,11 @@ sections.add(
     await page.evaluate(
       `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
     );
-    await sleep(600);
+    await settle(page, card);
     await page.evaluate(
       `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
     );
-    await sleep(900);
+    await settle(page, card);
     const d1 = await dist();
     check(
       "edit mode on/off keeps the camera distance within 5 %",
@@ -610,7 +652,7 @@ sections.add(
     await page.evaluate(
       `${card}.shadowRoot.querySelector('.chip[data-view=first]').click()`,
     );
-    await sleep(600);
+    await settle(page, card);
     check(
       "chip switch keeps the camera",
       (await camAt()) === c0,
@@ -619,7 +661,7 @@ sections.add(
     await page.evaluate(
       `${card}.shadowRoot.querySelector('button.reset').click()`,
     );
-    await sleep(700);
+    await settle(page, card);
     check("Reset view moves the camera", (await camAt()) !== c0);
     await page.evaluate(
       `${card}.saveViewPatch('first', { camera: { position: [20, 25, 20], target: [5, 0, -4] } })`,
@@ -641,7 +683,7 @@ sections.add(
     await page.evaluate(`${card}.saveViewPatch('first', { camera: null })`);
     await idle(page);
     await page.evaluate(`${card}._setFloor('ground')`);
-    await sleep(600);
+    await settle(page, card);
 
     const lights = () =>
       page.evaluate(
@@ -894,7 +936,7 @@ const renderState = (page) =>
 sections.add(
   "render-recipe",
   {
-    group: "model",
+    group: "look",
     query: { model: "1", view: "3d" },
     viewport: { width: 1400, height: 560 },
   },
@@ -952,7 +994,7 @@ sections.add(
 sections.add(
   "render-default",
   {
-    group: "model",
+    group: "look",
     query: { model: "1", view: "3d", render: "default" },
     viewport: { width: 1400, height: 560 },
   },
@@ -980,7 +1022,7 @@ sections.add(
 sections.add(
   "sun-time",
   {
-    group: "model",
+    group: "look",
     query: { model: "1", view: "3d" },
     viewport: { width: 1400, height: 560 },
   },
@@ -1153,7 +1195,7 @@ async function sunTimeChecks(page) {
 sections.add(
   "weather",
   {
-    group: "model",
+    group: "look",
     query: { model: "1", view: "3d" },
     viewport: { width: 1400, height: 560 },
   },
@@ -1288,21 +1330,33 @@ sections.add(
     ); // test mode holds the clouds still
     await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
     window.__newPrograms = []; r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
-    await sleep(500);
+    // n drift frames (rain / snow / cloud shadows), each one's own time (weather.frameAt, what the throttle compares):
+    // -> { frames, minGap (ms between two drift frames; the frame-rate cap is a minimum gap), ok } (timeout: ok false)
+    const drift = (n, timeout = 30000) =>
+      page.evaluate(`new Promise((done) => { const v = ${card}._view, w = v.weather, t0 = performance.now();
+      let last = v.stats.cloudFrames, prevAt = 0, minGap = Infinity, frames = 0;
+      const f = () => { const k = v.stats.cloudFrames;
+        if (k === last + 1) { frames++; if (prevAt && w.frameAt) minGap = Math.min(minGap, w.frameAt - prevAt); prevAt = w.frameAt; }
+        else if (k !== last) { frames += k - last; prevAt = 0; }
+        last = k;
+        if (frames >= ${n} || performance.now() - t0 > ${timeout}) done({ frames, minGap: minGap === Infinity ? null : minGap, ok: frames >= ${n} });
+        else requestAnimationFrame(f); };
+      requestAnimationFrame(f); })`);
+    await drift(2); // the drift has started (its first frames) before the programs are counted
     await page.evaluate("window.__newPrograms.length = 0");
-    const p0 = await sky(),
-      t0 = Date.now();
-    await sleep(5000);
-    const p1 = await sky(),
-      secs = (Date.now() - t0) / 1000;
+    const p0 = await sky();
+    const dr = await drift(12);
+    const p1 = await sky();
     const created = await page.evaluate("window.__newPrograms.length");
     check(
-      "cloud shadows drift for 5 s: no new shader programs, <= 20 frames/s, they moved",
+      "cloud shadows drift (12 drift frames): no new shader programs, >= 47.6 ms between frames (<= 21 frames/s), they moved",
       created === 0 &&
+        dr.ok &&
         p1.frames > p0.frames &&
-        (p1.frames - p0.frames) / secs <= 21 &&
+        dr.minGap !== null &&
+        dr.minGap >= 1000 / 21 &&
         p0.offset.some((x, i) => Math.abs(x - p1.offset[i]) > 1e-4),
-      `created ${created}, ${((p1.frames - p0.frames) / secs).toFixed(1)} fps`,
+      `created ${created}, ${JSON.stringify(dr)}`,
     );
     await page.screenshot({
       path: path.join(root, "screenshots", "weather-cloudy.png"),
@@ -1311,15 +1365,23 @@ sections.add(
       `Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })`,
     );
     await idle(page);
+    // held: the drift clock reset (weather.frameAt 0) and no drift frame over a 60-frame window
+    const held = () => page.evaluate(`${card}._view.weather.frameAt === 0`);
     const h0 = (await sky()).frames;
-    await sleep(1500);
-    check("tab hidden: no drift frames", (await sky()).frames === h0);
+    await rafs(page, 60);
+    check(
+      "tab hidden: no drift frames",
+      (await sky()).frames === h0 && (await held()),
+    );
     await page.evaluate("delete document.visibilityState");
     await page.evaluate(`${card}._view.setOnScreen(false)`);
     await idle(page);
     const o0 = (await sky()).frames;
-    await sleep(1500);
-    check("card off screen: no drift frames", (await sky()).frames === o0);
+    await rafs(page, 60);
+    check(
+      "card off screen: no drift frames",
+      (await sky()).frames === o0 && (await held()),
+    );
     await page.evaluate(`${card}._view.setOnScreen(true)`);
     await page.evaluate(`${card}._setMode('top')`);
     await settle(page, card);
@@ -1352,7 +1414,11 @@ sections.add(
       return { visible: l.visible, drops: l.userData.count, inRoom }; };
     return { falling: !!v.weather.falling, rain: info(P.rain), snow: info(P.snow), frames: v.stats.cloudFrames, programs: v.renderer.info.programs.length }; })()`);
     await wx(90, "pouring");
-    await sleep(300);
+    await waitTrue(
+      page,
+      `!!${card}._view.weather.falling && !!${card}._view._precip.rain && ${card}._view._precip.rain.visible`,
+      "the rain",
+    );
     const pour = await fall();
     check(
       "pouring: rain falls, no drop over a room",
@@ -1388,23 +1454,24 @@ sections.add(
     );
     await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
     window.__newPrograms = []; r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
-    const rf0 = (await fall()).frames,
-      rt0 = Date.now();
-    await sleep(2000);
-    const rf1 = (await fall()).frames,
-      rsecs = (Date.now() - rt0) / 1000,
+    const rdr = await drift(8),
       rnew = await page.evaluate("window.__newPrograms.length");
-    // the floor only proves it animates: the software-GL CI runner draws the full scene at about 5 fps
+    // animates: drift frames keep coming (counted, not timed: the software-GL CI runner draws about 5 fps); the
+    // cap is the minimum gap between two drift frames (the throttle's own clock)
     check(
-      "rain animates: 2..30 frames a second, no new shader programs",
-      (rf1 - rf0) / rsecs >= 2 && (rf1 - rf0) / rsecs <= 31.5 && rnew === 0,
-      `${((rf1 - rf0) / rsecs).toFixed(1)} fps, ${rnew} new programs`,
+      "rain animates (8 drift frames): >= 31.7 ms between frames (<= 31.5 frames/s), no new shader programs",
+      rdr.ok && rdr.minGap !== null && rdr.minGap >= 1000 / 31.5 && rnew === 0,
+      `${JSON.stringify(rdr)}, ${rnew} new programs`,
     );
     await page.screenshot({
       path: path.join(root, "screenshots", "weather-rain.png"),
     });
     await wx(90, "snowy");
-    await sleep(300);
+    await waitTrue(
+      page,
+      `!!${card}._view._precip.snow && ${card}._view._precip.snow.visible && !(${card}._view._precip.rain && ${card}._view._precip.rain.visible)`,
+      "the snow",
+    );
     const snow = await fall();
     check(
       "snowy: snow falls (no rain), no flake over a room",
@@ -1419,7 +1486,11 @@ sections.add(
       path: path.join(root, "screenshots", "weather-snow.png"),
     });
     await wx(0, "sunny");
-    await sleep(300);
+    await waitTrue(
+      page,
+      `!${card}._view.weather.falling`,
+      "the rain / snow to stop",
+    );
     const dry = await fall();
     check(
       "sunny: nothing falls, the frame rate drops back",
@@ -1482,7 +1553,7 @@ sections.add(
 sections.add(
   "uplights",
   {
-    group: "model",
+    group: "look",
     query: { model: "1", view: "3d" },
     viewport: { width: 1400, height: 560 },
   },
@@ -1490,7 +1561,13 @@ sections.add(
     const { page } = s;
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 30000 });
     await page.evaluate("window.__setDemoSun(-20, 0)"); // night: lamps on
-    await sleep(500);
+    await waitTrue(
+      page,
+      `["wall_uplight_1", "wall_uplight_2"].every((id) => { const s = ${card}._objects._slots.get(id); return !!s && s.light.intensity > 0; })`,
+      "the uplights on at night",
+      15000,
+    );
+    await idle(page);
     const aims = () =>
       page.evaluate(`(() => { const c = ${card}, L = c._objects, v = c._view;
     const out = {}; for (const [id, slot] of L._slots) { const l = slot.light; if (!l.isSpotLight) continue;
@@ -1541,7 +1618,7 @@ sections.add(
         { timeout: 15000 },
       )
       .catch(() => {});
-    await sleep(800);
+    await idle(page);
     a = await aims();
     check(
       "shared bad target: Model warning names both uplights",
@@ -1622,12 +1699,37 @@ sections.add(
       if (!inModel) for (const m of [].concat(o.material)) { const p = r.properties.get(m).currentProgram; if (p) other.add(p.id); } });
     const created = window.__newPrograms.splice(0);
     return { live: live.size, created: created.length, transient: created.filter((id) => !live.has(id)).length, otherNew: created.filter((id) => other.has(id)).length }; })()`);
-    await sleep(1000);
+    // the demo mower driven step by step (its 500 ms timer held): each step moves the marker and swaps the live
+    // map; a step is done once a frame has drawn it, the map texture changed (when it has one) and the card is idle
+    await page.evaluate("window.__demoMowerPaused = true");
+    const mapSig = `(() => { const v = ${card}._view, m = v.mapPlane && v.mapPlane.material && v.mapPlane.material.map; return m ? m.uuid + ':' + m.version : ''; })()`;
+    let mapSwaps = true;
+    const mowerStep = async () => {
+      await page.evaluate(
+        `(() => { window.__mapSig0 = ${mapSig}; window.__frames0 = ${card}._view.stats.frames; window.__demoMowerStep(); })()`,
+      );
+      await waitTrue(
+        page,
+        `${card}._view.stats.frames > window.__frames0`,
+        "a frame after the mower step",
+        10000,
+      );
+      // no live map texture, or it never changes on a step (seen on the first step): not waited for again
+      if (mapSwaps)
+        mapSwaps = await waitTrue(
+          page,
+          `!window.__mapSig0 || ${mapSig} !== window.__mapSig0`,
+          "the live map swap",
+          5000,
+        );
+      await idle(page);
+    };
+    for (let i = 0; i < 2; i++) await mowerStep(); // as before: the first moves happen before the count starts
     await programs();
-    await sleep(10000); // the demo mower moves every 500 ms: marker, map
+    for (let i = 0; i < 20; i++) await mowerStep();
     const moving = await programs();
     check(
-      "mower moving for 10 s: no new shader programs",
+      "mower moving (20 steps: marker, live map): no new shader programs",
       moving.created === 0,
       JSON.stringify(moving),
     );
@@ -1696,10 +1798,12 @@ sections.add(
       await page.evaluate(`(() => { let o = null; ${card}._view.model.root.traverse((x) => { if (!o && /^fp_merged_/.test(x.name)) o = x; });
     return { owner: o.parent.name, mat: o.material.name }; })()`);
     // settle first: leaving edit mode rebuilds its outlines over the next frames (their shaders come and go)
-    // (idle first, then 3 quiet half-seconds: under the 3 parallel shards the rebuild can outlast a 1 s lull)
+    // (idle first, then rendered-frame streaks until two streaks of 10 frames in a row compile nothing: counted in
+    // frames, so a loaded runner only makes it slower, not shorter)
     await idle(page);
-    for (let i = 0, quiet = 0; i < 30 && quiet < 3; i++) {
-      await sleep(500);
+    for (let i = 0, quiet = 0; i < 30 && quiet < 2; i++) {
+      await renderFrames(page, 10);
+      await idle(page);
       quiet = (await programs()).created ? 0 : quiet + 1;
     }
     await page.evaluate(
@@ -1788,12 +1892,17 @@ sections.add(
         JSON.stringify(re),
       );
       await page.evaluate(
-        `(window.__m1 = ${card}._view.model, ${card}._schedule())`,
+        `(window.__m1 = ${card}._view.model, window.__gen1 = ${card}._loadGen, ${card}._schedule())`,
       );
-      await sleep(500);
+      // the scheduled update has run (idle: nothing pending) and started no load (a fresh load bumps _loadGen at once)
+      await idle(page);
+      await renderFrames(page, 3);
+      await idle(page);
       check(
         "no second reload",
-        await page.evaluate(`${card}._view.model === window.__m1`),
+        await page.evaluate(
+          `${card}._view.model === window.__m1 && ${card}._loadGen === window.__gen1`,
+        ),
       );
     }
     allErrors.push(...s.errors);
@@ -1861,11 +1970,7 @@ sections.add(
     );
     await settle(page, card);
     p = await at();
-    await page.mouse.move(p[0], p[1]);
-    await page.mouse.down();
-    await sleep(700);
-    await page.mouse.up();
-    await idle(page);
+    await holdAt(page, p);
     const pop = () =>
       page.evaluate(`(() => { const el = ${card}.shadowRoot.querySelector('.fp-popup');
     return el && { title: el.querySelector('.fp-pop-title').textContent, rows: [...el.querySelectorAll('.fp-pop-row')].map((r) => r.className.replace('fp-pop-row ', '')),
@@ -1925,11 +2030,7 @@ sections.add(
     check("Esc closes the popup", !(await pop()));
     // the tap that closes the popup does not also act (tap on the lamp itself)
     p = await at();
-    await page.mouse.move(p[0], p[1]);
-    await page.mouse.down();
-    await sleep(700);
-    await page.mouse.up();
-    await idle(page);
+    await holdAt(page, p);
     const n2 = await calls();
     await page.mouse.click(p[0], p[1]);
     await idle(page);
@@ -1939,11 +2040,7 @@ sections.add(
     );
     // popup hidden while its anchor is off-screen
     p = await at();
-    await page.mouse.move(p[0], p[1]);
-    await page.mouse.down();
-    await sleep(700);
-    await page.mouse.up();
-    await idle(page);
+    await holdAt(page, p);
     const cam0 = await page.evaluate(`${card}._view.getCamera()`);
     await page.evaluate(`(() => { const v = ${card}._view; const c = v.getCamera();
     const d = [c.target[0] - c.position[0], c.target[1] - c.position[1], c.target[2] - c.position[2]];
@@ -1962,20 +2059,12 @@ sections.add(
     await idle(page);
     // popup closes on outside tap and on view change
     p = await at();
-    await page.mouse.move(p[0], p[1]);
-    await page.mouse.down();
-    await sleep(700);
-    await page.mouse.up();
-    await idle(page);
+    await holdAt(page, p);
     await page.mouse.click(30, 520);
     await idle(page);
     check("outside tap closes the popup", !(await pop()));
     p = await at();
-    await page.mouse.move(p[0], p[1]);
-    await page.mouse.down();
-    await sleep(700);
-    await page.mouse.up();
-    await idle(page);
+    await holdAt(page, p);
     await page.evaluate(
       `${card}.shadowRoot.querySelector('.chip[data-view=exterior]').click()`,
     );
@@ -2458,11 +2547,7 @@ sections.add(
         "JSON.stringify((window.__serviceCalls || []).slice(-1)[0] || null)",
       );
     const hold = async (p) => {
-      await page.mouse.move(p[0], p[1]);
-      await page.mouse.down();
-      await sleep(700);
-      await page.mouse.up();
-      await idle(page);
+      await holdAt(page, p);
     };
 
     await setActions({
@@ -2577,19 +2662,26 @@ sections.add(
     await page.mouse.click(pl[0], pl[1]); // pending: waits 250 ms for a second tap
     await page.mouse.click(ph[0], ph[1]); // other object: immediate
     const tUp = await page.evaluate("window.__upAt");
-    await sleep(50); // inside the 250 ms double-tap window
+    // by order, not by a 50 ms read and a 100 ms budget: the hall call is in as soon as its click is through, and
+    // before the living lamp's pending tap (which waits out the 250 ms double-tap window; a hall tap held behind
+    // it would come after it)
     const early = await since(k);
-    const hallCall = early.find(
+    await idle(page);
+    const all = await since(k);
+    const hallCall = all.find(
       (x) => x.c[2] && x.c[2].entity_id === "light.demo_hall",
+    );
+    const livingCall = all.find(
+      (x) => x.c[2] && x.c[2].entity_id === "light.demo_living",
     );
     check(
       "actions: a single tap on another object is not delayed by a pending double tap",
       !!hallCall &&
-        hallCall.t - tUp < 100 &&
-        !early.some((x) => x.c[2] && x.c[2].entity_id === "light.demo_living"),
-      JSON.stringify(early.map((x) => [x.c[2], Math.round(x.t - tUp)])),
+        !!livingCall &&
+        early.some((x) => x.c[2] && x.c[2].entity_id === "light.demo_hall") &&
+        hallCall.t < livingCall.t,
+      JSON.stringify(all.map((x) => [x.c[2], Math.round(x.t - tUp)])),
     );
-    await idle(page);
     let later = (await since(k)).map((x) => x.c);
     check(
       "actions: the pending single tap runs after 250 ms (toggle)",
@@ -2751,7 +2843,14 @@ sections.add(
     const w = o.obj.node.getWorldPosition(new c._view.camera.position.constructor());
     const g = o.part.glow && o.part.glow.material; return { x: w.x, z: w.z, marker: !!c._mowerMarkerId, live: !!c._mowerLive && !!c._mowerLive.x, em: g ? g.emissive.g : -1 }; })()`);
     const a = await pos();
-    await sleep(2500);
+    // until the node has moved (the demo mower steps every 500 ms; it moved in 2.5 s before)
+    await waitTrue(
+      page,
+      `(() => { const c = ${card}, o = c._objects.objectAt('mower'), w = o.obj.node.getWorldPosition(new c._view.camera.position.constructor());
+      return Math.hypot(w.x - ${a.x}, w.z - ${a.z}) > 0.01; })()`,
+      "the mower node to move",
+      15000,
+    );
     const b = await pos();
     check(
       "mower node moves with the live position",
@@ -2806,10 +2905,15 @@ sections.add(
       JSON.stringify(eave),
     );
     const f0 = await page.evaluate(`${card}._view.stats.frames`);
-    await sleep(1300);
+    // the pulse renders by itself: two frames come without any input (waited for, not timed)
     check(
       "the warning pulses (frames only while shown)",
-      (await page.evaluate(`${card}._view.stats.frames`)) - f0 >= 2,
+      await waitTrue(
+        page,
+        `${card}._view.stats.frames - ${f0} >= 2`,
+        "two pulse frames",
+        10000,
+      ),
     );
     await setMs("mowing");
     await idle(page);
@@ -2828,9 +2932,9 @@ sections.add(
     await idle(page);
     check("docked: no warning", (await warn()) === null);
     const f1 = await page.evaluate(`${card}._view.stats.frames`);
-    await sleep(1300);
+    await rafs(page, 80); // a frame-count window (about the 1.3 s it was at 60 Hz)
     check(
-      "no frames rendered while idle without a warning",
+      "no frames rendered while idle without a warning (80 animation frames)",
       (await page.evaluate(`${card}._view.stats.frames`)) - f1 <= 1,
     );
     await page.evaluate(
@@ -3305,7 +3409,7 @@ sections.add(
       await page.evaluate(
         `(() => { const i = ${sr}.querySelector('[name=grp-entity][data-id=facade]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
       );
-      await sleep(250);
+      await idle(page);
     };
     let g = await grp();
     check(
@@ -3502,7 +3606,7 @@ sections.add(
       { timeout: 20000 },
     );
     await page.evaluate("window.__setDemoSun(-25, 0)"); // night
-    await sleep(800);
+    await idle(page);
     const W = () =>
       page.evaluate(`(() => { const c = ${card}, l = c._objects; return { shown: [...l.washes.meshes].filter((m) => m.visible).length,
     walls: [...l.parts].filter(([, p]) => p.wash && p.wash.placements.some((pl, i) => pl.surface === 'wall' && p.wash.meshes[i].visible)).map(([id]) => id),
@@ -3550,7 +3654,7 @@ sections.add(
     await page.evaluate(
       `${card}._commit({ ...${card}._layout, tags: { ...${card}._layout.tags, facade: { ...(${card}._layout.tags || {}).facade, wash: 'both' } } })`,
     );
-    await sleep(600);
+    await idle(page);
     w = await W();
     // facade_2 has no wall within reach and nothing under it (no wash at all, as before)
     check(
@@ -3563,7 +3667,7 @@ sections.add(
       await page.evaluate(
         `${card}._hass.callService('switch', 'toggle', { entity_id: 'switch.demo_facade' })`,
       );
-      await sleep(250);
+      await idle(page);
     }
     w = await W();
     check(
@@ -3575,7 +3679,7 @@ sections.add(
     await page.evaluate(
       `${card}._commit({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: { ...((${card}._layout.objects || {}).facade_2 || {}), wash: 'none' } } })`,
     );
-    await sleep(500);
+    await idle(page);
     w = await W();
     check(
       "Light on wall: object none beats tag both",
@@ -3596,7 +3700,7 @@ sections.add(
     await page.evaluate(
       `${card}._commit({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: (({ wash, ...r }) => r)((${card}._layout.objects || {}).facade_2 || {}) } })`,
     );
-    await sleep(500);
+    await idle(page);
     await page.screenshot({
       path: path.join(root, "screenshots", "washes-both-night.png"),
     });
@@ -3682,7 +3786,7 @@ sections.add(
     await page.evaluate(
       `${card}.saveViewPatch(${JSON.stringify(vid)}, { rules: [...(${card}._layout.views?.[${JSON.stringify(vid)}]?.rules || []), { hide: 'zone:terrace', keep_objects: true }] })`,
     );
-    await sleep(500);
+    await idle(page);
     const keep =
       await page.evaluate(`(() => { const c = ${card}, idx = c._index, l = c._objects;
     const z = idx.nodes.findIndex((n) => n.tag && n.tag.kind === 'zone' && n.tag.id === 'terrace');
@@ -3708,7 +3812,13 @@ sections.add(
       `${card}._hass.states['light.demo_facade'].state`,
     );
     if (fa) await page.mouse.click(fa[0], fa[1]);
-    await sleep(450);
+    if (fa)
+      await waitTrue(
+        page,
+        `${card}._hass.states["light.demo_facade"].state !== ${JSON.stringify(facadeBefore)}`,
+        "the facade lamp toggled",
+        5000,
+      ); // the tap waits out the 250 ms double-tap window, then toggles
     const facadeAfter = await page.evaluate(
       `${card}._hass.states['light.demo_facade'].state`,
     );
@@ -3743,7 +3853,7 @@ sections.add(
       { timeout: 30000 },
     );
     await page.evaluate("window.__setDemoSun(-25, 0)"); // night
-    await sleep(800);
+    await idle(page);
     await idle(page);
     const look = () =>
       page.evaluate(`(() => { const c = ${card}, v = c._view, l = c._objects;
@@ -3771,7 +3881,7 @@ sections.add(
     await page.evaluate(
       `${card}._view.setRenderOption({ quality: 'standard' })`,
     );
-    await sleep(500);
+    await renderFrames(page, 2);
     await idle(page);
     const std = await look();
     check(
@@ -4325,8 +4435,23 @@ sections.add(
         await page.evaluate(`${dn}.click()`);
     };
     await skyTo("night");
+    await page.evaluate(
+      `(() => { const c = ${card}; window.__up0 = c._layout.model && c._layout.model.uploaded; window.__gen0 = c._loadGen; window.__m0 = c._view.model; })()`,
+    );
     await upload(path.join(root, "demo", "house.glb"));
-    await sleep(1500);
+    // the upload is through (layout.model.uploaded changed, the update ran), then the reload it started (if any) is done
+    await waitTrue(
+      page,
+      `!!${card}._layout.model && ${card}._layout.model.uploaded !== window.__up0 && !${card}._edit.uploading`,
+      "the re-upload",
+    );
+    await idle(page);
+    await waitTrue(
+      page,
+      `${card}._loadGen === window.__gen0 || (!!${card}._view.model && ${card}._view.model !== window.__m0)`,
+      "the reloaded model",
+    );
+    await idle(page);
     check(
       "night kept after re-upload",
       (await page.evaluate(`${card}._skyMode`)) === "night" &&
@@ -4455,7 +4580,13 @@ sections.add(
     );
     const imp = await page.evaluateHandle(panel("[name=import]"));
     await imp.uploadFile(plan);
-    await sleep(600);
+    await waitTrue(
+      page,
+      `(${card}._layout.rooms || []).some((r) => r.id === "x") && !!${panel(".msg")}`,
+      "the imported layout",
+      10000,
+    );
+    await idle(page);
     fs.unlinkSync(plan);
     check(
       "import keeps the uploaded model",
@@ -4766,7 +4897,7 @@ sections.add(
     );
     await chip("first");
     await chip("ground");
-    await sleep(500);
+    await settle(page, card);
     const back = await page.evaluate(
       `(() => { const c = ${card}._view.getCamera(); return c; })()`,
     );
@@ -5083,7 +5214,13 @@ sections.add(
     await page.evaluate(
       `${secPos}.dispatchEvent(new Event('change', { bubbles: true }))`,
     );
-    await sleep(500);
+    await waitTrue(
+      page,
+      `!!((${card}._layout.views || {})[${card}._viewId] || {}).section`,
+      "the saved section",
+      10000,
+    );
+    await idle(page);
     const secSaved =
       await page.evaluate(`(() => { const c = ${card}; return { s: ((c._layout.views || {})[c._viewId] || {}).section, c: c._view.sectionClip && c._view.sectionClip.constant,
     slider: Number(${secPos}.value) }; })()`);
@@ -5265,7 +5402,7 @@ sections.add(
       JSON.stringify(top),
     );
     await page.evaluate(`${card}._setView('first')`);
-    await sleep(600);
+    await settle(page, card);
     check(
       "top mode: a view without camera_top keeps the top camera",
       JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)) ===
@@ -5328,7 +5465,7 @@ sections.add(
     await idle(page);
     // section on: Save / Set rotation centre leave the section first
     await page.evaluate(`${card}.setSection(true)`);
-    await sleep(500);
+    await settle(page, card);
     check(
       "section on before save",
       await page.evaluate(`${card}._section === true`),
@@ -5347,7 +5484,7 @@ sections.add(
       JSON.stringify(secCam),
     );
     await page.evaluate(`${card}.setSection(true)`);
-    await sleep(500);
+    await settle(page, card);
     await clickText("Set rotation centre");
     check(
       "Set rotation centre with the section on: section off first",
@@ -5542,7 +5679,7 @@ sections.add(
       await idle(page);
       await page.mouse.up();
       if (alt) await page.keyboard.up("Alt");
-      await sleep(250);
+      await idle(page);
     };
     const pinOf = (id) =>
       page
@@ -5594,7 +5731,7 @@ sections.add(
         await page.mouse.move(sky.x, sky.y, { steps: 8 });
         await idle(page);
         await page.mouse.up();
-        await sleep(250);
+        await idle(page);
         const ps = await pinOf(a.id);
         // the path crosses the model first: the marker stays at the last surface it stuck to, inside the model
         const box = await page.evaluate(`${card}._view.modelBox()`);
@@ -5706,7 +5843,7 @@ sections.add(
       await page.evaluate(
         `${sr}.querySelector('.panel [name=detach]').click()`,
       );
-      await sleep(250);
+      await idle(page);
       const pd = await pinOf(b.id);
       check(
         "magnetic: Detach -> normal pin (on_model) at the same spot",
@@ -5869,7 +6006,7 @@ sections.add(
         path: path.join(root, "screenshots", "surface-preview.png"),
       });
       await page.mouse.up();
-      await sleep(250);
+      await idle(page);
       check(
         "surface: preview hidden after the drop",
         await page.evaluate(`!${card}._view._preview.visible`),
@@ -6500,7 +6637,13 @@ sections.add(
       15000,
     );
     await ev(`window.__setRobot(${T2 + 0.002})`); // a second frame: a jump > 120° needs two
-    await sleep(2500);
+    // until the model has turned (the second frame processed); the check below reads the same pose
+    await until(
+      `(() => { const p = ${card}._objects._pose; if (!p || p.heading === null || p.heading === undefined) return false;
+      const d = ((((p.heading * 180) / Math.PI - ${(T2 * 180) / Math.PI + 90}) % 360) + 540) % 360 - 180; return Math.abs(d) <= 10; })()`,
+      "the model turned with the icon",
+      15000,
+    );
     hd = await head();
     check(
       "auto mode: the model turns with the icon",
@@ -6629,24 +6772,45 @@ sections.add(
       ),
     );
     // main-thread time per refresh: auto pass in the worker vs on the main thread (no worker)
+    // each of 4 refreshes waited for (its perf record), not slept for: { main, pass, worker } per refresh
     const timing = async () => {
       const out = [];
       for (let i = 0; i < 4; i++) {
+        const at0 = await ev(
+          `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
+        );
         await ev(`window.__setRobot(${1 + i * 0.05})`);
-        await sleep(900);
+        await until(
+          `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at0}; })()`,
+          "the map refresh",
+          15000,
+        );
         out.push(
           await ev(
-            `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.main : 0; })()`,
+            `(() => { const c = ${card}, p = c._perf && c._perf.last, m = c._mapProc; return { main: p ? p.main : 0, pass: p ? p.pass : null, worker: !!(m && m._worker) }; })()`,
           ),
         );
       }
-      return out.sort((a, b) => a - b)[1];
+      return out;
     };
-    const inWorker = await timing();
+    const med = (xs) => xs.map((x) => x.main).sort((a, b) => a - b)[1];
+    const wRuns = await timing();
     await ev(`(() => { const p = ${card}._mapProc; p._killWorker(); })()`);
-    const onMain = await timing();
+    const mRuns = await timing();
+    const inWorker = med(wRuns),
+      onMain = med(mRuns);
     console.log(
       `     auto pass main-thread time per refresh: worker ${inWorker.toFixed(1)} ms, main thread ${onMain.toFixed(1)} ms`,
+    );
+    // where the pass ran, by state: the worker up for every refresh; without it the pass is part of the main-thread
+    // time of each refresh (main >= pass)
+    check(
+      "auto mode: the pass runs in the worker, on the main thread once it is gone",
+      wRuns.every((r) => r.worker && typeof r.pass === "number") &&
+        mRuns.every(
+          (r) => !r.worker && typeof r.pass === "number" && r.main >= r.pass,
+        ),
+      JSON.stringify({ wRuns, mRuns }),
     );
     check(
       "auto mode in the worker keeps the main thread light",
@@ -6715,7 +6879,17 @@ sections.add(
     await ev(
       `(() => { const el = ${card}.shadowRoot.querySelector('[name=mower-auto-off]'); el.click(); })()`,
     );
-    await sleep(2500);
+    // auto mode back on and a map refresh through it (its perf record), then idle: the screenshot shows it
+    const at1 = await ev(
+      `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
+    );
+    await until(`!!${card}.mowerAuto()`, "auto on", 10000);
+    await until(
+      `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at1}; })()`,
+      "a map refresh in auto mode",
+      15000,
+    );
+    await idle(page);
     await page.screenshot({
       path: path.join(root, "screenshots", "mower-auto.png"),
     });
@@ -6784,7 +6958,17 @@ sections.add(
         ),
       ),
     );
-    await sleep(2500);
+    // two map refreshes (perf records; the camera refreshes every 2 s), not a fixed 2.5 s
+    for (let i = 0; i < 2; i++) {
+      const at0 = await ev(
+        `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
+      );
+      await until(
+        `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at0}; })()`,
+        "a map refresh while docked",
+        10000,
+      );
+    }
     check(
       "docked: still at the dock after map refreshes (not the map centre)",
       await ev(atDock),
@@ -6938,7 +7122,7 @@ sections.add(
     );
     await inp.uploadFile(path.join(root, "demo/house.glb"));
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 20000 });
-    await sleep(800);
+    await idle(page);
     const body = `${card}.shadowRoot.querySelector(".panel .tab-body")`;
     const keeps = async (label, act) => {
       await page.evaluate(
@@ -6946,7 +7130,7 @@ sections.add(
       );
       const before = await page.evaluate(`${body}.scrollTop`);
       await page.evaluate(act);
-      await sleep(500);
+      await idle(page);
       const after = await page.evaluate(`${body}.scrollTop`);
       check(
         `panel scroll kept after ${label}`,
@@ -7061,7 +7245,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
       try {
         const { page } = s;
         await page.waitForFunction(`!!${card}._view.model`, { timeout: 30000 });
-        await sleep(1500);
+        await settle(page, card);
         // these checks are about the live mower marker: hide the model's mower object, so the marker is back
         await page.evaluate(
           `(() => { const c = ${card}; c._commit({ ...c._layout, objects: { ...(c._layout.objects || {}), mower: { hidden: true } } }); })()`,
@@ -7071,7 +7255,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
           .catch(() => {});
         // I1: 10 hass updates (a sensor value, a light's brightness) with the camera still and the mower parked
         await page.evaluate("window.__demoMowerPaused = true");
-        await sleep(800);
+        await idle(page); // a mower update in flight lands before the counters reset
         await page.evaluate(
           `(() => { const v = ${card}._view; v.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0 }; })()`,
         );
@@ -7082,7 +7266,9 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
           'light.kitchen': { ...l, attributes: { ...l.attributes, brightness: ${100 + i * 10} } } } }; })()`);
           await idle(page);
         }
-        await sleep(800);
+        // nothing relevant changed: once idle (no occlusion timer, nothing pending), a 30-frame window for late work
+        await idle(page);
+        await rafs(page, 30);
         let stats = await page.evaluate(`${card}._view.stats`);
         check(
           "10 state updates, nothing relevant changed: 0 occlusion passes, 0 shadow map renders",
@@ -7104,9 +7290,18 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await page.evaluate(
           `(() => { const v = ${card}._view; v.stats = { occPasses: 0, occPartial: 0, occDone: 0, shadow: 0 }; })()`,
         );
-        await page.evaluate("window.__demoMowerPaused = false");
-        await sleep(2600);
-        await page.evaluate("window.__demoMowerPaused = true");
+        // five mower steps (the 500 ms timer held), each drawn and idle; then the partial pass they scheduled is done
+        for (let i = 0; i < 5; i++) {
+          await page.evaluate("window.__demoMowerStep()");
+          await idle(page);
+        }
+        await waitTrue(
+          page,
+          `${card}._view.stats.occPartial > 0`,
+          "the partial occlusion pass",
+          10000,
+        );
+        await idle(page);
         stats = await page.evaluate(`${card}._view.stats`);
         const p1 = await mpos();
         check(
@@ -7121,7 +7316,12 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await page.evaluate(
           `${card}.shadowRoot.querySelector('.chip[data-view=first]').click()`,
         );
-        await sleep(500);
+        await waitTrue(
+          page,
+          `${card}._view.stats.shadow > 0 && ${card}._view.stats.occPasses > 0`,
+          "the shadow map and the full occlusion pass after the view switch",
+          10000,
+        );
         stats = await page.evaluate(`${card}._view.stats`);
         check(
           "a view switch re-renders the shadow map and runs a full occlusion pass",
@@ -7174,7 +7374,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await page.evaluate(
           `${card}.setConfig({ ...${card}._config, model_position: ${JSON.stringify(align.position)}, model_rotation: ${align.rotation}, model_scale: ${align.scale} })`,
         );
-        await sleep(500);
+        await idle(page);
         await page.evaluate(`${card}._setView('exterior', { instant: true })`);
         await page.evaluate(`${card}._setView('ground', { instant: true })`);
         await idle(page);
@@ -7494,12 +7694,15 @@ sections.add(
   },
 );
 
-// about 150 s per shard of 3 (measured): lamps + views + review | objects + upload | model + mower
+// CI runs one group per shard (--shard k/8): 45-75 s each on a GitHub runner (measured; model 75 s and look 61 s
+// were one 136 s group before the split). Locally (3 shards): lamps + views + mower | objects + look + review |
+// model + upload
 sections.order([
   "lamps",
   "objects",
   "model",
   "views",
+  "look",
   "upload",
   "mower",
   "review",
