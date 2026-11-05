@@ -404,7 +404,7 @@ otherwise the tab shows "Can't read the map image".
 
 A mower object in the 3D model (type `mower`) replaces the mower device's marker: the model itself drives
 around, turned to its direction of travel (`hints.front`: `+x` default, `-x`, `+z` or `-z` for the model's
-front axis). Its popup shows state, battery and start / dock.
+front axis). Its popup shows its tile (state, start / pause, dock) and the battery.
 
 ## 3D model underlay
 
@@ -520,18 +520,23 @@ has no marker: the object is the control.
     disc × (1 − 0.8 c) and the moon and moonlight × (1 − 0.7 c). The sun / moon discs never cover
     the rooms on screen and in 3D sit behind the surroundings. Changes under 5 points are ignored.
     `clouds: false` turns the shadows, rain and snow off; the light still follows the coverage.
-- **Tap** a lamp to toggle it, **hold** (500 ms) for a small popup: on / off, brightness, colour,
-  and a row per tag controller and why a lamp is dark ("Facade switch is off"). A tap on an object
-  that can't act does nothing but say why: "Not reachable (offline)" or "Turn on first: <controller>"
-  (hold still opens the popup).
-  The popup rows follow the light: besides the listed rows it adds brightness (with 10 / 30 / 60 / 100 %
-  buttons), a colour wheel (tap or drag, sent on release; the warm white button sits next to it), a colour
-  temperature slider in Kelvin and an effect select (music effects first) when the bound light supports
-  them. A list from the layout or the YAML `popup:` is taken as written (it may name `color_temp` and
-  `effect` too). In the Objects tab, the **Popup** select per object chooses _Automatic_ or _Only on / off_.
+- **Tap** a lamp to toggle it, **hold** (500 ms) for a small popup with Home Assistant's own tile
+  cards: one for the object's entity and one per tag controller (named by the tag label), and why a
+  lamp is dark ("Facade switch is off"). A tap on an object that can't act does nothing but say why:
+  "Not reachable (offline)" or "Turn on first: <controller>" (hold still opens the popup).
+  The tile carries HA's tile features for what the entity supports: brightness and colour
+  temperature for lights, open / close and position for covers, speed for fans, HVAC modes and
+  target temperature for climate, lock / unlock, media volume, start / pause and dock for mowers and
+  vacuums. Colour, effects and everything else are in HA's more-info dialog: tap the tile (its icon
+  toggles). Popup items: `toggle`, `state`, `brightness`, `color`, `color_temp`, `effect`, `start`,
+  `dock` show the tile; `battery`, `power`, `energy`, `temperature`, `mode` add a value row below it;
+  links come last. A list from the model or the type default is automatic (the tile with every
+  feature the entity supports); a list from the layout or the YAML `popup:` is taken as written (features only
+  for listed `brightness`, `color_temp`, `start` / `dock`). In the Objects tab, the Popup select per
+  object chooses _Automatic_ or _Only on / off_ (the tile without features).
   Esc or a tap outside closes it. Taps near an object (30 px, 52 px on touch) hit the object
-  before markers. Other objects: mower popup (state, battery, start / dock), climate (temperature,
-  mode), EV charger (state, power, energy); `fp.ui` in the model, the Objects tab or the card YAML
+  before markers. Other objects: mower popup (tile with start / pause and dock, battery), climate
+  (temperature, mode), EV charger (state, power, energy); `fp.ui` in the model, the Objects tab or the card YAML
   can change tap / hold / double tap and the rows (see [Actions](#actions)).
 - **Mower, dock, charger, climate:** the mower model drives where the mower is; the dock LED is
   lit while docked; the charger LED shows charging / ready / error with the power as a label; a
@@ -706,6 +711,10 @@ bun run check:model --only views,mower   # some model check groups (--list, --sh
 python -m pytest      # integration tests (pip install -r requirements-test.txt first)
 bun run deploy        # build and scp the integration to HA (settings in .env, see .env.example)
 ```
+
+The demo page has no Home Assistant frontend: `demo/demo-tile.js` stands in for HA's card helpers
+with a minimal tile card (name, state, the brightness / colour temperature / cover / mower / vacuum
+features), so the object popup works there too.
 
 Releases are automatic: every green CI run on `main` picks the next version from the
 conventional commits since the last tag, stamps it into `package.json`, the manifest and

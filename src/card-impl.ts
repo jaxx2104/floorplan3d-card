@@ -193,7 +193,6 @@ const MARKER_FIELDS = [
 ] as const satisfies readonly (keyof MarkerLayer)[];
 const ACTION_METHODS = [
   "_runAction",
-  "_callService",
   "_notify",
   "_moreInfo",
 ] as const satisfies readonly (keyof ActionRunner)[];
@@ -678,11 +677,6 @@ export class Floorplan3dCard extends HTMLElement {
     const objects = (this._objects = new ObjectLayer(this._view));
     this._view.onObjectsInvalidate = () => this._objectInput._updateObjects(); // view, section or placement changed
     this._popup = new ObjectPopup(this._stage, {
-      onAction: (
-        domain: string,
-        service: string,
-        data?: Record<string, unknown>,
-      ) => this._callService(domain, service, data),
       onLink: (action: Parameters<ActionRunner["_runAction"]>[0]) =>
         this._runAction(action, {}),
       project: (w: Parameters<FloorplanView["projectWorld"]>[0]) =>

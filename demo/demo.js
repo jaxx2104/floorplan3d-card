@@ -1,7 +1,8 @@
-// Demo page wiring: a stand-in <ha-icon>, a mock hass shared by all cards on the page.
+// Demo page wiring: a stand-in <ha-icon> and HA's tile card, a mock hass shared by all cards on the page.
 import * as mdi from "@mdi/js";
 import { createMockHass, resetMockHass } from "./mock-hass.js";
 import { installMockActions } from "./mock-actions.js";
+import "./demo-tile.js"; // window.loadCardHelpers stand-in (the object popup's tile cards)
 
 class DemoIcon extends HTMLElement {
   static get observedAttributes() {

@@ -1980,16 +1980,25 @@ sections.add(
     await settle(page, card);
     p = await at();
     await holdAt(page, p);
+    // the tile card comes from (the demo's stand-in for) HA's card helpers, a moment after the popup
+    await page
+      .waitForFunction(
+        `!!${card}.shadowRoot.querySelector('.fp-popup .fp-pop-row.ha .fp-demo-tile')`,
+        { timeout: 3000 },
+      )
+      .catch(() => {});
     const pop = () =>
       page.evaluate(`(() => { const el = ${card}.shadowRoot.querySelector('.fp-popup');
     return el && { title: el.querySelector('.fp-pop-title').textContent, rows: [...el.querySelectorAll('.fp-pop-row')].map((r) => r.className.replace('fp-pop-row ', '')),
+      features: [...el.querySelectorAll('.fp-demo-tile [data-feature]')].map((f) => f.dataset.feature),
       vis: el.style.visibility, t: el.style.transform }; })()`);
     let pp = await pop();
     check(
-      "hold opens the popup (toggle + brightness) without toggling",
+      "hold opens the popup (a tile with brightness) without toggling",
       !!pp &&
         pp.title === "Hall ceiling lamp" &&
-        pp.rows.join() === "toggle,brightness" &&
+        pp.rows.join() === "tile ha" &&
+        pp.features.join() === "light-brightness" &&
         pp.vis !== "hidden" &&
         (await calls()) === n0,
       JSON.stringify(pp),
@@ -2008,29 +2017,29 @@ sections.add(
       path: path.join(root, "screenshots", "object-popup.png"),
     });
     await page.evaluate(
-      `(() => { const r = ${card}.shadowRoot.querySelector('.fp-popup .brightness input'); r.value = '100'; r.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+      `(() => { const r = ${card}.shadowRoot.querySelector('.fp-popup [data-feature=light-brightness]'); r.value = '100'; r.dispatchEvent(new Event('change', { bubbles: true })); })()`,
     );
     const last = await page.evaluate(
       "JSON.stringify(window.__serviceCalls[window.__serviceCalls.length - 1])",
     );
     check(
-      "brightness slider sends light.turn_on once on release",
+      "the tile's brightness feature sends light.turn_on",
       last ===
         JSON.stringify([
           "light",
           "turn_on",
-          { entity_id: "light.demo_hall", brightness: 100 },
+          { entity_id: "light.demo_hall", brightness_pct: 100 },
         ]),
       last,
     );
     const st1 = await hall();
     await page.evaluate(
-      `${card}.shadowRoot.querySelector('.fp-popup .toggle .fp-switch').click()`,
+      `${card}.shadowRoot.querySelector('.fp-popup .fp-demo-tile .icon').click()`,
     );
     await idle(page);
     pp = await pop();
     check(
-      "popup switch toggles and the popup stays open",
+      "the tile's icon toggles and the popup stays open",
       (await hall()) !== st1 && !!pp,
       `${st1} -> ${await hall()}`,
     );
@@ -2278,7 +2287,7 @@ sections.add(
 
 // 1b2. HA-style actions from the card YAML: navigate on tap, perform-action on hold, double tap on one
 // object never delays single taps on another, missing target -> message, confirmation, popup links, markers
-// 1c. light popup: rows from the bound light's capabilities (smart bulb: colour, colour temperature, effects)
+// 1c. light popup: an HA tile with the features of the bound light (smart bulb: brightness, colour temperature; colour via more-info)
 sections.add(
   "light-popup",
   {
@@ -2317,140 +2326,88 @@ sections.add(
         "JSON.stringify(window.__serviceCalls[window.__serviceCalls.length - 1])",
       );
     const nCalls = () => page.evaluate("(window.__serviceCalls || []).length");
+    const tile = `${sr}.querySelector('.fp-popup fp-demo-tile')`;
+    const feats = () =>
+      page.evaluate(
+        `[...${sr}.querySelectorAll('.fp-popup .fp-demo-tile [data-feature]')].map((f) => f.dataset.feature).join()`,
+      );
+    const tileReady = () =>
+      page.waitForFunction(`!!${tile}`, { timeout: 3000 }).catch(() => {});
     await open();
+    await tileReady();
     const r0 = await rows();
+    const f0 = await feats();
     check(
-      "model list [toggle] + smart bulb: toggle, brightness, wheel, Kelvin, effect rows",
-      r0.join() === "toggle,brightness,color,color_temp,effect",
-      r0.join(),
+      "model list [toggle] + smart bulb: one HA tile with brightness and colour temperature",
+      r0.join() === "tile ha" && f0 === "light-brightness,light-color-temp",
+      `${r0.join()} / ${f0}`,
     );
     check(
-      "brightness has 4 preset buttons",
-      (await page.evaluate(
-        `${sr}.querySelectorAll('.fp-popup .fp-presets button').length`,
-      )) === 4,
-    );
-    const sizes =
-      await page.evaluate(`(() => { const c = ${sr}.querySelector('.fp-popup canvas.fp-wheel'); const b = c.getBoundingClientRect();
-    const g = c.getContext('2d'); const px = g.getImageData(c.width / 2 + 40, c.height / 2, 1, 1).data; return { w: b.width, h: b.height, a: px[3] }; })()`);
-    check(
-      "colour wheel is 132 px and drawn",
-      sizes.w === 132 && sizes.h === 132 && sizes.a > 0,
-      JSON.stringify(sizes),
-    );
-    check(
-      'the colour temperature row shows "3000 K"',
-      (await page.evaluate(
-        `${sr}.querySelector('.fp-popup .color_temp .fp-pop-value').textContent`,
-      )) === "3000 K",
-    );
-    const eff = await page.evaluate(
-      `[...${sr}.querySelectorAll('.fp-popup .effect option')].map((o) => o.value).join('|')`,
-    );
-    check(
-      "effects: music-like first",
-      eff === "|Music pulse|Sound reactive|Rainbow|Candle",
-      eff,
+      "the tile card has the card's hass",
+      await page.evaluate(`${tile}.hass === ${card}._hass`),
     );
     await page.screenshot({
       path: path.join(root, "screenshots", "light-popup.png"),
     });
-    // a pointer down / up on the wheel: one light.turn_on with hs_color; pointer events never reach the stage
-    const n0 = await nCalls();
-    const wheel = await page.evaluate(
-      `(() => { const b = ${sr}.querySelector('.fp-popup canvas.fp-wheel').getBoundingClientRect(); return { x: b.left + b.width * 0.8, y: b.top + b.height / 2 }; })()`,
+    // a pointer down / up on the tile's slider never reaches the stage (OrbitControls, taps)
+    const kel = await page.evaluate(
+      `(() => { const b = ${sr}.querySelector('.fp-popup [data-feature=light-color-temp]').getBoundingClientRect(); return { x: b.left + b.width * 0.7, y: b.top + b.height / 2 }; })()`,
     );
     await page.evaluate(
       `window.__stagePointer = 0; ${sr}.querySelector('.stage').addEventListener('pointerdown', () => { window.__stagePointer++; })`,
     );
-    await page.mouse.move(wheel.x, wheel.y);
+    await page.mouse.move(kel.x, kel.y);
     await page.mouse.down();
-    await page.mouse.move(wheel.x + 2, wheel.y + 2, { steps: 3 });
-    check("dragging on the wheel sends nothing yet", (await nCalls()) === n0);
+    await page.mouse.move(kel.x + 4, kel.y, { steps: 3 });
     await page.mouse.up();
     await idle(page);
-    const hc = JSON.parse(await lastCall());
     check(
-      "release on the wheel: one light.turn_on with hs_color",
-      (await nCalls()) === n0 + 1 &&
-        hc[0] === "light" &&
-        hc[1] === "turn_on" &&
-        hc[2].entity_id === lamp &&
-        Array.isArray(hc[2].hs_color) &&
-        hc[2].hs_color.length === 2 &&
-        hc[2].hs_color[1] > 50 &&
-        hc[2].hs_color[0] < 40,
-      JSON.stringify(hc),
+      "a gesture on the tile did not reach the stage; popup still open",
+      (await page.evaluate("window.__stagePointer")) === 0 &&
+        (await rows()).length === 1,
     );
-    check(
-      "the wheel gesture did not reach the stage",
-      (await page.evaluate("window.__stagePointer")) === 0,
-    );
-    check(
-      "the marker shows the colour; popup still open",
-      (await page.evaluate(
-        `!${sr}.querySelector('.fp-popup .fp-wheel-dot').hidden`,
-      )) && (await rows()).length === 5,
-    );
-    // colour temperature: one call on release
-    const n1 = await nCalls();
+    // colour temperature: the feature's service call
     await page.evaluate(
-      `(() => { const r = ${sr}.querySelector('.fp-popup .color_temp input'); r.value = '4500'; r.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+      `(() => { const r = ${sr}.querySelector('.fp-popup [data-feature=light-color-temp]'); r.value = '4500'; r.dispatchEvent(new Event('change', { bubbles: true })); })()`,
     );
     check(
-      "the Kelvin slider only previews while moving",
-      (await nCalls()) === n1 &&
-        (await page.evaluate(
-          `${sr}.querySelector('.fp-popup .color_temp .fp-pop-value').textContent`,
-        )) === "4500 K",
-    );
-    await page.evaluate(
-      `${sr}.querySelector('.fp-popup .color_temp input').dispatchEvent(new Event('change', { bubbles: true }))`,
-    );
-    check(
-      "Kelvin slider release: one color_temp_kelvin call",
+      "colour temperature feature: one color_temp_kelvin call",
       (await lastCall()) ===
         JSON.stringify([
           "light",
           "turn_on",
           { entity_id: lamp, color_temp_kelvin: 4500 },
-        ]) && (await nCalls()) === n1 + 1,
+        ]),
       await lastCall(),
     );
-    // presets and effect
+    // brightness: the call, then the tile follows the state (hass forwarded on updates)
     await page.evaluate(
-      `${sr}.querySelector('.fp-popup .fp-presets button[data-pct="30"]').click()`,
+      `(() => { const r = ${sr}.querySelector('.fp-popup [data-feature=light-brightness]'); r.value = '30'; r.dispatchEvent(new Event('change', { bubbles: true })); })()`,
     );
+    await idle(page);
     check(
-      "preset 30 % sends brightness_pct",
+      "brightness feature sends brightness_pct; the tile shows the new state",
       (await lastCall()) ===
         JSON.stringify([
           "light",
           "turn_on",
           { entity_id: lamp, brightness_pct: 30 },
-        ]),
+        ]) &&
+        /30 %/.test(
+          await page.evaluate(`${tile}.querySelector('.state').textContent`),
+        ),
       await lastCall(),
     );
-    await page.evaluate(
-      `(() => { const e = ${sr}.querySelector('.fp-popup .effect select'); e.value = 'Candle'; e.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await new Promise((r) => setTimeout(r, 600)); // the effect call is debounced (arrow keys)
+    // colour and effects: HA's more-info from the tile's name
+    const n0 = await nCalls();
+    await page.evaluate(`${tile}.querySelector('.name').click()`);
     await idle(page);
     check(
-      "choosing an effect sends light.turn_on with effect",
-      (await lastCall()) ===
-        JSON.stringify([
-          "light",
-          "turn_on",
-          { entity_id: lamp, effect: "Candle" },
-        ]),
-      await lastCall(),
-    );
-    check(
-      "the effect select shows the new effect",
-      (await page.evaluate(
-        `${sr}.querySelector('.fp-popup .effect select').value`,
-      )) === "Candle",
+      "the tile's name opens more-info (colour, effects)",
+      (await nCalls()) === n0 &&
+        (await page.evaluate("document.querySelector('#log').textContent")) ===
+          `more-info: ${lamp}`,
+      await page.evaluate("document.querySelector('#log').textContent"),
     );
     await page.keyboard.press("Escape");
     await idle(page);
@@ -2491,10 +2448,11 @@ sections.add(
     ); // leave edit mode
     await idle(page);
     await open();
+    await tileReady();
     check(
-      "with the layout list only the toggle row remains",
-      (await rows()).join() === "toggle",
-      (await rows()).join(),
+      "with the layout list only the tile remains, without features",
+      (await rows()).join() === "tile ha" && (await feats()) === "",
+      `${(await rows()).join()} / ${await feats()}`,
     );
     await page.keyboard.press("Escape");
     await idle(page);

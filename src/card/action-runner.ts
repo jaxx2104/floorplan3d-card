@@ -50,21 +50,6 @@ export class ActionRunner {
     this._fire("hass-action", hassActionDetail(a, ctx.entity));
   }
 
-  // A direct service call (popup controls): HA's hass.callService reports a failure as a toast itself.
-  _callService(
-    domain: string,
-    service: string,
-    data?: Record<string, unknown>,
-  ): void {
-    if (!this.card._hass) return;
-    try {
-      const p = this.card._hass.callService(domain, service, data);
-      if (p && typeof p.catch === "function") p.catch(() => {});
-    } catch {
-      // reported by HA
-    }
-  }
-
   // An HA toast (e.g. an action missing a field).
   _notify(message: string): void {
     this._fire("hass-notification", { message });

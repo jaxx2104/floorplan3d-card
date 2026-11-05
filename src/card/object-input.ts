@@ -247,6 +247,7 @@ export class ObjectInput {
       extra,
       badge: card._objectBadge(o.binding && o.binding.entity),
       dark: !!(card._theme && card._theme.dark),
+      hass: card._hass,
     };
   }
 

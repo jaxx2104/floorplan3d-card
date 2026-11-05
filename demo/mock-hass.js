@@ -570,7 +570,12 @@ export function createMockHass({ onChange }) {
         service === "toggle" ? s.state !== "on" : service === "turn_on";
       const attrs = { ...s.attributes };
       if (s.entity_id.startsWith("light.")) {
-        if (on) attrs.brightness = data.brightness ?? attrs.brightness ?? 255;
+        if (on)
+          attrs.brightness =
+            data.brightness ??
+            (typeof data.brightness_pct === "number"
+              ? Math.round((data.brightness_pct / 100) * 255)
+              : (attrs.brightness ?? 255));
         else delete attrs.brightness;
         if (on && data.rgb_color) attrs.rgb_color = data.rgb_color;
         if (on && data.hs_color) {

@@ -3,10 +3,8 @@ import {
   popupRows,
   actionTarget,
   rowsKey,
-  effectOrder,
-  wheelHs,
-  wheelPoint,
-  rgbToHs,
+  tileFeatures,
+  tileConfig,
 } from "../src/objects/popup.ts";
 import { resolveActions } from "../src/actions.ts";
 import { typeOf } from "../src/objects/types.ts";
@@ -14,9 +12,19 @@ import { chainState } from "../src/objects/logic.ts";
 import { st } from "./helpers/hass.js";
 
 const kinds = (rows) => rows.map((r) => r.kind);
+const types = (row) => row.features.map((f) => f.type);
+const rowsOf = (obj, entity, states, groups = {}, popup = null, source) =>
+  popupRows(
+    obj,
+    chainState(obj, { entity }, groups, states),
+    states,
+    groups,
+    popup,
+    source,
+  );
 
 describe("popupRows", () => {
-  it("light defaults: toggle, brightness, colour on a colour light", () => {
+  it("light defaults (exact list toggle, brightness, color): one tile with the brightness feature", () => {
     const states = {
       "light.a": st("on", {
         brightness: 128,
@@ -24,80 +32,57 @@ describe("popupRows", () => {
         friendly_name: "Lamp A",
       }),
     };
-    const obj = { id: "l1", type: "light" };
-    const chain = chainState(obj, { entity: "light.a" }, {}, states);
-    const rows = popupRows(obj, chain, states);
-    expect(kinds(rows)).toEqual(["toggle", "brightness", "color"]);
-    expect(rows[0]).toMatchObject({ entity: "light.a", value: true });
-    expect(rows[1]).toMatchObject({ entity: "light.a", value: 128 });
-    expect(rows[2].entity).toBe("light.a");
+    const rows = rowsOf({ id: "l1", type: "light" }, "light.a", states);
+    expect(kinds(rows)).toEqual(["tile"]);
+    expect(rows[0]).toMatchObject({
+      entity: "light.a",
+      label: "Lamp A",
+      value: true,
+    });
+    expect(types(rows[0])).toEqual(["light-brightness"]); // colour: the tile's more-info
   });
 
-  it("hides colour on a brightness-only light and brightness/colour on a relay", () => {
+  it("no brightness feature on a relay or an on / off light", () => {
     const states = {
-      "light.d": st("off", { supported_color_modes: ["brightness"] }),
+      "light.o": st("on", { supported_color_modes: ["onoff"] }),
       "switch.r": st("on"),
     };
     const obj = { id: "l1", type: "light" };
-    expect(
-      kinds(
-        popupRows(
-          obj,
-          chainState(obj, { entity: "light.d" }, {}, states),
-          states,
-        ),
-      ),
-    ).toEqual(["toggle", "brightness"]);
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "switch.r" }, {}, states),
-      states,
-    );
-    expect(kinds(rows)).toEqual(["toggle"]);
-    expect(rows[0]).toMatchObject({ entity: "switch.r", value: true });
+    expect(types(rowsOf(obj, "light.o", states)[0])).toEqual([]);
+    const rows = rowsOf(obj, "switch.r", states);
+    expect(kinds(rows)).toEqual(["tile"]);
+    expect(rows[0]).toMatchObject({ entity: "switch.r", features: [] });
   });
 
-  it("off light: brightness value 0", () => {
-    const states = {
-      "light.a": st("off", { supported_color_modes: ["brightness"] }),
-    };
-    const obj = { id: "l1", type: "light" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, {}, states),
-      states,
-    );
-    expect(rows[1].value).toBe(0);
-  });
-
-  it("generic default: state row with unit", () => {
+  it("generic default [state]: the entity's tile", () => {
     const states = { "sensor.t": st("21.5", { unit_of_measurement: "°C" }) };
-    const obj = { id: "x", type: "something" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "sensor.t" }, {}, states),
-      states,
-    );
+    const rows = rowsOf({ id: "x", type: "something" }, "sensor.t", states);
     expect(rows).toEqual([
-      { kind: "state", entity: "sensor.t", label: "State", value: "21.5 °C" },
+      {
+        kind: "tile",
+        entity: "sensor.t",
+        label: "sensor.t",
+        value: false,
+        features: [],
+      },
     ]);
   });
 
-  it("fp.ui.popup overrides the type default; unknown kinds dropped", () => {
+  it("fp.ui.popup overrides the type default; value rows, unknown kinds dropped", () => {
     const states = {
       "light.a": st("on", { brightness: 255, supported_color_modes: ["rgb"] }),
+      "sensor.p": st("5", { unit_of_measurement: "W" }),
     };
     const obj = {
       id: "l1",
       type: "light",
-      ui: { popup: ["brightness", "bogus", "state"] },
+      ui: { popup: ["power", "bogus", "brightness"] },
     };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, {}, states),
-      states,
-    );
-    expect(kinds(rows)).toEqual(["brightness", "state"]);
+    expect(kinds(rowsOf(obj, "light.a", states))).toEqual(["tile"]);
+    const p = { id: "p", type: "x", ui: { popup: ["power"] } };
+    expect(rowsOf(p, "sensor.p", states)).toEqual([
+      { kind: "power", entity: "sensor.p", label: "Power", value: "5 W" },
+    ]);
   });
 
   it("link rows (history / logbook / statistics / custom) at the bottom; a resolved list wins over fp.ui", () => {
@@ -109,7 +94,7 @@ describe("popupRows", () => {
       "state",
       { label: "Plan", navigate: "/lovelace/plan" },
     ]);
-    expect(kinds(rows)).toEqual(["state", "link", "link"]);
+    expect(kinds(rows)).toEqual(["tile", "link", "link"]);
     expect(rows[1]).toMatchObject({
       label: "History",
       action: {
@@ -126,7 +111,7 @@ describe("popupRows", () => {
     expect(kinds(un)).toEqual(["state", "link"]);
   });
 
-  it("grouped fixture: one chain row per controller and a reason row when dark", () => {
+  it("grouped fixture: one chain tile per controller and a reason row when dark", () => {
     const states = {
       "light.a": st("on", {
         brightness: 200,
@@ -136,59 +121,43 @@ describe("popupRows", () => {
     };
     const groups = { hall: { entity: "switch.g" } };
     const obj = { id: "l1", type: "light", group: "hall" };
-    const chain = chainState(obj, { entity: "light.a" }, groups, states);
-    const rows = popupRows(obj, chain, states, groups);
-    expect(kinds(rows)).toEqual(["toggle", "brightness", "chain", "reason"]);
+    const rows = rowsOf(obj, "light.a", states, groups);
+    expect(kinds(rows)).toEqual(["tile", "chain", "reason"]);
     expect(rows[0].entity).toBe("light.a");
-    expect(rows[2]).toMatchObject({
+    expect(rows[1]).toMatchObject({
       entity: "switch.g",
       label: "Group switch",
       value: false,
+      features: [],
     });
-    expect(rows[3].label).toBe("Group switch is off");
+    expect(rows[2].label).toBe("Group switch is off");
   });
 
-  it("grouped fixture: the group label names the chain row and the reason", () => {
+  it("grouped fixture: the group label names the chain tile and the reason", () => {
     const states = {
       "light.a": st("on", { supported_color_modes: ["onoff"] }),
       "switch.g": st("off", { friendly_name: "Group switch" }),
     };
     const groups = { hall: { entity: "switch.g", label: "Hall circuit" } };
-    const obj = { id: "l1", type: "light", group: "hall" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, groups, states),
+    const rows = rowsOf(
+      { id: "l1", type: "light", group: "hall" },
+      "light.a",
       states,
       groups,
     );
-    expect(rows.find((r) => r.kind === "chain").label).toBe("Hall circuit");
+    const chain = rows.find((r) => r.kind === "chain");
+    expect(chain.label).toBe("Hall circuit");
+    expect(tileConfig(chain)).toMatchObject({
+      type: "tile",
+      entity: "switch.g",
+      name: "Hall circuit",
+    });
     expect(rows.find((r) => r.kind === "reason").label).toBe(
       "Hall circuit is off",
     );
   });
 
-  it("grouped fixture lit: chain row, no reason", () => {
-    const states = {
-      "light.a": st("on", { supported_color_modes: ["onoff"] }),
-      "switch.g": st("on"),
-    };
-    const groups = { hall: { entity: "switch.g" } };
-    const obj = { id: "l1", type: "light", group: "hall" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, groups, states),
-      states,
-      groups,
-    );
-    expect(kinds(rows)).toEqual(["toggle", "chain"]); // on/off-only light: no brightness
-    expect(rows[1]).toMatchObject({
-      entity: "switch.g",
-      label: "switch.g",
-      value: true,
-    });
-  });
-
-  it("fixture without own entity: toggle targets the controller, no duplicate chain row", () => {
+  it("fixture without own entity: the tile is the controller's, no duplicate chain row", () => {
     const states = { "switch.g": st("off") };
     const groups = { hall: { entity: "switch.g" } };
     const obj = { id: "l1", type: "light", group: "hall" };
@@ -198,7 +167,7 @@ describe("popupRows", () => {
       states,
       groups,
     );
-    expect(kinds(rows)).toEqual(["toggle", "reason"]);
+    expect(kinds(rows)).toEqual(["tile", "reason"]);
     expect(rows[0].entity).toBe("switch.g");
   });
 
@@ -206,45 +175,34 @@ describe("popupRows", () => {
     const states = { "light.a": st("unavailable") };
     const obj = { id: "l1", type: "light" };
     const one = [{ kind: "state", label: "State", value: "unavailable" }];
-    expect(
-      popupRows(
-        obj,
-        chainState(obj, { entity: "light.a" }, {}, states),
-        states,
-      ),
-    ).toEqual(one);
+    expect(rowsOf(obj, "light.a", states)).toEqual(one);
     expect(
       popupRows(obj, chainState(obj, { entity: null }, {}, {}), {}),
     ).toEqual(one);
     expect(popupRows(obj, null, {})).toEqual(one);
   });
 
-  it("grouped fixture with an unavailable own entity: controller row and reason stay", () => {
+  it("grouped fixture with an unavailable own entity: controller tile and reason stay", () => {
     const groups = { hall: { entity: "switch.g" } };
     const obj = { id: "l1", type: "light", group: "hall" };
     let states = {
       "light.a": st("unavailable", { friendly_name: "Bulb" }),
       "switch.g": st("off", { friendly_name: "Relay" }),
     };
-    let rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, groups, states),
-      states,
-      groups,
-    );
-    expect(rows).toEqual([
-      { kind: "chain", entity: "switch.g", label: "Relay", value: false },
+    const chainRow = (value) => ({
+      kind: "chain",
+      entity: "switch.g",
+      label: "Relay",
+      value,
+      features: [],
+    });
+    expect(rowsOf(obj, "light.a", states, groups)).toEqual([
+      chainRow(false),
       { kind: "reason", label: "Relay is off" },
     ]);
     states = { ...states, "switch.g": st("on", { friendly_name: "Relay" }) };
-    rows = popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, groups, states),
-      states,
-      groups,
-    );
-    expect(rows).toEqual([
-      { kind: "chain", entity: "switch.g", label: "Relay", value: true },
+    expect(rowsOf(obj, "light.a", states, groups)).toEqual([
+      chainRow(true),
       { kind: "reason", label: "Bulb is unavailable" },
     ]);
   });
@@ -253,76 +211,63 @@ describe("popupRows", () => {
     const groups = { hall: { entity: "switch.g" } };
     const obj = { id: "l1", type: "light", group: "hall" };
     const states = { "light.a": st("unavailable"), "switch.g": st("unknown") };
-    expect(
-      popupRows(
-        obj,
-        chainState(obj, { entity: "light.a" }, groups, states),
-        states,
-        groups,
-      ),
-    ).toEqual([{ kind: "state", label: "State", value: "unavailable" }]);
+    expect(rowsOf(obj, "light.a", states, groups)).toEqual([
+      { kind: "state", label: "State", value: "unavailable" },
+    ]);
   });
 
-  it("toggle row is labelled On / off", () => {
-    const states = { "switch.r": st("on") };
-    const obj = { id: "l1", type: "light" };
-    expect(
-      popupRows(
-        obj,
-        chainState(obj, { entity: "switch.r" }, {}, states),
-        states,
-      )[0].label,
-    ).toBe("On / off");
-  });
-
-  it("mower: state, battery and one start/dock row", () => {
+  it("mower: a tile with start-pause / dock, then the battery", () => {
     const states = { "lawn_mower.m": st("docked", { battery_level: 87 }) };
-    const obj = { id: "m", type: "mower" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "lawn_mower.m" }, {}, states),
-      states,
-    );
-    expect(kinds(rows)).toEqual(["state", "battery", "start_dock"]);
+    const rows = rowsOf({ id: "m", type: "mower" }, "lawn_mower.m", states);
+    expect(kinds(rows)).toEqual(["tile", "battery"]);
+    expect(rows[0].features).toEqual([
+      { type: "lawn-mower-commands", commands: ["start_pause", "dock"] },
+    ]);
     expect(rows[1].value).toBe("87 %");
   });
 
-  it("a vacuum standing in for the mower gets the start/dock row too", () => {
+  it("a vacuum standing in for the mower gets vacuum commands", () => {
     const states = { "vacuum.v": st("docked", { battery_level: 100 }) };
-    const obj = { id: "v", type: "mower" };
-    expect(
-      kinds(
-        popupRows(
-          obj,
-          chainState(obj, { entity: "vacuum.v" }, {}, states),
-          states,
-        ),
-      ),
-    ).toContain("start_dock");
+    const rows = rowsOf({ id: "v", type: "mower" }, "vacuum.v", states);
+    expect(types(rows[0])).toEqual(["vacuum-commands"]);
   });
 
-  it("climate: temperature and mode", () => {
+  it("climate (automatic): tile with HVAC modes and target temperature, then temperature and mode", () => {
+    const states = {
+      "climate.c": st("heat", {
+        current_temperature: 20.5,
+        temperature_unit: "°C",
+        hvac_modes: ["off", "heat"],
+        supported_features: 1,
+      }),
+    };
+    const rows = rowsOf(
+      { id: "c", type: "climate" },
+      "climate.c",
+      states,
+      {},
+      null,
+      "type",
+    );
+    expect(kinds(rows)).toEqual(["tile", "temperature", "mode"]);
+    expect(rows[0].features).toEqual([
+      { type: "climate-hvac-modes", hvac_modes: ["off", "heat"] },
+      { type: "target-temperature" },
+    ]);
+    expect(rows[1].value).toBe("20.5 °C");
+    expect(rows[2].value).toBe("heat");
+  });
+
+  it("climate with an exact list: value rows only", () => {
     const states = {
       "climate.c": st("heat", {
         current_temperature: 20.5,
         temperature_unit: "°C",
       }),
     };
-    const obj = { id: "c", type: "climate" };
-    const rows = popupRows(
-      obj,
-      chainState(obj, { entity: "climate.c" }, {}, states),
-      states,
-    );
-    expect(rows).toEqual([
-      {
-        kind: "temperature",
-        entity: "climate.c",
-        label: "Temperature",
-        value: "20.5 °C",
-      },
-      { kind: "mode", entity: "climate.c", label: "Mode", value: "heat" },
-    ]);
+    expect(
+      kinds(rowsOf({ id: "c", type: "climate" }, "climate.c", states)),
+    ).toEqual(["temperature", "mode"]);
   });
 });
 
@@ -385,185 +330,97 @@ describe("object actions / actionTarget", () => {
   });
 });
 
-describe("popupRows: automatic rows from the light", () => {
+describe("tileFeatures / automatic tiles", () => {
   const full = {
     supported_color_modes: ["hs", "color_temp"],
     color_mode: "hs",
     brightness: 200,
-    hs_color: [120, 50],
-    rgb_color: [128, 255, 128],
-    min_color_temp_kelvin: 2200,
-    max_color_temp_kelvin: 6000,
-    color_temp_kelvin: 3000,
-    effect_list: ["Rainbow", "Music 1", "Sound"],
-    effect: "Rainbow",
+    effect_list: ["Rainbow"],
   };
-  const rowsFor = (attrs, popup, source) => {
-    const states = { "light.a": st("on", attrs) };
-    const obj = { id: "l1", type: "light" };
-    return popupRows(
-      obj,
-      chainState(obj, { entity: "light.a" }, {}, states),
-      states,
+  const rowsFor = (attrs, popup, source) =>
+    rowsOf(
+      { id: "l1", type: "light" },
+      "light.a",
+      { "light.a": st("on", attrs) },
       {},
       popup,
       source,
     );
-  };
 
-  it("a model list [toggle] gets brightness, colour, colour temperature and effect", () => {
-    for (const src of ["model", "type"]) {
-      const rows = rowsFor(full, ["toggle"], src);
-      expect(kinds(rows)).toEqual([
-        "toggle",
-        "brightness",
-        "color",
-        "color_temp",
-        "effect",
+  it("a model / type list [toggle] gets every light feature", () => {
+    for (const src of ["model", "type"])
+      expect(types(rowsFor(full, ["toggle"], src)[0])).toEqual([
+        "light-brightness",
+        "light-color-temp",
       ]);
-    }
-    const rows = rowsFor(full, ["toggle"], "model");
-    expect(rows[2]).toMatchObject({ entity: "light.a", hs: [120, 50] });
-    expect(rows[3]).toMatchObject({ value: 3000, min: 2200, max: 6000 });
-    expect(rows[4]).toMatchObject({
-      value: "Rainbow",
-      options: ["Music 1", "Sound", "Rainbow"],
-    });
   });
 
   it("a layout or YAML list is respected exactly; without a source too", () => {
-    expect(kinds(rowsFor(full, ["toggle"], "layout"))).toEqual(["toggle"]);
-    expect(kinds(rowsFor(full, ["toggle"], "yaml"))).toEqual(["toggle"]);
-    expect(kinds(rowsFor(full, ["toggle"]))).toEqual(["toggle"]);
-    expect(
-      kinds(rowsFor(full, ["effect", "color_temp", "toggle"], "layout")),
-    ).toEqual(["effect", "color_temp", "toggle"]);
+    expect(types(rowsFor(full, ["toggle"], "layout")[0])).toEqual([]);
+    expect(types(rowsFor(full, ["toggle"], "yaml")[0])).toEqual([]);
+    expect(types(rowsFor(full, ["toggle"])[0])).toEqual([]);
+    expect(types(rowsFor(full, ["color_temp"], "layout")[0])).toEqual([
+      "light-color-temp",
+    ]);
+    // no tile item listed: no tile
+    expect(kinds(rowsFor(full, ["history"], "layout"))).toEqual(["link"]);
   });
 
-  it("no duplicates; the other rows come after the light rows", () => {
-    const rows = rowsFor(
-      full,
-      ["state", "effect", "toggle", "brightness"],
-      "model",
-    );
-    expect(kinds(rows)).toEqual([
-      "toggle",
-      "brightness",
-      "color",
-      "color_temp",
-      "effect",
-      "state",
+  it("only what the light supports", () => {
+    const one = (modes) =>
+      types(rowsFor({ supported_color_modes: modes }, ["toggle"], "model")[0]);
+    expect(one(["onoff"])).toEqual([]);
+    expect(one(["color_temp"])).toEqual([
+      "light-brightness",
+      "light-color-temp",
     ]);
   });
 
-  it("an on / off light gets no brightness; a bare light only what it supports", () => {
-    expect(
-      kinds(rowsFor({ supported_color_modes: ["onoff"] }, ["toggle"], "model")),
-    ).toEqual(["toggle"]);
-    expect(
-      kinds(
-        rowsFor({ supported_color_modes: ["brightness"] }, ["toggle"], "model"),
-      ),
-    ).toEqual(["toggle", "brightness"]);
-    expect(
-      kinds(
-        rowsFor({ supported_color_modes: ["color_temp"] }, ["toggle"], "model"),
-      ),
-    ).toEqual(["toggle", "brightness", "color_temp"]);
-  });
-
-  it("colour temperature: range from the attributes, defaults 2000 / 6500, value null when unknown", () => {
-    const row = rowsFor(
-      { supported_color_modes: ["color_temp"] },
-      ["toggle"],
-      "model",
-    ).find((r) => r.kind === "color_temp");
-    expect(row).toMatchObject({ value: null, min: 2000, max: 6500 });
-  });
-
-  it("effect row only with a non-empty effect_list", () => {
-    expect(
-      kinds(
-        rowsFor(
-          { supported_color_modes: ["hs"], effect_list: [] },
-          ["toggle"],
-          "model",
-        ),
-      ),
-    ).not.toContain("effect");
-    expect(
-      kinds(rowsFor({ supported_color_modes: ["hs"] }, ["toggle"], "model")),
-    ).not.toContain("effect");
-    expect(
-      kinds(
-        rowsFor(
-          { supported_color_modes: ["hs"], effect_list: ["A"] },
-          ["toggle"],
-          "model",
-        ),
-      ),
-    ).toContain("effect");
-  });
-
-  it("colour marker: from hs_color, else rgb_color; none in colour temperature mode or when off", () => {
-    const color = (attrs, state = "on") => {
-      const states = {
-        "light.a": st(state, {
-          supported_color_modes: ["hs", "color_temp"],
-          ...attrs,
-        }),
-      };
-      const obj = { id: "l1", type: "light" };
-      return popupRows(
-        obj,
-        chainState(obj, { entity: "light.a" }, {}, states),
-        states,
-      ).find((r) => r.kind === "color").hs;
-    };
-    expect(color({ color_mode: "hs", hs_color: [10, 90] })).toEqual([10, 90]);
-    expect(color({ color_mode: "rgb", rgb_color: [255, 0, 0] })).toEqual([
-      0, 100,
+  it("other domains from supported_features", () => {
+    const f = (e, state, attrs) =>
+      tileFeatures(e, st(state, attrs)).map((x) => x.type);
+    expect(f("cover.c", "open", { supported_features: 15 })).toEqual([
+      "cover-open-close",
+      "cover-position",
     ]);
-    expect(color({ color_mode: "color_temp", hs_color: [10, 90] })).toBe(null);
-    expect(color({ color_mode: "hs", hs_color: [10, 90] }, "off")).toBe(null);
+    expect(f("cover.c", "open", { supported_features: 3 })).toEqual([
+      "cover-open-close",
+    ]);
+    expect(f("fan.f", "on", { supported_features: 1 })).toEqual(["fan-speed"]);
+    expect(f("fan.f", "on", {})).toEqual([]);
+    expect(f("lock.l", "locked", {})).toEqual(["lock-commands"]);
+    expect(f("media_player.m", "playing", { supported_features: 4 })).toEqual([
+      "media-player-volume-slider",
+    ]);
+    expect(f("switch.s", "on", {})).toEqual([]);
+    expect(
+      tileFeatures("cover.c", st("open", {}), new Set(["toggle"])),
+    ).toEqual([]);
+    expect(tileFeatures("light.a", null)).toEqual([]);
   });
 
-  it("rowsKey changes with the row set and the option lists", () => {
+  it("rowsKey changes with the row set, the features and chain labels", () => {
     const a = rowsKey(rowsFor(full, ["toggle"], "model"));
     expect(rowsKey(rowsFor(full, ["toggle"], "layout"))).not.toBe(a);
     expect(
-      rowsKey(rowsFor({ ...full, effect_list: ["X"] }, ["toggle"], "model")),
-    ).not.toBe(a);
-    expect(
       rowsKey(
-        rowsFor({ ...full, max_color_temp_kelvin: 5000 }, ["toggle"], "model"),
+        rowsFor({ supported_color_modes: ["brightness"] }, ["toggle"], "model"),
       ),
     ).not.toBe(a);
-  });
-});
-
-describe("effectOrder / colour wheel maths", () => {
-  it("music-like effects first, the rest keep their order", () => {
-    expect(
-      effectOrder(["Rainbow", "Music Pulse", "Fire", "Sound", "Mic"]),
-    ).toEqual(["Music Pulse", "Sound", "Mic", "Rainbow", "Fire"]);
-    expect(effectOrder(null)).toEqual([]);
-    expect(effectOrder(["A", "", 3, "B"])).toEqual(["A", "B"]);
+    const chain = (label) => [
+      { kind: "chain", entity: "switch.g", label, value: true, features: [] },
+    ];
+    expect(rowsKey(chain("A"))).not.toBe(rowsKey(chain("B")));
   });
 
-  it("wheelHs and wheelPoint are inverse; the edge clamps saturation", () => {
-    expect(wheelHs(10, 0, 10)).toEqual([0, 100]);
-    expect(wheelHs(0, 5, 10)).toEqual([90, 50]);
-    expect(wheelHs(-30, 0, 10)).toEqual([180, 100]);
-    expect(wheelHs(0, 0, 10)[1]).toBe(0);
-    const [x, y] = wheelPoint(90, 50, 10);
-    expect(x).toBeCloseTo(0);
-    expect(y).toBeCloseTo(5);
-  });
-
-  it("rgbToHs", () => {
-    expect(rgbToHs([255, 0, 0])).toEqual([0, 100]);
-    expect(rgbToHs([0, 255, 0])).toEqual([120, 100]);
-    expect(rgbToHs([255, 255, 255])).toEqual([0, 0]);
+  it("tileConfig: features at the bottom; the object's own tile keeps HA's name", () => {
+    const row = rowsFor(full, ["toggle"], "model")[0];
+    expect(tileConfig(row)).toEqual({
+      type: "tile",
+      entity: "light.a",
+      features: [{ type: "light-brightness" }, { type: "light-color-temp" }],
+      features_position: "bottom",
+      vertical: false,
+    });
   });
 });

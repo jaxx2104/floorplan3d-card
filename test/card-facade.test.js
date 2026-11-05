@@ -159,14 +159,4 @@ describe("ActionRunner", () => {
       tap_action: { action: "more-info" },
     });
   });
-  it("a rejected direct service call is left to HA (no unhandled rejection)", async () => {
-    const h = host({
-      callService: () => Promise.reject(new Error("Service not found")),
-    });
-    new ActionRunner(h)._callService("light", "turn_on", {
-      entity_id: "light.x",
-    });
-    await Promise.resolve();
-    expect(h.dispatchEvent).not.toHaveBeenCalled();
-  });
 });
