@@ -23,6 +23,8 @@ import type { PlanPoint } from "./types/layout.ts";
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
+// Cloud shadow drift: at most one frame per CLOUD_FRAME_MS (20 frames per second).
+export const CLOUD_FRAME_MS = 50;
 // World size (m) of one tile of the shadow pattern, wind speed (m/s) and direction (unit x/z).
 export const CLOUD_TILE_M = 56;
 export const CLOUD_WIND_MS = 1.5;

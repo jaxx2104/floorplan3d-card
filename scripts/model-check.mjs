@@ -1333,16 +1333,12 @@ sections.add(
     ); // test mode holds the clouds still
     await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
     window.__newPrograms = []; r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
-    // n drift frames (rain / snow / cloud shadows), each one's own time (weather.frameAt, what the throttle compares):
-    // -> { frames, minGap (ms between two drift frames; the frame-rate cap is a minimum gap), ok } (timeout: ok false)
+    // n drift frames (rain / snow / cloud shadows), counted (the frame-rate caps are driftTick's, unit-tested in
+    // test/frame-interval.test.js) -> { frames, ok } (timeout: ok false)
     const drift = (n, timeout = 30000) =>
-      page.evaluate(`new Promise((done) => { const v = ${card}._view, w = v.weather, t0 = performance.now();
-      let last = v.stats.cloudFrames, prevAt = 0, minGap = Infinity, frames = 0;
-      const f = () => { const k = v.stats.cloudFrames;
-        if (k === last + 1) { frames++; if (prevAt && w.frameAt) minGap = Math.min(minGap, w.frameAt - prevAt); prevAt = w.frameAt; }
-        else if (k !== last) { frames += k - last; prevAt = 0; }
-        last = k;
-        if (frames >= ${n} || performance.now() - t0 > ${timeout}) done({ frames, minGap: minGap === Infinity ? null : minGap, ok: frames >= ${n} });
+      page.evaluate(`new Promise((done) => { const v = ${card}._view, t0 = performance.now(), k0 = v.stats.cloudFrames;
+      const f = () => { const frames = v.stats.cloudFrames - k0;
+        if (frames >= ${n} || performance.now() - t0 > ${timeout}) done({ frames, ok: frames >= ${n} });
         else requestAnimationFrame(f); };
       requestAnimationFrame(f); })`);
     await drift(2); // the drift has started (its first frames) before the programs are counted
@@ -1352,12 +1348,10 @@ sections.add(
     const p1 = await sky();
     const created = await page.evaluate("window.__newPrograms.length");
     check(
-      "cloud shadows drift (12 drift frames): no new shader programs, >= 47.6 ms between frames (<= 21 frames/s), they moved",
+      "cloud shadows drift (12 drift frames): no new shader programs, they moved",
       created === 0 &&
         dr.ok &&
         p1.frames > p0.frames &&
-        dr.minGap !== null &&
-        dr.minGap >= 1000 / 21 &&
         p0.offset.some((x, i) => Math.abs(x - p1.offset[i]) > 1e-4),
       `created ${created}, ${JSON.stringify(dr)}`,
     );
@@ -1459,11 +1453,11 @@ sections.add(
     window.__newPrograms = []; r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
     const rdr = await drift(8),
       rnew = await page.evaluate("window.__newPrograms.length");
-    // animates: drift frames keep coming (counted, not timed: the software-GL CI runner draws about 5 fps); the
-    // cap is the minimum gap between two drift frames (the throttle's own clock)
+    // animates: drift frames keep coming (counted, not timed: the software-GL CI runner draws about 5 fps; the
+    // frame-rate cap is unit-tested, test/frame-interval.test.js)
     check(
-      "rain animates (8 drift frames): >= 31.7 ms between frames (<= 31.5 frames/s), no new shader programs",
-      rdr.ok && rdr.minGap !== null && rdr.minGap >= 1000 / 31.5 && rnew === 0,
+      "rain animates (8 drift frames), no new shader programs",
+      rdr.ok && rnew === 0,
       `${JSON.stringify(rdr)}, ${rnew} new programs`,
     );
     await page.screenshot({

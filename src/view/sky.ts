@@ -36,10 +36,12 @@ import {
   cloudShadowOffset,
   roomMaskFrame,
   roomMaskTexture,
+  CLOUD_FRAME_MS,
 } from "../cloud-shadow.ts";
 import {
   testMode,
   frameInterval,
+  driftTick,
   isPerspective,
   type Drawable,
 } from "./core.ts";
@@ -82,8 +84,6 @@ type SkySprite = THREE.Sprite;
 type PrecipLayer = THREE.LineSegments | THREE.Points;
 /** Screen hull of a room: [x, y] px from the centre, y up. */
 type Hull = number[][];
-
-const CLOUD_FRAME_MS = 50; // cloud shadow drift: at most 20 frames per second
 
 // Sun sprite texture: warm disc (half the sprite) in a soft glow.
 let sunTexture: THREE.CanvasTexture | null = null;
@@ -669,22 +669,18 @@ export class SkyLayer {
       w.frameAt = 0;
       return;
     }
-    const now = performance.now();
-    if (!w.frameAt) {
-      w.frameAt = now;
-      return;
-    }
-    if (
-      now - w.frameAt <
+    // rain / snow need a smoother fall
+    const tick = driftTick(
+      w.frameAt,
+      performance.now(),
       frameInterval(
         w.falling ? PRECIP_FRAME_MS : CLOUD_FRAME_MS,
         this.view._maxFps,
-      )
-    )
-      return; // rain / snow need a smoother fall
-    const dt = Math.min(1, (now - w.frameAt) / 1000);
-    w.frameAt = now;
-    w.t += dt;
+      ),
+    );
+    w.frameAt = tick.frameAt;
+    if (tick.dt === null) return;
+    w.t += tick.dt;
     this.view.stats.cloudFrames++;
     this.view.dirty = true;
   }

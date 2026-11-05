@@ -141,3 +141,17 @@ export function frameInterval(base: number, maxFps: unknown): number {
   const f = Number(maxFps);
   return f > 0 ? Math.max(0, 1000 / f - 2) : base;
 }
+
+// One step of a throttled animation clock (the cloud drift, rain / snow): the first call arms the clock at
+// now (no frame), later calls give a frame once interval ms have passed since the last one. -> the clock's
+// new frameAt and the frame's dt (s, at most 1), dt null when no frame is due. Pure, so the frame-rate cap
+// is unit-tested (test/frame-interval.test.js) instead of timed in a browser.
+export function driftTick(
+  frameAt: number,
+  now: number,
+  interval: number,
+): { frameAt: number; dt: number | null } {
+  if (!frameAt) return { frameAt: now, dt: null };
+  if (now - frameAt < interval) return { frameAt, dt: null };
+  return { frameAt: now, dt: Math.min(1, (now - frameAt) / 1000) };
+}
