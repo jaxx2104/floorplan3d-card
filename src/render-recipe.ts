@@ -512,7 +512,7 @@ export interface QualityTier {
   /** Image-based light from the sky (view/env-light.ts). */
   envLight: boolean;
   /** Hemisphere light factor: 1 without envLight; 0 with it (the sky's environment light is the fill, and indoors the
-   * room probes: a hemisphere light on top lit every surface a second time, unoccluded, closed rooms included). */
+   * probe grids: a hemisphere light on top lit every surface a second time, unoccluded, closed rooms included). */
   hemiScale: number;
   /** Lamps in physical units: HA's colour (a 2700 K blackbody without one), candela from the model lamp or lumens (photometry.ts). */
   physicalLights: boolean;
@@ -523,7 +523,7 @@ export interface QualityTier {
   sunShadowRadius: number;
   /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
   contactShadows: boolean;
-  /** Per-room light probes: each room's captured light (sun through windows, lamps, sky) as its ambient fill (light-probes.ts). */
+  /** Light probe grids per storey: the captured light (sun through windows, lamps, sky) as the indoor ambient fill (light-probes.ts). */
   lightProbes: boolean;
   /** Lightmaps baked into the model (extras fp_lightmap on a second UV set) as the ambient light of their surfaces (lightmap.ts). */
   bakedLightmaps: boolean;

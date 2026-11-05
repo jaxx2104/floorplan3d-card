@@ -14,6 +14,7 @@ import { GLASS_FRESNEL } from "./physical-materials.ts";
 import {
   PROBE_HEAD,
   PROBE_BODY,
+  probeBegin,
   makeProbeUniforms,
   type ProbeUniforms,
 } from "./light-probes.ts";
@@ -130,7 +131,7 @@ export function makeCloudUniforms(): CloudUniforms {
     fpSway: { value: 0 },
     fpWindDir: { value: new THREE.Vector2(...CLOUD_WIND) },
     ...makeContactUniforms(), // contact shadows (quality high, contact-shadow.ts)
-    ...makeProbeUniforms(), // per-room light probes (quality high, light-probes.ts)
+    ...makeProbeUniforms(), // light probe grids (quality high, light-probes.ts)
   };
 }
 
@@ -292,7 +293,7 @@ export const shadable = (
 export const tierKey = (mat: THREE.Material): string =>
   `${mat.userData.fpContact ? "c" : ""}${mat.userData.fpGlass ? "g" : ""}${mat.userData.fpProbe ? "l" : ""}`;
 
-// Quality tier shader variants of a patched material: contact shadows, room light probes (lit
+// Quality tier shader variants of a patched material: contact shadows, light probe grids (lit
 // standard / physical materials only). -> true when they changed (the material then recompiles).
 export function setTierVariant(
   mat: THREE.Material,
@@ -339,7 +340,7 @@ export function patchCloudShadow(
         "#include <project_vertex>",
         `#include <project_vertex>${VERT_BODY}`,
       );
-    const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
+    let begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
     const city = mat.userData.fpCityLit,
       head =
@@ -360,8 +361,10 @@ export function patchCloudShadow(
         "#include <opaque_fragment>",
         `${GLASS_FRESNEL}#include <opaque_fragment>`,
       ); // thin glass (physical-materials.ts)
-    if (mat.userData.fpProbe) {
-      // room light probes / baked lightmaps (light-probes.ts)
+    const grid = mat.userData.fpProbe ? probeBegin(begin) : null;
+    if (grid) {
+      // light probe grids / baked lightmaps (light-probes.ts)
+      begin = grid;
       fs = fs
         .replace(
           "#include <lights_pars_begin>",

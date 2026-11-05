@@ -87,7 +87,7 @@ export class RenderLook {
   _env: EnvLight | null;
   _bloom: SelectiveBloom | null;
   _contact: ContactShadows | null;
-  /** per-room light probes and baked lightmaps (quality high) */
+  /** light probe grids and baked lightmaps (quality high) */
   indirect: IndirectLight;
   renderFrom: { keys: number } | null;
   background: DayNight;
@@ -532,7 +532,7 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
-  // The ao pass of a frame: the card option's, in the tiers without the room probes and contact shadows only.
+  // The ao pass of a frame: the card option's, in the tiers without the probe grids and contact shadows only.
   // Those already shade the corners, wall feet and the floor under furniture, and on top of them the pass (which
   // multiplies the finished frame, the lamps' and the sun's direct light included) darkened a quarter of the demo's
   // interior views to 0.65 of their light, the probes' corners a second time.

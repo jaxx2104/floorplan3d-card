@@ -236,21 +236,23 @@ option `render.materials` takes the same object and comes after the model's (REA
 of it applies when the model loads next (reload the dashboard). Invalid selectors or classes are
 skipped with a warning (`bun run check-model` lists them).
 
-### Indirect light: room probes and baked lightmaps (`render: { quality: high }`)
+### Indirect light: probe grids and baked lightmaps (`render: { quality: high }`)
 
 The sky environment of `quality: high` has no walls: on its own it fills every surface as if it stood
-outdoors. So with `quality: high` the card also captures, per indoor room the plan knows (the model's
-rooms with an outline and the drawn rooms; not zones), a small cube view from the room's middle at
-half its storey's height, lit as now: the sun through the windows, the lamps that are on, the sky
-through the openings. Its broad light (L2 spherical harmonics) becomes that room's ambient light in
-place of the sky's, a little less towards the room's corners and along the foot and top of its walls,
-so a sunny room is warm inside, a windowless one dim, and a lamp's light bounces off its walls. A
-wall's face belongs to the room it faces. The capture sees the whole house (every level, nothing cut
-away), so showing one floor does not open a room to the sky. It is redone, one room a frame, when the
-rooms or the model change, the sky environment is rebuilt (the sun moved more than 2°, clouds, day /
-night), or a lamp turns on / off or changes brightness or colour (at most every 2 s), never while
-nothing changes. Nothing to do in the model for this: give rooms an `outline` and keep a room's
-middle at half height free (not inside a wardrobe).
+outdoors. So with `quality: high` the card also bakes three's light probe grid (`LightProbeGridWebGL`)
+for each storey that has indoor rooms (the model's rooms with an outline and the drawn rooms; not
+zones): a box over the storey's rooms from floor to ceiling with a probe every 0.5 m, each a small
+cube view of the scene lit as now (the sun through the windows, the lamps that are on, the sky through
+the openings). A probe that would sit in or right beside a wall is moved into its room, at least
+0.2 m from the walls. The grid's broad light (L2 spherical harmonics, blended between neighbouring
+probes) is the ambient light in place of the sky's, so a sunny room is warm inside, a windowless one
+dim, a lamp's light bounces off its walls, and corners away from the light are darker. The blend
+reaches across a wall for about a quarter metre. The bake sees the whole house (every level, nothing
+cut away), so showing one floor does not open a room to the sky. It is redone, a few milliseconds a
+frame, when the rooms or the model change, the sky environment is rebuilt (the sun moved more than
+2°, clouds, day / night), or a lamp turns on / off or changes brightness or colour (that lamp's
+storey only, at most every 2 s), never while nothing changes. Nothing to do in the model for this:
+give rooms an `outline`.
 
 #### Baked lightmaps
 
@@ -269,9 +271,9 @@ mat.userData.fp_lightmap = {             // or the long form; every key optional
 ```
 
 With `quality: high` a `light` lightmap is the surface's ambient light instead of the sky's (and the
-room's probe); it follows the sky's brightness, so it is dark at night. The sun and the lamps stay
-live lights on top, so bake without them. A room most of whose meshes carry a lightmap gets no probe
-at all. `type: ao` uses a baked occlusion texture from `texture` as the material's ambient occlusion.
+probe grid); it follows the sky's brightness, so it is dark at night. The sun and the lamps stay
+live lights on top, so bake without them. A storey whose rooms are all baked (most of each room's meshes
+carry a lightmap) gets no grid at all. `type: ao` uses a baked occlusion texture from `texture` as the material's ambient occlusion.
 In `standard` the extras do nothing: an occlusion texture stays the glTF occlusion it is to any viewer.
 
 Blender (Cycles), per object or group of objects that shares one lightmap image:

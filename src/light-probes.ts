@@ -1,49 +1,41 @@
-// Per-room light probes (render quality 'high', QualityTier.lightProbes): the indirect light of each indoor room.
-// The sky environment (view/env-light.ts) has no occlusion: every surface gets the sky's fill as if it stood
-// outdoors, corners are as bright as the middle of a wall and nothing bounces between walls. So, per room, a small
-// cube capture from the room's middle at half its height renders the scene as it is lit now (the sun through the
-// windows, the lamps that are on, the sky seen through the openings) and three's LightProbeGenerator projects it to
-// L2 spherical harmonics. The patched model materials (cloud-shadow.ts, material userData.fpProbe) look the room up
-// and take that room's irradiance in place of the sky environment's diffuse fill, and dim the sky's reflections by
-// the same ratio.
+// Light probe grids (render quality 'high', QualityTier.lightProbes): the indirect light indoors. The sky
+// environment (view/env-light.ts) has no occlusion: every surface gets the sky's fill as if it stood outdoors,
+// corners are as bright as the middle of a wall and nothing bounces between walls. So each storey with indoor rooms
+// gets one of three's irradiance volumes (LightProbeGridWebGL: a box of L2 spherical-harmonics probes, baked on the
+// GPU from cube renders, sampled trilinearly by three's own lights_fragment_begin), over the box of its indoor rooms
+// from floor to ceiling, a probe every PROBE_SPACING_M. A probe sees the scene as it is lit now (the sun through the
+// windows, the lamps that are on, the sky seen through the openings). Three adds a grid's irradiance to the
+// material's light; the patched model materials (cloud-shadow.ts, material userData.fpProbe) take it in place of
+// the sky environment's diffuse fill instead and dim the sky's reflections by the same ratio (PROBE_BEGIN /
+// PROBE_BODY), and a surface with a baked lightmap (lightmap.ts) takes neither.
 //
-// Why per fragment and not three's LightProbe: a LightProbe in the scene is global (one set of coefficients for
-// every material), and a material per room would split the merged static meshes (merge.ts groups by material) and
-// fail for a floor or wall material shared by several rooms. So one texture holds both a room map (per storey, the
-// room under each 10 cm of plan) and the coefficients of every room; the shader finds the storey by height, the
-// room by texelFetch (no filtering: an id is exact) at the fragment's position pushed PROBE_PUSH_M along its normal
-// (a wall face belongs to the room it faces), then evaluates the SH with three's shGetIrradianceAt. One texture
-// unit, uniforms only after the one-time patch, a few texel fetches per pixel indoors.
+// A probe on the plan's lattice that falls in a wall or right beside one is moved into its room (probeSpot), so it
+// does not see through the wall; the grid still interpolates between the probes on both sides of a wall over one
+// spacing (the light of a bright room leaks that far into its dark neighbour, see the README).
 //
 // Rebuilt only when what they see changes: the rooms or the model, the sky environment (it is rebuilt when the sun
 // or moon moved > ENV_ANGLE_DEG, clouds, day / night, throttled), a lamp turned on / off or its brightness or colour,
 // the light levels (sun, moon, hemisphere, environment) by more than PROBE_LIGHT_STEP. A change starts a pass that
-// captures one room per frame (the read-back is asynchronous) and swaps all rooms in at its end; changes during a
-// pass make one more pass after it, at most every PROBE_THROTTLE_MS except for rooms and sky.
+// bakes probes for up to PROBE_BUDGET_MS a frame into a second set of grids and swaps them in at its end; changes during a pass
+// make one more pass after it, at most every PROBE_THROTTLE_MS except for rooms and sky.
 import * as THREE from "three";
-import { LightProbeGenerator } from "three/addons/lights/LightProbeGenerator.js";
+import { LightProbeGridWebGL } from "three/addons/lighting/LightProbeGridWebGL.js";
 import { insidePolygon } from "./lightmap.ts";
-import type { PlanPoint, Vec3 } from "./types/layout.ts";
+import type { PlanPoint } from "./types/layout.ts";
 
-/** Rooms with a probe at most, and storeys. */
-export const PROBE_MAX = 32;
+/** Storeys with a grid at most (a grid is a 3D texture unit in every lit shader). */
 export const PROBE_MAX_FLOORS = 4;
-/** Cube face size (px) of a capture: SH L2 keeps only the broad light, 32 px still sees a window. */
-export const PROBE_CUBE = 32;
-/** Room map texel (m) and its size bound (px per side). */
-export const PROBE_TEXEL_M = 0.1;
-export const PROBE_MAP_MAX = 256;
-/** Margin (m) around the rooms of the room map. */
-export const PROBE_MARGIN_M = 0.3;
-/** Lookup offset (m) along the surface normal (x / z): a wall face reads the room it faces. */
-export const PROBE_PUSH_M = 0.15;
-/** Room occlusion of the indirect light: rays (plan) per texel, their reach (m), the light left in a corner, and
- * the light left at a wall's foot / top (vertical faces, fading over PROBE_EDGE_M). */
-export const PROBE_RAYS = 12;
-export const PROBE_REACH_M = 1.2;
-export const PROBE_AO_MIN = 0.3;
-export const PROBE_EDGE_MIN = 0.55;
-export const PROBE_EDGE_M = 0.6;
+/** Probe spacing (m) across the plan, probes per axis at most, probe layers per storey. */
+export const PROBE_SPACING_M = 0.5;
+export const PROBE_MAX_AXIS = 32;
+export const PROBE_LAYERS = 1;
+/** A probe keeps this far (m) from its room's walls (the wall's thickness and a little air). */
+export const PROBE_INSET_M = 0.2;
+/** Cube face size (px) of a probe's capture: SH L2 keeps only the broad light, 16 px still sees a window. */
+export const PROBE_CUBE = 16;
+/** While a pass runs, a frame bakes PROBE_CHUNK probes at a time until PROBE_BUDGET_MS (at least one chunk). */
+export const PROBE_CHUNK = 8;
+export const PROBE_BUDGET_MS = 6;
 /** Gain of the captured light (the capture sees the direct light of the walls once: one bounce). */
 export const PROBE_GAIN = 0.5;
 /** Light level change (relative) that asks for a rebuild. */
@@ -51,104 +43,27 @@ export const PROBE_LIGHT_STEP = 0.1;
 /** Minimum time (ms) between passes for lamp / light level changes. */
 export const PROBE_THROTTLE_MS = 2000;
 
-/** An indoor room with a probe: its key, plan polygon, storey, world floor / top height and capture point. */
+/** An indoor room with probes: its key, plan polygon, storey and world floor / top height. */
 export interface ProbeRoom {
   key: string;
   polygon: PlanPoint[];
   storey: number;
   y0: number;
   y1: number;
-  point: Vec3;
 }
-/** The storey heights of the room map lookup (world y). */
+/** The storey heights (world y). */
 export interface ProbeStorey {
   y0: number;
   y1: number;
 }
-/** Room map frame: world x / z bounds. */
-export interface ProbeFrame {
-  minX: number;
-  minZ: number;
-  sizeX: number;
-  sizeZ: number;
-}
-
-const area2 = (poly: readonly (readonly number[])[]): number => {
-  let a = 0;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++)
-    a += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
-  return a;
-};
-const edgeDist = (
-  x: number,
-  y: number,
-  poly: readonly (readonly number[])[],
-): number => {
-  let d = Infinity;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [ax, ay] = poly[j],
-      [bx, by] = poly[i],
-      dx = bx - ax,
-      dy = by - ay,
-      l = dx * dx + dy * dy;
-    const t = l
-      ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l))
-      : 0;
-    d = Math.min(d, Math.hypot(x - ax - t * dx, y - ay - t * dy));
-  }
-  return d;
-};
-
-// Capture point (plan) of a room: the polygon's centroid when it lies inside and away from the walls (>= 0.4 m or
-// a third of the best), else the point of a 16 x 16 grid furthest from the walls (an L-shaped room's elbow).
-export function probePoint(polygon: readonly (readonly number[])[]): PlanPoint {
-  const a = area2(polygon);
-  let cx = 0,
-    cy = 0;
-  if (Math.abs(a) > 1e-9) {
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const [x0, y0] = polygon[j],
-        [x1, y1] = polygon[i],
-        k = x0 * y1 - x1 * y0;
-      cx += (x0 + x1) * k;
-      cy += (y0 + y1) * k;
-    }
-    cx /= 3 * a;
-    cy /= 3 * a;
-  } else {
-    cx = polygon.reduce((s, p) => s + p[0], 0) / polygon.length;
-    cy = polygon.reduce((s, p) => s + p[1], 0) / polygon.length;
-  }
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  for (const [x, y] of polygon) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-  }
-  let best: PlanPoint = [cx, cy],
-    bestD = -1;
-  const N = 16;
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N; j++) {
-      const x = minX + ((i + 0.5) / N) * (maxX - minX),
-        y = minY + ((j + 0.5) / N) * (maxY - minY);
-      if (!insidePolygon(x, y, polygon)) continue;
-      const d = edgeDist(x, y, polygon);
-      if (d > bestD) {
-        bestD = d;
-        best = [x, y];
-      }
-    }
-  }
-  if (insidePolygon(cx, cy, polygon)) {
-    const d = edgeDist(cx, cy, polygon);
-    if (d >= Math.min(0.4, bestD / 3) || bestD < 0) return [cx, cy];
-  }
-  return best;
+/** A storey's grid: world centre and size, probes per axis (x, y, z), and the plan point each probe captures at
+ * (x / y per column ix + nx * iz). */
+export interface ProbeGridSpec {
+  storey: number;
+  center: [number, number, number];
+  size: [number, number, number];
+  res: [number, number, number];
+  spots: PlanPoint[];
 }
 
 type RoomIn = {
@@ -157,8 +72,8 @@ type RoomIn = {
 };
 type FloorIn = { id: string; elevation: number; height?: number };
 
-// The rooms that get a probe: indoor rooms (not outdoor zones) with a polygon on a known floor, on the lowest
-// PROBE_MAX_FLOORS storeys that have such rooms, at most PROBE_MAX; each captured at half its storey's height.
+// The rooms that get probes: indoor rooms (not outdoor zones) with a polygon on a known floor, on the lowest
+// PROBE_MAX_FLOORS storeys that have such rooms.
 export function probeRooms(
   rooms: readonly RoomIn[] | null | undefined,
   floors: readonly FloorIn[] | null | undefined,
@@ -184,175 +99,147 @@ export function probeRooms(
   const out: ProbeRoom[] = [];
   for (const r of usable) {
     const s = ids.indexOf(r.floorId);
-    if (s < 0 || out.length >= PROBE_MAX) continue;
-    const { y0, y1 } = storeys[s],
-      polygon = r.room.polygon!.map((p): PlanPoint => [p[0], p[1]]),
-      [px, py] = probePoint(polygon);
+    if (s < 0) continue;
+    const { y0, y1 } = storeys[s];
     out.push({
       key: r.room.id,
-      polygon,
+      polygon: r.room.polygon!.map((p): PlanPoint => [p[0], p[1]]),
       storey: s,
       y0,
       y1,
-      point: [px, (y0 + y1) / 2, -py],
     });
   }
   return { rooms: out, storeys };
 }
 
-// Room map frame (world x / z) around the rooms' polygons, or null without rooms.
-export function probeFrame(rooms: readonly ProbeRoom[]): ProbeFrame | null {
-  let minX = Infinity,
-    minZ = Infinity,
-    maxX = -Infinity,
-    maxZ = -Infinity;
-  for (const r of rooms)
-    for (const [x, y] of r.polygon) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minZ = Math.min(minZ, -y);
-      maxZ = Math.max(maxZ, -y);
+// Nearest point of segment a-b to p, and its distance.
+const nearestOnEdge = (
+  x: number,
+  y: number,
+  [ax, ay]: readonly number[],
+  [bx, by]: readonly number[],
+): [number, number, number] => {
+  const dx = bx - ax,
+    dy = by - ay,
+    l = dx * dx + dy * dy;
+  const t = l
+    ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l))
+    : 0;
+  const qx = ax + t * dx,
+    qy = ay + t * dy;
+  return [qx, qy, Math.hypot(x - qx, y - qy)];
+};
+
+// Where the probe at plan point (x, y) captures: in the room it lies in (or, in a wall's thickness, the nearest
+// room within inset), at least inset from that room's edges (pushed off the nearest edge, twice for a corner);
+// a point away from every room (outdoors, in an L-shaped plan's notch) stays where it is.
+export function probeSpot(
+  x: number,
+  y: number,
+  polygons: readonly (readonly (readonly number[])[])[],
+  inset = PROBE_INSET_M,
+): PlanPoint {
+  let poly = polygons.find((p) => insidePolygon(x, y, p));
+  if (!poly) {
+    let best = inset;
+    for (const p of polygons)
+      for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+        const d = nearestOnEdge(x, y, p[j], p[i])[2];
+        if (d < best) {
+          best = d;
+          poly = p;
+        }
+      }
+    if (!poly) return [x, y];
+  }
+  let px = x,
+    py = y;
+  for (let k = 0; k < 3; k++) {
+    let q: [number, number, number] | null = null;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const e = nearestOnEdge(px, py, poly[j], poly[i]);
+      if (!q || e[2] < q[2]) q = e;
     }
-  if (!Number.isFinite(minX)) return null;
-  const m = PROBE_MARGIN_M;
-  return {
-    minX: minX - m,
-    minZ: minZ - m,
-    sizeX: maxX - minX + 2 * m,
-    sizeZ: maxZ - minZ + 2 * m,
-  };
+    const inside = insidePolygon(px, py, poly);
+    if (!q || (inside && q[2] >= inset - 1e-6)) break;
+    // away from the edge, into the room: along the edge's normal through the point (the other way when outside)
+    let nx = px - q[0],
+      ny = py - q[1];
+    const l = Math.hypot(nx, ny);
+    if (l < 1e-9) break;
+    nx /= l;
+    ny /= l;
+    if (!inside) {
+      nx = -nx;
+      ny = -ny;
+    }
+    px = q[0] + nx * inset;
+    py = q[1] + ny * inset;
+  }
+  return [px, py];
 }
 
-// Tile size (px) of the room map for a frame: PROBE_TEXEL_M texels, at most PROBE_MAP_MAX a side.
-export function probeTile(frame: ProbeFrame): { w: number; h: number } {
-  const k =
-    Math.max(frame.sizeX, frame.sizeZ) / PROBE_TEXEL_M > PROBE_MAP_MAX
-      ? PROBE_MAP_MAX / Math.max(frame.sizeX, frame.sizeZ)
-      : 1 / PROBE_TEXEL_M;
-  return {
-    w: Math.max(1, Math.ceil(frame.sizeX * k)),
-    h: Math.max(1, Math.ceil(frame.sizeZ * k)),
-  };
-}
-
-// Room ids (index + 1, 0: no probe) per texel of the room map: storeys side by side (tile w x h each), row j at
-// world z = minZ + (j + 0.5) / h x sizeZ. skip: rooms without a probe (baked). -> w x storeys by h values.
-export function roomIdGrid(
+// The grid of each storey: over the plan box of its indoor rooms (no margin: an outer wall's outside face, read
+// half a spacing out along its normal, falls outside the box and keeps the sky), floor to ceiling, a probe every
+// PROBE_SPACING_M (at most PROBE_MAX_AXIS a side), PROBE_LAYERS high. skip: storeys without a grid.
+export function probeGrids(
   rooms: readonly ProbeRoom[],
-  storeys: number,
-  frame: ProbeFrame,
-  tile: { w: number; h: number },
+  storeys: readonly ProbeStorey[],
   skip: ReadonlySet<number> = new Set(),
-): Uint16Array {
-  const W = tile.w * storeys,
-    out = new Uint16Array(W * tile.h);
-  rooms.forEach((r, k) => {
+): ProbeGridSpec[] {
+  const out: ProbeGridSpec[] = [];
+  storeys.forEach((s, k) => {
     if (skip.has(k)) return;
+    const polys = rooms.filter((r) => r.storey === k).map((r) => r.polygon);
     let minX = Infinity,
       minY = Infinity,
       maxX = -Infinity,
       maxY = -Infinity;
-    for (const [x, y] of r.polygon) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-    const i0 = Math.max(
-        0,
-        Math.floor(((minX - frame.minX) / frame.sizeX) * tile.w),
-      ),
-      i1 = Math.min(
-        tile.w - 1,
-        Math.ceil(((maxX - frame.minX) / frame.sizeX) * tile.w),
-      );
-    const j0 = Math.max(
-        0,
-        Math.floor(((-maxY - frame.minZ) / frame.sizeZ) * tile.h),
-      ),
-      j1 = Math.min(
-        tile.h - 1,
-        Math.ceil(((-minY - frame.minZ) / frame.sizeZ) * tile.h),
-      );
-    for (let j = j0; j <= j1; j++) {
-      const y = -(frame.minZ + ((j + 0.5) / tile.h) * frame.sizeZ);
-      for (let i = i0; i <= i1; i++) {
-        const x = frame.minX + ((i + 0.5) / tile.w) * frame.sizeX;
-        if (insidePolygon(x, y, r.polygon))
-          out[j * W + r.storey * tile.w + i] = k + 1;
+    for (const p of polys)
+      for (const [x, y] of p) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
       }
-    }
+    if (!Number.isFinite(minX) || maxX - minX < 1e-3 || maxY - minY < 1e-3)
+      return;
+    const w = maxX - minX,
+      d = maxY - minY,
+      y0 = s.y0 - 0.02,
+      h = s.y1 + 0.02 - y0;
+    const n = (len: number) =>
+      Math.max(1, Math.min(PROBE_MAX_AXIS, Math.round(len / PROBE_SPACING_M)));
+    const nx = n(w),
+      nz = n(d);
+    const spots: PlanPoint[] = [];
+    // world z = -plan y, so grid row iz runs from the plan's north (max y) southwards
+    for (let iz = 0; iz < nz; iz++)
+      for (let ix = 0; ix < nx; ix++)
+        spots.push(
+          probeSpot(
+            minX + ((ix + 0.5) / nx) * w,
+            maxY - ((iz + 0.5) / nz) * d,
+            polys,
+          ),
+        );
+    out.push({
+      storey: k,
+      center: [(minX + maxX) / 2, y0 + h / 2, -(minY + maxY) / 2],
+      size: [w, h, d],
+      res: [nx, PROBE_LAYERS, nz],
+      spots,
+    });
   });
   return out;
 }
 
-// Openness of the plan around each texel of the room map (the walls of its storey: every room edge): the mean
-// share of PROBE_RAYS rays that run PROBE_REACH_M without meeting a wall. 1 in the open middle of a room, about 0.5
-// beside a straight wall, about 0.25 in a corner; 0 outside the rooms (unused there). Same layout as roomIdGrid.
-export function roomOpenness(
-  rooms: readonly ProbeRoom[],
-  storeys: number,
-  frame: ProbeFrame,
-  tile: { w: number; h: number },
-  ids: Uint16Array,
-): Float32Array {
-  const W = tile.w * storeys,
-    out = new Float32Array(W * tile.h),
-    R = PROBE_REACH_M;
-  const dirs = Array.from({ length: PROBE_RAYS }, (_, k) => [
-    Math.cos(((k + 0.5) / PROBE_RAYS) * 2 * Math.PI),
-    Math.sin(((k + 0.5) / PROBE_RAYS) * 2 * Math.PI),
-  ]);
-  for (let s = 0; s < storeys; s++) {
-    const edges: number[][] = [];
-    for (const r of rooms) {
-      if (r.storey !== s) continue;
-      r.polygon.forEach((a, i) => {
-        const b = r.polygon[(i + 1) % r.polygon.length];
-        edges.push([a[0], a[1], b[0], b[1]]);
-      });
-    }
-    for (let j = 0; j < tile.h; j++) {
-      const y = -(frame.minZ + ((j + 0.5) / tile.h) * frame.sizeZ);
-      for (let i = 0; i < tile.w; i++) {
-        const at = j * W + s * tile.w + i;
-        if (!ids[at]) continue;
-        const x = frame.minX + ((i + 0.5) / tile.w) * frame.sizeX;
-        const near = edges.filter(
-          (e) =>
-            Math.min(e[0], e[2]) - R <= x &&
-            x <= Math.max(e[0], e[2]) + R &&
-            Math.min(e[1], e[3]) - R <= y &&
-            y <= Math.max(e[1], e[3]) + R,
-        );
-        let sum = 0;
-        for (const [dx, dy] of dirs) {
-          let t = R;
-          for (const [ax, ay, bx, by] of near) {
-            const ex = bx - ax,
-              ey = by - ay,
-              den = dx * ey - dy * ex;
-            if (Math.abs(den) < 1e-9) continue;
-            const qx = ax - x,
-              qy = ay - y,
-              u = (qx * ey - qy * ex) / den,
-              v = (qx * dy - qy * dx) / den;
-            if (u >= 0 && u < t && v >= 0 && v <= 1) t = u;
-          }
-          sum += t / R;
-        }
-        out[at] = sum / PROBE_RAYS;
-      }
-    }
-  }
-  return out;
-}
-
-/** What the probes saw: the rooms (and model), sky builds, lamps, light levels. */
+/** What the probes saw: the rooms (and model), sky builds, lamps (per grid, then the ones in no grid's storey),
+ * light levels. */
 export interface ProbeInputs {
   rooms: string;
   sky: number;
-  lamps: string;
+  lamps: string[];
   light: string;
 }
 export type ProbeReason = "rooms" | "sky" | "lamps" | "light";
@@ -361,15 +248,14 @@ export type ProbeReason = "rooms" | "sky" | "lamps" | "light";
 export const lightStep = (v: number): number =>
   v > 1e-4 ? Math.round(Math.log(v) / Math.log(1 + PROBE_LIGHT_STEP)) : -9999;
 
+type Lamp = {
+  intensity: number;
+  color: { getHex(): number };
+  position: { x: number; y: number; z: number };
+  visible?: boolean;
+};
 // Lamp signature: the lights that are on (intensity step, colour, position to 10 cm), in order.
-export function lampKey(
-  lights: readonly {
-    intensity: number;
-    color: { getHex(): number };
-    position: { x: number; y: number; z: number };
-    visible?: boolean;
-  }[],
-): string {
+export function lampKey(lights: readonly Lamp[]): string {
   return lights
     .filter((l) => l.visible !== false && l.intensity > 1e-4)
     .map(
@@ -377,6 +263,18 @@ export function lampKey(
         `${lightStep(l.intensity)}:${l.color.getHex().toString(16)}:${Math.round(l.position.x * 10)},${Math.round(l.position.y * 10)},${Math.round(l.position.z * 10)}`,
     )
     .join(";");
+}
+// Lamp signatures per storey height range [y0, y1] (world y), then of the lamps in none of them.
+export function lampKeys(
+  lights: readonly Lamp[],
+  ranges: readonly (readonly [number, number])[],
+): string[] {
+  const at = (l: Lamp) =>
+    ranges.findIndex(([y0, y1]) => l.position.y >= y0 && l.position.y <= y1);
+  return [
+    ...ranges.map((_, i) => lampKey(lights.filter((l) => at(l) === i))),
+    lampKey(lights.filter((l) => at(l) < 0)),
+  ];
 }
 
 // Why a rebuild is due (null: the probes still hold). Rooms and the sky come first (they rebuild at once).
@@ -386,9 +284,29 @@ export function probeDue(
 ): ProbeReason | null {
   if (!built || built.rooms !== next.rooms) return "rooms";
   if (built.sky !== next.sky) return "sky";
-  if (built.lamps !== next.lamps) return "lamps";
+  if (built.lamps.join("|") !== next.lamps.join("|")) return "lamps";
   if (built.light !== next.light) return "light";
   return null;
+}
+// The grids a pass rebakes: every grid, but only those whose storey's lamps changed when nothing else did (a
+// lamp in no storey, e.g. on the facade, counts for all).
+export function probeTargets(
+  built: ProbeInputs | null,
+  next: ProbeInputs,
+  grids: number,
+): number[] {
+  const all = Array.from({ length: grids }, (_, i) => i);
+  if (
+    !built ||
+    built.rooms !== next.rooms ||
+    built.sky !== next.sky ||
+    built.light !== next.light ||
+    built.lamps.length !== grids + 1 ||
+    next.lamps.length !== grids + 1 ||
+    built.lamps[grids] !== next.lamps[grids]
+  )
+    return all;
+  return all.filter((i) => built.lamps[i] !== next.lamps[i]);
 }
 // Rooms and sky now (the environment has its own throttle), lamps and light levels at most every PROBE_THROTTLE_MS.
 export const probeWait = (
@@ -400,118 +318,120 @@ export const probeWait = (
     ? 0
     : Math.max(0, lastAt + PROBE_THROTTLE_MS - now);
 
-/** Uniforms the patched materials read (shared, see makeCloudUniforms). */
+/** Uniforms the patched materials read (shared, see makeCloudUniforms): 1 once the grids hold a bake. */
 export interface ProbeUniforms {
-  fpProbeMap: THREE.IUniform<THREE.Texture | null>;
-  fpProbeFrame: THREE.IUniform<THREE.Vector4>;
-  fpProbeY: THREE.IUniform<THREE.Vector4>;
-  fpProbeTop: THREE.IUniform<THREE.Vector4>;
-  fpProbe: THREE.IUniform<THREE.Vector4>;
+  fpProbeOn: THREE.IUniform<number>;
 }
 export function makeProbeUniforms(): ProbeUniforms {
-  return {
-    fpProbeMap: { value: null },
-    fpProbeFrame: { value: new THREE.Vector4(0, 0, 1, 1) },
-    fpProbeY: { value: new THREE.Vector4() },
-    fpProbeTop: { value: new THREE.Vector4() },
-    fpProbe: { value: new THREE.Vector4(0, 1, 0, 1) }, // storeys, tile w, weight (0: off), tile h
-  };
+  return { fpProbeOn: { value: 0 } };
+}
+
+// three's grid sampling in lights_fragment_begin, as the patched materials compile it: the grid's irradiance kept
+// apart (fpGridE, used by PROBE_BODY) instead of added to the light, and skipped under a baked lightmap. -> null
+// when three changed the chunk (no grids then rather than a broken shader).
+const GRID_IF = "#if NUM_LIGHT_PROBE_GRIDS > 0";
+const GRID_ADD = "irradiance += getLightProbeGridIrradiance(";
+export function probeBegin(chunk: string): string | null {
+  if (chunk.split(GRID_IF).length !== 2 || chunk.split(GRID_ADD).length !== 2)
+    return null;
+  return chunk
+    .replace(
+      GRID_IF,
+      `vec3 fpGridE = vec3( 0.0 );\n#if NUM_LIGHT_PROBE_GRIDS > 0 && ! defined( USE_LIGHTMAP )`,
+    )
+    .replace(GRID_ADD, "fpGridE = getLightProbeGridIrradiance(");
 }
 
 const LUMA = "vec3( 0.2126, 0.7152, 0.0722 )";
-// after #include <lights_pars_begin> (needs vFpCloudW and three's shGetIrradianceAt)
+// after #include <lights_pars_begin>
 export const PROBE_HEAD = /* glsl */ `
-uniform sampler2D fpProbeMap;
-uniform vec4 fpProbeFrame;
-uniform vec4 fpProbeY;
-uniform vec4 fpProbeTop;
-uniform vec4 fpProbe;
-int fpProbeRoom( vec3 nW, out float open, out float edge ) {
-  if ( fpProbe.z <= 0.0 ) return -1;
-  vec3 p = vFpCloudW + nW * vec3( ${PROBE_PUSH_M.toFixed(2)}, 0.05, ${PROBE_PUSH_M.toFixed(2)} );
-  int s = -1;
-  for ( int i = 0; i < ${PROBE_MAX_FLOORS}; i ++ ) {
-    if ( float( i ) >= fpProbe.x ) break;
-    if ( p.y >= fpProbeY[ i ] && p.y <= fpProbeTop[ i ] ) s = i;
-  }
-  if ( s < 0 ) return -1;
-  vec2 m = ( p.xz - fpProbeFrame.xy ) / fpProbeFrame.zw;
-  if ( m.x < 0.0 || m.y < 0.0 || m.x >= 1.0 || m.y >= 1.0 ) return -1;
-  ivec2 t = ivec2( s * int( fpProbe.y ) + int( m.x * fpProbe.y ), int( m.y * fpProbe.w ) );
-  vec4 c = texelFetch( fpProbeMap, t, 0 );
-  open = c.g;
-  // vertical faces darken towards the floor and the ceiling of their storey
-  float d = min( p.y - fpProbeY[ s ] - 0.02, fpProbeTop[ s ] - 0.3 - p.y );
-  edge = mix( 1.0, mix( ${PROBE_EDGE_MIN.toFixed(2)}, 1.0, smoothstep( 0.0, ${PROBE_EDGE_M.toFixed(2)}, d ) ), 1.0 - abs( nW.y ) );
-  return int( c.r + 0.5 ) - 1;
-}
-vec3 fpProbeIrradiance( int room, vec3 nW ) {
-  vec3 c[ 9 ];
-  int row = int( fpProbe.w ) + room;
-  for ( int j = 0; j < 9; j ++ ) c[ j ] = texelFetch( fpProbeMap, ivec2( j, row ), 0 ).rgb;
-  return max( shGetIrradianceAt( nW, c ), vec3( 0.0 ) );
-}
+uniform float fpProbeOn;
 `;
-// after #include <lights_fragment_maps>: the room's irradiance in place of the sky environment's diffuse fill, its
-// reflections dimmed as much; a baked lightmap (lightmap.ts) is the surface's ambient light instead of both
+// after #include <lights_fragment_maps>: inside a grid its irradiance in place of the sky environment's diffuse
+// fill, the sky's reflections dimmed as much; a baked lightmap (lightmap.ts) is the surface's ambient light
+// instead of both
 export const PROBE_BODY = /* glsl */ `
 #if defined( RE_IndirectDiffuse ) && defined( STANDARD )
-{
   #ifdef USE_LIGHTMAP
   iblIrradiance = vec3( 0.0 );
-  #else
-  vec3 fpNW = transformDirectionByInverseViewMatrix( geometryNormal, viewMatrix );
-  float fpOpen, fpEdge;
-  int fpPR = fpProbeRoom( fpNW, fpOpen, fpEdge );
-  if ( fpPR >= 0 ) {
-    // the room's light, less in its corners and along its edges (the plan's openness, see roomOpenness)
-    float fpAo = mix( ${PROBE_AO_MIN.toFixed(2)}, 1.0, smoothstep( 0.2, 0.8, fpOpen ) ) * fpEdge;
-    vec3 fpE = ${PROBE_GAIN.toFixed(2)} * fpAo * fpProbeIrradiance( fpPR, fpNW );
+  #elif NUM_LIGHT_PROBE_GRIDS > 0
+  if ( probeGrid >= 0 && fpProbeOn > 0.0 ) {
+    vec3 fpE = ${PROBE_GAIN.toFixed(2)} * fpGridE;
     float fpK = dot( fpE, ${LUMA} ) / max( dot( iblIrradiance, ${LUMA} ), 1e-4 );
-    iblIrradiance = mix( iblIrradiance, fpE, fpProbe.z );
+    irradiance += fpE;
+    iblIrradiance = vec3( 0.0 );
     #if defined( USE_ENVMAP ) && defined( RE_IndirectSpecular )
-    radiance *= mix( 1.0, clamp( fpK, 0.0, 1.0 ), fpProbe.z );
+    radiance *= clamp( fpK, 0.0, 1.0 );
     #endif
   }
   #endif
-}
 #endif
 `;
 
-/** The probe set's rooms: rooms, storeys, frame, rooms without a probe (baked). */
+/** The probe set's rooms: rooms, storeys, storeys without a grid (all their rooms baked). */
 export interface ProbeSetup {
   rooms: ProbeRoom[];
   storeys: ProbeStorey[];
   skip: ReadonlySet<number>;
 }
 
-// The probes of the rooms: the shared texture (room map + coefficients), the passes and their capture target.
-// capture(cubeCamera) renders the scene into the cube (the view hides its overlays and shows the whole house).
+// One storey's grid: three's grid whose probes capture at their spots (moved off the walls) rather than on the
+// lattice; the lattice is still where the shader places their values.
+export class StoreyGrid extends LightProbeGridWebGL {
+  spec: ProbeGridSpec;
+  constructor(spec: ProbeGridSpec) {
+    super(...spec.size, ...spec.res);
+    this.spec = spec;
+    this.name = `fp-probes-${spec.storey}`;
+    this.position.set(...spec.center);
+    this.updateBoundingBox();
+  }
+  getProbePosition(
+    ix: number,
+    iy: number,
+    iz: number,
+    target: THREE.Vector3,
+  ): THREE.Vector3 {
+    super.getProbePosition(ix, iy, iz, target);
+    const s = this.spec.spots[ix + this.spec.res[0] * iz];
+    if (s) target.set(s[0], target.y, -s[1]);
+    return target;
+  }
+}
+
+let black: THREE.Data3DTexture | null = null;
+// A black 1 x 1 x 1 volume: a grid without a bake yet, and the live grids while a pass captures (one bounce, no
+// feedback). The grid count, which is in every lit program, stays the same.
+function blackVolume(): THREE.Data3DTexture {
+  if (black) return black;
+  black = new THREE.Data3DTexture(new Uint16Array(4), 1, 1, 1);
+  black.type = THREE.HalfFloatType;
+  black.needsUpdate = true;
+  return black;
+}
+
+// The grids of the storeys and their passes. capture(bake) runs bake() with the scene set up for a capture (the
+// view hides its overlays and shows the whole house); bake renders the scene into the probes.
 export class LightProbes {
   renderer: THREE.WebGLRenderer;
   uniforms: ProbeUniforms;
+  /** the live grids (in the scene); a pass bakes the spare set and swaps */
+  group: THREE.Group;
   stats: { captures: number; passes: number };
   setup: ProbeSetup | null;
   /** inputs of the pass in progress or the last one (null: none yet) */
   inputs: ProbeInputs | null;
   /** inputs waiting for a pass and when it may start */
   pending: ProbeInputs | null;
+  live: StoreyGrid[];
+  spare: StoreyGrid[];
   _dueAt: number;
   _at: number;
-  _queue: number[] | null;
-  _staging: Float32Array | null;
-  _busy: boolean;
-  _gen: number;
+  /** the pass in progress: the next grid and probe to bake */
+  _queue: { grids: number[]; grid: number; probe: number } | null;
   _timer: ReturnType<typeof setTimeout> | null;
   _onDue: () => void;
-  _tex: THREE.DataTexture | null;
-  _tile: { w: number; h: number };
-  _cube: THREE.WebGLCubeRenderTarget | null;
-  _cam: THREE.CubeCamera | null;
-  _type: THREE.TextureDataType;
   _disposed: boolean;
-  /** the read-back failed once: no more passes (the sky's fill stays) */
-  _failed: boolean;
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -520,81 +440,48 @@ export class LightProbes {
   ) {
     this.renderer = renderer;
     this.uniforms = uniforms;
+    this.group = new THREE.Group();
+    this.group.name = "fp-light-probes";
     this.stats = { captures: 0, passes: 0 };
     this.setup = null;
     this.inputs = null;
     this.pending = null;
+    this.live = [];
+    this.spare = [];
     this._dueAt = 0;
     this._at = -Infinity;
     this._queue = null;
-    this._staging = null;
-    this._busy = false;
-    this._gen = 0;
     this._timer = null;
     this._onDue = onDue;
-    this._tex = null;
-    this._tile = { w: 1, h: 1 };
-    this._cube = null;
-    this._cam = null;
-    // HDR capture when the half-float target can be read back, else 8 bit (light above 1 clips)
-    this._type = renderer.capabilities.textureTypeReadable(THREE.HalfFloatType)
-      ? THREE.HalfFloatType
-      : THREE.UnsignedByteType;
     this._disposed = false;
-    this._failed = false;
   }
 
-  // New rooms: the room map is redrawn, every probe is dropped (the materials use the sky until the next pass).
+  /** Probes a pass of every grid bakes. */
+  get size(): number {
+    return this.spare.reduce(
+      (n, g) => n + g.resolution.x * g.resolution.y * g.resolution.z,
+      0,
+    );
+  }
+
+  /** The world height range of each grid (for lampKeys). */
+  ranges(): [number, number][] {
+    return this.live.map((g) => [g.boundingBox.min.y, g.boundingBox.max.y]);
+  }
+
+  // New rooms: new grids (black until the next pass; the materials use the sky meanwhile).
   setRooms(setup: ProbeSetup): void {
     this._abort();
+    this._free();
     this.setup = setup;
-    const U = this.uniforms;
-    U.fpProbe.value.z = 0;
-    if (this._tex) {
-      this._tex.dispose();
-      this._tex = null;
+    this.uniforms.fpProbeOn.value = 0;
+    const specs = probeGrids(setup.rooms, setup.storeys, setup.skip);
+    this.live = specs.map((s) => new StoreyGrid(s));
+    this.spare = specs.map((s) => new StoreyGrid(s));
+    for (const g of this.live) {
+      g.texture = blackVolume();
+      this.group.add(g);
     }
-    U.fpProbeMap.value = null;
-    const frame = probeFrame(setup.rooms);
-    if (!frame || !setup.storeys.length) {
-      U.fpProbe.value.x = 0;
-      return;
-    }
-    const tile = probeTile(frame),
-      n = setup.storeys.length,
-      W = Math.max(9, tile.w * n),
-      H = tile.h + setup.rooms.length;
-    const ids = roomIdGrid(setup.rooms, n, frame, tile, setup.skip),
-      open = roomOpenness(setup.rooms, n, frame, tile, ids),
-      data = new Uint16Array(W * H * 4);
-    for (let j = 0; j < tile.h; j++) {
-      for (let i = 0; i < tile.w * n; i++) {
-        const o = (j * W + i) * 4,
-          k = j * tile.w * n + i;
-        data[o] = THREE.DataUtils.toHalfFloat(ids[k]);
-        data[o + 1] = THREE.DataUtils.toHalfFloat(open[k]);
-      }
-    }
-    this._tex = new THREE.DataTexture(
-      data,
-      W,
-      H,
-      THREE.RGBAFormat,
-      THREE.HalfFloatType,
-    );
-    this._tex.minFilter = this._tex.magFilter = THREE.NearestFilter;
-    this._tex.generateMipmaps = false;
-    this._tex.flipY = false;
-    this._tex.colorSpace = THREE.NoColorSpace;
-    this._tex.needsUpdate = true;
-    this._tile = tile;
-    U.fpProbeMap.value = this._tex;
-    U.fpProbeFrame.value.set(frame.minX, frame.minZ, frame.sizeX, frame.sizeZ);
-    U.fpProbe.value.set(n, tile.w, 0, tile.h);
-    setup.storeys.forEach((s, i) => {
-      U.fpProbeY.value.setComponent(i, s.y0 - 0.02);
-      U.fpProbeTop.value.setComponent(i, s.y1 + 0.3);
-    });
   }
 
   // What the probes would see now: a pass when it differs (at once for rooms / sky, else throttled).
@@ -614,116 +501,110 @@ export class LightProbes {
     return why;
   }
 
-  // Before / after a frame: start a due pass, capture the next room of the pass (one a frame, none while a
-  // read-back runs). -> true when a room was captured.
+  // After a frame: start a due pass, bake its next probes (PROBE_CHUNK at a time for up to PROBE_BUDGET_MS by
+  // clock). -> the probes baked.
   step(
-    capture: (cam: THREE.CubeCamera) => void,
+    capture: (bake: (scene: THREE.Scene) => void) => void,
     now = performance.now(),
-  ): boolean {
-    if (this._disposed || this._failed || this._busy || !this.setup)
-      return false;
+    clock: () => number = () => performance.now(),
+  ): number {
+    if (this._disposed || !this.setup) return 0;
     if (!this._queue) {
-      if (!this.pending) return false;
+      if (!this.pending) return 0;
       if (now < this._dueAt) {
         if (!this._timer)
           this._timer = setTimeout(() => {
             this._timer = null;
             this._onDue();
           }, this._dueAt - now);
-        return false;
+        return 0;
       }
+      const grids = probeTargets(
+        this.on ? this.inputs : null,
+        this.pending,
+        this.spare.length,
+      );
       this.inputs = this.pending;
       this.pending = null;
       this._at = now;
-      this._queue = this.setup.rooms
-        .map((_, i) => i)
-        .filter((i) => !this.setup!.skip.has(i));
-      this._staging = new Float32Array(this.setup.rooms.length * 27);
-      if (!this._queue.length) {
-        this._commit();
-        return false;
+      if (!grids.length) {
+        this.stats.passes++;
+        return 0;
       }
+      this._queue = { grids, grid: 0, probe: 0 };
     }
-    const k = this._queue.shift()!;
-    if (!this._cube) {
-      this._cube = new THREE.WebGLCubeRenderTarget(PROBE_CUBE, {
-        type: this._type,
-        generateMipmaps: false,
+    const q = this._queue,
+      t0 = clock();
+    let baked = 0;
+    const textures = this.live.map((g) => g.texture);
+    const on = this.uniforms.fpProbeOn.value;
+    for (const g of this.live) g.texture = blackVolume();
+    this.uniforms.fpProbeOn.value = 0;
+    try {
+      capture((scene) => {
+        do {
+          const grid = this.spare[q.grids[q.grid]],
+            total = grid.resolution.x * grid.resolution.y * grid.resolution.z,
+            count = Math.min(PROBE_CHUNK, total - q.probe);
+          grid.bake(this.renderer, scene, {
+            start: q.probe,
+            count,
+            cubemapSize: PROBE_CUBE,
+            near: 0.05,
+            far: 500,
+          });
+          baked += count;
+          q.probe += count;
+          if (q.probe >= total) {
+            q.grid++;
+            q.probe = 0;
+          }
+        } while (q.grid < q.grids.length && clock() - t0 < PROBE_BUDGET_MS);
       });
-      this._cam = new THREE.CubeCamera(0.05, 500, this._cube);
+    } finally {
+      this.live.forEach((g, i) => (g.texture = textures[i]));
+      this.uniforms.fpProbeOn.value = on;
     }
-    const p = this.setup.rooms[k].point;
-    this._cam!.position.set(p[0], p[1], p[2]);
-    this._cam!.updateMatrixWorld(true);
-    capture(this._cam!);
-    this.stats.captures++;
-    this._busy = true;
-    const gen = this._gen;
-    LightProbeGenerator.fromCubeRenderTarget(this.renderer, this._cube).then(
-      (probe) => {
-        if (gen !== this._gen || this._disposed) return;
-        this._busy = false;
-        const c = probe.sh.coefficients,
-          s = this._staging!;
-        for (let j = 0; j < 9; j++) {
-          s[k * 27 + j * 3] = c[j].x;
-          s[k * 27 + j * 3 + 1] = c[j].y;
-          s[k * 27 + j * 3 + 2] = c[j].z;
-        }
-        if (this._queue && !this._queue.length) this._commit();
-        this._onDue();
-      },
-      (err) => {
-        // a lost context (the card's renderer dropped mid read-back) fails every pending read-back: nothing to report
-        if (
-          gen !== this._gen ||
-          this._disposed ||
-          this.renderer.getContext().isContextLost()
-        )
-          return;
-        console.warn(
-          "floorplan3d: light probe read-back failed; the rooms keep the sky light",
-          err,
-        );
-        this._abort();
-        this._failed = true;
-        this.uniforms.fpProbe.value.z = 0;
-      },
-    );
-    return true;
+    this.stats.captures += baked;
+    if (q.grid >= q.grids.length) this._commit();
+    else this._onDue();
+    return baked;
   }
 
-  // The pass is done: every room's coefficients into the texture, the materials use them.
+  /** The grids hold a bake. */
+  get on(): boolean {
+    return this.uniforms.fpProbeOn.value > 0;
+  }
+
+  // The pass is done: its baked grids replace the live ones (same count: no recompile).
   _commit(): void {
-    const tex = this._tex,
-      s = this._staging,
-      setup = this.setup;
+    const q = this._queue!;
     this._queue = null;
-    this._staging = null;
-    if (!tex || !s || !setup) return;
-    const W = tex.image.width,
-      d = tex.image.data as unknown as Uint16Array,
-      h = this._tile.h;
-    for (let k = 0; k < setup.rooms.length; k++) {
-      for (let j = 0; j < 9; j++) {
-        const o = ((h + k) * W + j) * 4;
-        d[o] = THREE.DataUtils.toHalfFloat(s[k * 27 + j * 3]);
-        d[o + 1] = THREE.DataUtils.toHalfFloat(s[k * 27 + j * 3 + 1]);
-        d[o + 2] = THREE.DataUtils.toHalfFloat(s[k * 27 + j * 3 + 2]);
-      }
+    for (const i of q.grids) {
+      const was = this.live[i];
+      this.group.remove(was);
+      this.live[i] = this.spare[i];
+      this.spare[i] = was;
+      this.group.add(this.live[i]);
     }
-    tex.needsUpdate = true;
-    this.uniforms.fpProbe.value.z = 1;
+    this.uniforms.fpProbeOn.value = 1;
     this.stats.passes++;
-    if (this.pending) this._onDue(); // a change came in during the pass
+    this._onDue(); // a frame with the new light (and a change that came in during the pass)
   }
 
-  // Drop a pass in progress (its read-back is ignored).
+  // Drop a pass in progress.
   _abort(): void {
-    this._gen++;
-    this._busy = false;
     this._queue = null;
-    this._staging = null;
+  }
+
+  _free(): void {
+    for (const g of [...this.live, ...this.spare]) {
+      g.removeFromParent();
+      if (g.texture === black) g.texture = null; // the shared volume is not the grid's own
+      g.dispose();
+    }
+    this.live = [];
+    this.spare = [];
   }
 
   /** A pass is running or due. */
@@ -736,12 +617,9 @@ export class LightProbes {
     this._abort();
     if (this._timer) clearTimeout(this._timer);
     this._timer = null;
-    const U = this.uniforms;
-    U.fpProbe.value.set(0, 1, 0, 1);
-    U.fpProbeMap.value = null;
-    if (this._tex) this._tex.dispose();
-    if (this._cube) this._cube.dispose();
-    this._tex = this._cube = this._cam = null;
+    this._free();
+    this.group.removeFromParent();
+    this.uniforms.fpProbeOn.value = 0;
     this.setup = null;
   }
 }

@@ -8,8 +8,8 @@
 //                    "type": "light" | "ao", "colorSpace": "srgb" | "linear" }
 //
 // type light (the default): baked ambient light (sky and bounces, with the sun and the lamps off in the bake, as
-// the card lights those live), used as three's lightMap in place of the sky environment's diffuse fill and, when a
-// room's surfaces are baked, in place of that room's runtime light probe (light-probes.ts). It follows the sky's
+// the card lights those live), used as three's lightMap in place of the sky environment's diffuse fill and of the
+// light probe grid (light-probes.ts; a storey whose rooms are all baked gets no grid). It follows the sky's
 // brightness (dark at night). type ao: baked ambient occlusion, used as the aoMap. Standard ignores the extras:
 // the occlusionTexture stays the glTF occlusion it is to every viewer.
 //
@@ -30,7 +30,7 @@ export const LIGHTMAP_MAX_TEXCOORD = 3;
 /** Lightmap side (px) above which check-model warns, and above which it fails (many phones stop at 4096). */
 export const LIGHTMAP_WARN_PX = 2048;
 export const LIGHTMAP_MAX_PX = 4096;
-/** Share of a room's meshes (by their centre) that must be baked for the room to skip its runtime probe. */
+/** Share of a room's meshes (by their centre) that must be baked for the room to count as baked (light-probes.ts). */
 export const BAKED_ROOM_SHARE = 0.5;
 
 const isObj = (v: unknown): v is Record<string, unknown> =>

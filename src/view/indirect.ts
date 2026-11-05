@@ -1,13 +1,14 @@
-// Indirect light of the model under render quality 'high': per-room light probes (light-probes.ts) and lightmaps
-// baked into the GLB (lightmap.ts). The probes are captured here, with the view's overlays hidden and the whole
+// Indirect light of the model under render quality 'high': light probe grids per storey (light-probes.ts) and
+// lightmaps baked into the GLB (lightmap.ts). The grids are baked here, with the view's overlays hidden and the whole
 // house shown (every level, no cut), so a room sees its ceiling and the storey above even while the plan shows
-// one floor; the capture neither draws a shadow map (those are the frame's) nor uses the probes it builds.
+// one floor; the bake neither draws a shadow map (those are the frame's) nor uses the probes it builds.
 import * as THREE from "three";
 import {
   LightProbes,
   probeRooms,
-  lampKey,
+  lampKeys,
   lightStep,
+  PROBE_MAX_FLOORS,
   type ProbeInputs,
   type ProbeSetup,
 } from "../light-probes.ts";
@@ -204,6 +205,7 @@ export class IndirectLight {
           this.view.dirty = true;
         },
       );
+      this.view.scene.add(this.probes.group); // the grids are lights: three samples them in every lit material
       this._setupFor = null; // its rooms at the next step
       this._roomsKey = "";
     }
@@ -239,16 +241,16 @@ export class IndirectLight {
         e.mat.lightMapIntensity = e.spec.intensity * sky;
   }
 
-  // After a frame: the probes' inputs checked, the next room of a due pass captured. -> true when one was captured.
-  step(): boolean {
+  // After a frame: the probes' inputs checked, the next slice of a due pass baked. -> the probes baked.
+  step(): number {
     const p = this.probes,
       v = this.view;
-    if (!p || !v.model) return false;
+    if (!p || !v.model) return 0;
     const env = v.look._env;
-    if (env && !env.built) return false; // the sky environment's first build comes first
+    if (env && !env.built) return 0; // the sky environment's first build comes first
     this._ensureSetup();
     p.request(this._inputs());
-    return p.step((cam) => this._capture(cam));
+    return p.step((bake) => this._capture(bake));
   }
 
   // The probe rooms for the view's rooms, floors, model and baked rooms (rebuilt when any of them changed).
@@ -276,10 +278,18 @@ export class IndirectLight {
       baked,
     };
     const { rooms, storeys } = probeRooms(v._rooms, v.floors);
-    const skip =
+    // a storey whose rooms are all baked gets no grid
+    const bakedSet =
       baked && !baked.startsWith("0:")
         ? bakedRooms(rooms, this._bakeMeshes())
         : new Set<number>();
+    const skip = new Set<number>();
+    for (let s = 0; s < Math.min(storeys.length, PROBE_MAX_FLOORS); s++) {
+      const on = rooms
+        .map((r, i) => [r, i] as const)
+        .filter(([r]) => r.storey === s);
+      if (on.length && on.every(([, i]) => bakedSet.has(i))) skip.add(s);
+    }
     const key = JSON.stringify([
       v.model ? v.model.id : null,
       rooms.map((r) => [r.key, r.polygon, r.y0, r.y1]),
@@ -322,9 +332,10 @@ export class IndirectLight {
     const v = this.view,
       env = v.look._env,
       layer = v.objectLayer;
-    const lamps = layer
-      ? lampKey([...layer.pool.points, ...layer.pool.spots])
-      : "";
+    const lamps = lampKeys(
+      layer ? [...layer.pool.points, ...layer.pool.spots] : [],
+      this.probes ? this.probes.ranges() : [],
+    );
     const light = [
       v.sun.intensity,
       v.moonLight.intensity,
@@ -336,20 +347,21 @@ export class IndirectLight {
     return { rooms: this._roomsKey, sky: env ? env.builds : 0, lamps, light };
   }
 
-  // Render the scene into the cube: the house whole (every level, no cut or section), lit as now, without the view's
-  // overlays and sky sprites, the sky environment as the background (seen through the windows), no shadow-map pass,
-  // the probes themselves off (one bounce, no feedback).
-  _capture(cam: THREE.CubeCamera): void {
+  // Bake with the scene as a probe sees it: the house whole (every level, no cut or section), lit as now, without the
+  // view's overlays and sky sprites, the sky environment as the background (seen through the windows), no shadow-map
+  // pass (the grid's bake asks for one; the frame's maps are kept), the probes themselves off (LightProbes.step: one
+  // bounce, no feedback).
+  _capture(bake: (scene: THREE.Scene) => void): void {
     const v = this.view,
       r = v.renderer,
       s = v.scene,
-      U = v.skyLayer._cloudU,
       model = v.model!;
     const hidden: THREE.Object3D[] = [];
     for (const c of s.children) {
       if (
         c === v.modelGroup ||
         c === v.objectsGroup ||
+        (this.probes && c === this.probes.group) || // hiding the grids would change every lit program
         (c as Partial<THREE.Light>).isLight ||
         !c.visible
       )
@@ -374,31 +386,39 @@ export class IndirectLight {
       alpha = r.getClearAlpha();
     const bg = s.background,
       bgI = s.backgroundIntensity,
-      bgB = s.backgroundBlurriness,
-      weight = U.fpProbe.value.z;
+      bgB = s.backgroundBlurriness;
+    const shadowMap = r.shadowMap;
     r.clippingPlanes = [];
     r.autoClear = true;
-    r.shadowMap.needsUpdate = false;
     r.setClearColor(0x000000, 1);
     v.modelClip.constant = 1e6;
     s.background = s.environment;
     s.backgroundIntensity = s.environmentIntensity;
     s.backgroundBlurriness = 0;
-    U.fpProbe.value.z = 0;
+    // the bake sets needsUpdate to draw the shadow maps once: held false for it
+    Object.defineProperty(shadowMap, "needsUpdate", {
+      configurable: true,
+      get: () => false,
+      set: () => {},
+    });
     try {
-      cam.update(r, s);
+      bake(s);
     } finally {
+      Object.defineProperty(shadowMap, "needsUpdate", {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: shadow,
+      });
       for (const c of hidden) c.visible = true;
       for (const n of levels) n.visible = false;
       r.clippingPlanes = clip;
       r.autoClear = auto;
-      r.shadowMap.needsUpdate = shadow;
       r.setClearColor(clear, alpha);
       v.modelClip.constant = cut;
       s.background = bg;
       s.backgroundIntensity = bgI;
       s.backgroundBlurriness = bgB;
-      U.fpProbe.value.z = weight;
     }
   }
 

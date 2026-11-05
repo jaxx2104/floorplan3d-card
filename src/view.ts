@@ -66,7 +66,7 @@ export interface ViewStats {
   envBuilds: number; // environment maps built from the sky (render quality 'high')
   bloomPasses: number; // frames with a selective bloom pass (render quality 'high', an emissive surface in view)
   contactBuilds: number; // contact shadow rebuilds (render quality 'high', the shadow casters changed)
-  probeCaptures: number; // room light probe captures (render quality 'high', one room a frame while a pass runs)
+  probeCaptures: number; // light probes baked (render quality 'high', up to PROBE_BUDGET_MS a frame while a pass runs)
   stillSessions: number; // idle path tracing sessions started (render quality 'still')
   stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
   stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
@@ -1120,7 +1120,7 @@ export class FloorplanView {
         cam.pixelsPerMetre() < COMPACT_PPM,
       );
       this._drawGl(true);
-      if (this.model && look.indirect.step()) this.stats.probeCaptures++; // a room's light probe, after the frame drew its shadow maps
+      if (this.model) this.stats.probeCaptures += look.indirect.step(); // a slice of the probe grids, after the frame drew its shadow maps
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
       this.auto.burn(); // test hook: artificial frame cost
