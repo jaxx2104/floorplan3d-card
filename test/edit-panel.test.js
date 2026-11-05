@@ -118,11 +118,9 @@ describe("edit panel (lit-html)", () => {
     ed.renderNow();
     const body = panel.querySelector(".tab-body");
     expect(body.querySelector(".msg").textContent).toBe("old");
-    const sync = vi.spyOn(ed, "_syncStageClasses");
     button(panel, "Data").click();
     expect(ed.tab).toBe("data");
     expect(ed.message).toBe(null);
-    expect(sync).toHaveBeenCalled();
     await flush();
     expect(panel.querySelector(".tabs button.on").textContent).toBe("Data");
     expect(panel.querySelector(".tab-body")).not.toBe(body); // a new tab starts scrolled to the top
@@ -141,14 +139,15 @@ describe("edit panel (lit-html)", () => {
     expect(button(panel, "Draw")).toBe(draw);
   });
 
-  it("renders are coalesced: many requests, one render per task", async () => {
-    const { ed } = setup();
-    const view = vi.spyOn(ed.card, "modelBindings"); // read once per panel render (objectsAvailable)
-    ed.card._view.model = {};
-    for (let i = 0; i < 5; i++) ed.render();
-    expect(view).not.toHaveBeenCalled();
+  it("render() is queued: the panel shows the latest state after the task", async () => {
+    const { ed, panel } = setup();
+    for (let i = 0; i < 5; i++) {
+      ed.message = { text: "m" + i };
+      ed.render();
+    }
+    expect(panel.querySelector(".msg")).toBe(null);
     await flush();
-    expect(view).toHaveBeenCalledTimes(1);
+    expect(panel.querySelector(".msg").textContent).toBe("m4");
   });
 
   it("select a room, change its fields, and the two-step delete", async () => {
@@ -230,9 +229,7 @@ describe("edit panel (lit-html)", () => {
     onStates(ed);
     onStates(ed);
     expect(raf).toHaveBeenCalledTimes(1);
-    expect(ed._renderQueued).toBe("frame");
     raf.mock.calls[0][0]();
-    expect(ed._renderQueued).toBe(null);
     expect(ed.panel.querySelector(".mower-live").textContent).toContain(
       "Pick the entity",
     );

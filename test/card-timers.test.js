@@ -19,11 +19,10 @@ describe("_setCameraTimer", () => {
     vi.useFakeTimers();
     const { host, m } = mower(false);
     m._setCameraTimer(10); // e.g. model load .then finishing after the disconnect
-    expect(m._cameraTimer).toBeNull();
-    expect(m._cameraTimerSec).toBe(0);
+    vi.advanceTimersByTime(20000);
+    expect(m._refreshMapOverlay).not.toHaveBeenCalled();
     host.isConnected = true;
-    m._setCameraTimer(10); // reconnect -> _refreshMapOverlay
-    expect(m._cameraTimer).not.toBeNull();
+    m._setCameraTimer(10); // reconnect: the same interval is armed now
     vi.advanceTimersByTime(10000);
     expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
     m._setCameraTimer(0);
@@ -33,7 +32,8 @@ describe("_setCameraTimer", () => {
     const { host, m } = mower(false);
     m._detectMower = vi.fn();
     m._setImageTimer(5);
-    expect(m._imageTimer).toBeNull();
+    vi.advanceTimersByTime(10000);
+    expect(m._detectMower).not.toHaveBeenCalled();
     host.isConnected = true;
     m._setImageTimer(5);
     vi.advanceTimersByTime(5000);
@@ -48,15 +48,11 @@ describe("_setCameraTimer", () => {
     m._setImageTimer(5);
     host.isConnected = false;
     m.dispose();
-    expect(m._cameraTimer).toBeNull();
-    expect(m._imageTimer).toBeNull();
     vi.advanceTimersByTime(20000);
     expect(m._refreshMapOverlay).not.toHaveBeenCalled();
     expect(m._detectMower).not.toHaveBeenCalled();
     host.isConnected = true;
     m.resume(); // connectedCallback: the next update re-arms whatever interval it asks for
-    expect(m._cameraTimerSec).toBeNull();
-    expect(m._imageTimerSec).toBeNull();
     m._setCameraTimer(10);
     vi.advanceTimersByTime(10000);
     expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
@@ -112,7 +108,8 @@ describe("idle_reset", () => {
     vi.useFakeTimers();
     const off = idle({}).v;
     off._armIdleReset();
-    expect(off._idleTimer).toBeNull();
+    vi.advanceTimersByTime(3600000);
+    expect(off._resetCamera).not.toHaveBeenCalled();
     const { host, v } = idle({ idle_reset: 5 });
     host._editing = true;
     v._armIdleReset();
@@ -123,7 +120,8 @@ describe("idle_reset", () => {
     expect(v._resetCamera).toHaveBeenCalledTimes(1);
     v._armIdleReset();
     v.dispose();
-    expect(v._idleTimer).toBeNull();
+    vi.advanceTimersByTime(5000);
+    expect(v._resetCamera).toHaveBeenCalledTimes(1); // disposed: no second reset
   });
 });
 
@@ -206,7 +204,6 @@ describe("night_markers", () => {
     const s = sky({ night_markers: "hide" }, false);
     s._wakeMarkers();
     s.dispose();
-    expect(s._wakeTimer).toBeNull();
     vi.advanceTimersByTime(30000);
     expect(s.card._stage.classList.contains("awake")).toBe(true); // no timer left to remove it
   });

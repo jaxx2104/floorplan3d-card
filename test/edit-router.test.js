@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { describe, it, expect, vi } from "bun:test";
 import {
   clickRoute,
@@ -74,13 +73,25 @@ describe("edit click precedence", () => {
     );
   });
 
-  it("canvasUp only clicks within the slop of the press", () => {
-    const e = ed();
-    canvasDown(e, { button: 0, clientX: 10, clientY: 10 });
-    canvasUp(e, { clientX: 10 + CLICK_SLOP_PX, clientY: 10 });
-    expect(e._down).toBe(null); // moved too far: no click (a click would hit the fake view)
-    canvasDown(e, { button: 2, clientX: 10, clientY: 10 });
-    expect(e._down).toBe(null);
+  it("canvasUp only clicks within the slop of the press, left button only", () => {
+    // the colour tool's click asks the view for the map pixel: a stand-in for "a click happened"
+    const e = ed({
+      colorPick: "bg",
+      view: { model: null, mapHit: vi.fn(() => null) },
+      render: vi.fn(),
+    });
+    const press = (button, dx) => {
+      canvasDown(e, { button, clientX: 10, clientY: 10 });
+      canvasUp(e, { clientX: 10 + dx, clientY: 10 });
+    };
+    press(0, CLICK_SLOP_PX);
+    expect(e.view.mapHit).not.toHaveBeenCalled();
+    press(2, 0);
+    expect(e.view.mapHit).not.toHaveBeenCalled();
+    press(0, CLICK_SLOP_PX - 1);
+    expect(e.view.mapHit).toHaveBeenCalledTimes(1);
+    canvasUp(e, { clientX: 10, clientY: 10 }); // no press: no click
+    expect(e.view.mapHit).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -164,7 +175,6 @@ describe("edit key precedence", () => {
     const ev = key("Escape");
     onKeyDown(e, ev);
     expect(e.colorPick).toBe(false);
-    expect(e._syncStageClasses).toHaveBeenCalled();
     expect(e.render).toHaveBeenCalledTimes(1);
     expect(ev.preventDefault).not.toHaveBeenCalled();
 

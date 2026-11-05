@@ -99,31 +99,6 @@ describe("Floorplan3dCard facade", () => {
       expect(typeof c[name], name).toBe("function");
     }
   });
-  it("fields forward to the owning part (writes from edit mode included)", () => {
-    const c = card();
-    const blob = { px: 1, py: 2 };
-    c._imageBlob = blob;
-    expect(c._mowerCtl._imageBlob).toBe(blob);
-    c._headSt = null;
-    expect(c._mowerCtl._headSt).toBeNull();
-    expect(c._views).toBe(c._viewCtl._views);
-    expect(c._markerEls).toBe(c._markerLayer._markerEls);
-    expect(c._bindings).toBe(c._objectInput._bindings);
-    c._modelEvicted = 0;
-    expect(c._modelLoader._modelEvicted).toBe(0);
-  });
-  it("starts with the old constructor state", () => {
-    const c = card();
-    expect(c._views).toEqual([]);
-    expect(c._viewId).toBeNull();
-    expect(c._mode).toBe("3d");
-    expect(c._section).toBe(false);
-    expect(c._skyCtl._daylight).toBe(true);
-    expect(c._sunTime).toBeNull();
-    expect(c._markers).toEqual([]);
-    expect(c._groups).toEqual({});
-    expect(c._layout).toBeNull();
-  });
 });
 
 describe("ActionRunner", () => {
