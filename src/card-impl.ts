@@ -416,7 +416,6 @@ export class Floorplan3dCard extends HTMLElement {
       this._view.setRenderOption(this._config.render);
       this._view.setBackground(this._config.background);
       this._view.setFurniture(this._config.furniture);
-      this._view.setAo(this._config.ao);
       this._view.setBokeh(this._config.bokeh);
       this._view.setGrade(this._config.grade);
       this._view.setSway(this._config.sway);
@@ -694,7 +693,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._view.setRenderOption(this._config.render);
     this._view.setBackground(this._config.background);
     this._view.setFurniture(this._config.furniture);
-    this._view.setAo(this._config.ao);
     this._view.setBokeh(this._config.bokeh);
     this._view.setGrade(this._config.grade);
     this._view.setSway(this._config.sway);

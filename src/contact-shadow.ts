@@ -1,4 +1,4 @@
-// Contact shadows (render quality 'high', QualityTier.contactShadows): the soft dark grounding where furniture,
+// Contact shadows (every render quality, with a model): the soft dark grounding where furniture,
 // walls and objects meet a floor. Per storey an orthographic camera at the floor looks up and draws every shadow
 // caster from CONTACT_NEAR_M above it up as a darkness that fades to 0 at CONTACT_HEIGHT_M (the lowest surface
 // wins the depth test). A back face first means the camera starts inside a solid standing on the floor (a wall,

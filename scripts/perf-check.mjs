@@ -3,9 +3,9 @@
 // state flags and condition waits; no frame-time budget blocks. Section groups (scripts/lib/sections.mjs):
 // - mower-map: a 1600 x 1600 live map (camera) with a moving mower, then refreshes where nothing changed: no
 //   shadow-map update from the mower, renders per unchanged refresh <= per moving one, the debug overlay.
-// - quality-standard, quality-high: render quality 'high' (sky environment light, physical lamps, selective bloom,
-//   contact shadows, physical materials, light probe grids) against 'standard': what each
-//   tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
+// - quality-standard, quality-high: the same light in both tiers (sky environment light, physical lamps, contact
+//   shadows, physical materials, light probe grids, AgX); 'high' adds the selective bloom and a finer probe grid
+//   (QualityTier.probeSpacing): what each tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
 //   environment rebuild only for a sun step over ENV_ANGLE_DEG, bloom only with an emissive surface in view,
 //   contact shadows rebuilt only when the casters change, probes rebaked once (at most twice) per input
 //   change (a lamp: its storey's grid only), physical materials made by the loader in both tiers and never replaced (idle, tier change).
@@ -14,7 +14,8 @@
 //   back up with fast frames after the (shortened) wait, no oscillation.
 // - bench (only with --only bench; CI runs it as a non-blocking job): the timing numbers. The mower map at the
 //   original 30 s + 16 s cadence (main-thread ms per refresh, long tasks; budget p90 <= 50 ms), frame time of
-//   40 forced frames per tier (budget high <= 2.5 x standard + 8 ms), one environment / contact build, one probe's bake.
+//   40 forced frames per tier (budget high <= 2.5 x standard + 8 ms), one environment / contact build, one probe's bake,
+//   the probes per pass of each tier.
 //   bun scripts/perf-check.mjs [--only group,group] [--shard k/n] [--list]
 // Without --only every group but bench runs in this process, one after another.
 import { Sections, parseArgs, selectGroups } from "./lib/sections.mjs";
@@ -80,7 +81,8 @@ const viewStats = (page) =>
   page.evaluate(`(() => { const v = ${card}._view, s = v.stats, p = v.look.indirect.probes, b = v.look._bloom;
   return { frames: s.frames, env: s.envBuilds, bloom: s.bloomPasses, skipped: b ? b.stats.skipped : 0, contact: s.contactBuilds, shadow: s.shadow, lights: s.shadowLights,
     mats: (() => { let n = 0; const seen = new Set(); v.model && v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) if (!seen.has(m)) { seen.add(m); n += m.id; } }); return n; })(), caps: s.probeCaptures, passes: p ? p.stats.passes : 0, probes: p ? p.size : 0,
-    grids: p ? p.live.map((g) => g.resolution.x * g.resolution.y * g.resolution.z) : [], probeOn: p ? p.uniforms.fpProbeOn.value : 0, programs: v.renderer.info.programs.length }; })()`);
+    grids: p ? p.live.map((g) => g.resolution.x * g.resolution.y * g.resolution.z) : [],
+    spacing: p ? p.live.map((g) => +((g.boundingBox.max.x - g.boundingBox.min.x) / g.resolution.x).toFixed(2)) : [], probeOn: p ? p.uniforms.fpProbeOn.value : 0, programs: v.renderer.info.programs.length }; })()`);
 // per-key change between two viewStats; a list (probes per grid) counts as 0 unchanged, 1 changed
 const diff = (a, b) =>
   Object.fromEntries(
@@ -152,7 +154,7 @@ async function qualityRun(page, quality) {
   const env =
     await page.evaluate(`(() => { const v = ${card}._view; let contact = 0;
     v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (m.userData.fpContact) contact++; } });
-    return { env: !!v.scene.environment, tm: v.renderer.toneMapping, bloom: !!v.look._bloom, physical: !!(v.objectLayer && v.objectLayer.physical),
+    return { env: !!v.scene.environment, tm: v.renderer.toneMapping, bloom: !!v.look._bloom, hemi: v.hemi.intensity,
       shadowType: v.renderer.shadowMap.type, contact, contactTiles: v.look._contact ? v.look._contact.tiles : 0 }; })()`);
   // forced frames with lamps in view, then with the camera turned away (no emissive surface in view)
   await forced(page, 12);
@@ -172,13 +174,12 @@ async function qualityRun(page, quality) {
   const forcedAll = diff(s2, s5); // forced and moved-camera frames: no probe capture, no contact rebuild
   // a lamp turned off: one pass of its storey's grid once the throttle allows, then nothing
   await page.evaluate(`window.__setDemoStates({ 'light.demo_living': 'off' })`);
-  if (quality === "high")
-    await until(
-      page,
-      `${card}._view.stats.probeCaptures > ${s5.caps}`,
-      "the lamp's probe bake",
-      30000,
-    );
+  await until(
+    page,
+    `${card}._view.stats.probeCaptures > ${s5.caps}`,
+    "the lamp's probe bake",
+    30000,
+  );
   await page.evaluate(`${card}._view.dirty = true`);
   await waitQuiet(page, "the lamp switched");
   const s6 = await viewStats(page);
@@ -195,13 +196,12 @@ async function qualityRun(page, quality) {
   await page.evaluate(
     `${card}.shadowRoot.querySelectorAll('.chips button.chip')[2].click()`,
   );
-  if (quality === "high")
-    await until(
-      page,
-      `${card}._view.stats.contactBuilds > ${s7.contact}`,
-      "the storey change's contact build",
-      30000,
-    );
+  await until(
+    page,
+    `${card}._view.stats.contactBuilds > ${s7.contact}`,
+    "the storey change's contact build",
+    30000,
+  );
   await rafs(page, 2);
   await waitQuiet(page, "the storey change");
   const s8 = await viewStats(page);
@@ -307,6 +307,71 @@ function materialChecks(quality, r) {
   );
 }
 
+// the light both tiers share: sky environment, AgX, no hemisphere light, contact shadows, probe grids at the tier's
+// spacing (rebaked once per input change, a lamp its storey's grid only)
+function lightChecks(name, r, spacing) {
+  check(
+    `${name}: sky environment on, AgX tone mapping (6), no hemisphere light`,
+    r.env && r.tm === 6 && r.load.env >= 1 && r.hemi === 0,
+    JSON.stringify({ env: r.env, tm: r.tm, builds: r.load.env, hemi: r.hemi }),
+  );
+  check(
+    `${name}: no environment rebuild for a sun step under 2 degrees, one for a larger step`,
+    r.small.env === 0 && r.big.env === 1,
+    `${r.small.env}, ${r.big.env}`,
+  );
+  check(
+    `${name}: three's PCF sun shadows, contact variants, contact tiles built`,
+    r.shadowType === 1 && r.contact > 0 && r.contactTiles > 0,
+    JSON.stringify({
+      shadowType: r.shadowType,
+      contact: r.contact,
+      tiles: r.contactTiles,
+    }),
+  );
+  check(
+    `${name}: no contact rebuild while idle or on forced / camera frames, one on a storey change`,
+    r.idle.contact === 0 && r.forcedAll.contact === 0 && r.storey.contact === 1,
+    `${r.idle.contact}, ${r.forcedAll.contact}, ${r.storey.contact}`,
+  );
+  const probes = r.load.probes,
+    grids = r.load.grids;
+  check(
+    `${name}: light probe grids (one per storey) at ${spacing} m, baked at load`,
+    probes > 0 &&
+      grids.length >= 1 &&
+      r.load.spacing.every((d) => Math.abs(d - spacing) <= spacing * 0.25) &&
+      r.load.passes >= 1 &&
+      r.load.caps >= probes &&
+      r.load.probeOn === 1,
+    JSON.stringify({
+      probes,
+      grids,
+      spacing: r.load.spacing,
+      caps: r.load.caps,
+      passes: r.load.passes,
+      on: r.load.probeOn,
+    }),
+  );
+  check(
+    `${name}: no probe baked while idle, on forced / camera frames or a look change that keeps the light`,
+    r.idle.caps === 0 && r.forcedAll.caps === 0 && r.look.caps === 0,
+    `${r.idle.caps}, ${r.forcedAll.caps}, ${r.look.caps}`,
+  );
+  const g0 = Math.min(...grids),
+    g1 = Math.max(...grids);
+  check(
+    `${name}: a sky rebuild rebakes every grid once (at most twice), a lamp switched its storey's grid`,
+    r.big.caps >= probes &&
+      r.big.caps <= 2 * probes &&
+      r.lamp.caps >= g0 &&
+      r.lamp.caps <= 2 * g1 &&
+      (grids.length < 2 || r.lamp.caps < probes) &&
+      r.small.caps <= 2 * probes,
+    `sky ${r.big.caps}, lamp ${r.lamp.caps}, small sun step ${r.small.caps} for ${probes} probes in grids ${grids.join(" + ")}`,
+  );
+}
+
 sections.add(
   "standard",
   {
@@ -317,35 +382,14 @@ sections.add(
   async ({ page, errors }) => {
     const r = await qualityRun(page, "standard");
     commonChecks("standard", r);
+    lightChecks("standard", r, 1);
     const F = r.final;
     check(
-      "standard: no environment, no builds",
-      !r.env && F.env === 0,
-      JSON.stringify({ env: r.env, builds: F.env }),
-    );
-    check(
-      "standard: no bloom, no physical lamps",
-      !r.bloom && F.bloom === 0 && !r.physical,
-      JSON.stringify({ bloom: r.bloom, passes: F.bloom, physical: r.physical }),
-    );
-    check(
-      "standard: three's PCF sun shadows, no contact-shadow variant, no contact build",
-      r.shadowType === 1 &&
-        r.contact === 0 &&
-        r.contactTiles === 0 &&
-        F.contact === 0,
-      JSON.stringify({
-        shadowType: r.shadowType,
-        contact: r.contact,
-        builds: F.contact,
-      }),
+      "standard: no bloom",
+      !r.bloom && F.bloom === 0,
+      JSON.stringify({ bloom: r.bloom, passes: F.bloom }),
     );
     materialChecks("standard", r);
-    check(
-      "standard: no light probes",
-      F.passes === 0 && F.caps === 0 && !F.probeOn,
-      JSON.stringify({ passes: F.passes, caps: F.caps, on: F.probeOn }),
-    );
     if (errors.length)
       check(
         "standard demo without page errors",
@@ -365,27 +409,11 @@ sections.add(
   async ({ page, errors }) => {
     const r = await qualityRun(page, "high");
     commonChecks("high", r);
+    lightChecks("high", r, 0.5);
     check(
-      "high: sky environment on, AgX tone mapping (6)",
-      r.env && r.tm === 6 && r.load.env >= 1,
-      JSON.stringify({ env: r.env, tm: r.tm, builds: r.load.env }),
-    );
-    check(
-      "high: no rebuild for a sun step under 2 degrees, one for a larger step",
-      r.small.env === 0 && r.big.env === 1,
-      `${r.small.env}, ${r.big.env}`,
-    );
-    check(
-      "high: physical lamps, bloom on every forced frame with lamps in view",
-      r.physical &&
-        r.bloom &&
-        r.fwd.frames >= 12 &&
-        r.fwd.bloom === r.fwd.frames,
-      JSON.stringify({
-        physical: r.physical,
-        passes: r.fwd.bloom,
-        frames: r.fwd.frames,
-      }),
+      "high: bloom on every forced frame with lamps in view",
+      r.bloom && r.fwd.frames >= 12 && r.fwd.bloom === r.fwd.frames,
+      JSON.stringify({ passes: r.fwd.bloom, frames: r.fwd.frames }),
     );
     check(
       "high: bloom skipped with no emissive surface in view",
@@ -394,26 +422,10 @@ sections.add(
         r.away.skipped === r.away.frames,
       `${r.away.bloom} passes, ${r.away.skipped} skipped in ${r.away.frames} frames`,
     );
-    check(
-      "high: the same PCF shadow map as standard (no map-type switch), contact variants, contact tiles built",
-      r.shadowType === 1 && r.contact > 0 && r.contactTiles > 0,
-      JSON.stringify({
-        shadowType: r.shadowType,
-        contact: r.contact,
-        tiles: r.contactTiles,
-      }),
-    );
-    check(
-      "high: no contact rebuild while idle or on forced / camera frames, one on a storey change",
-      r.idle.contact === 0 &&
-        r.forcedAll.contact === 0 &&
-        r.storey.contact === 1,
-      `${r.idle.contact}, ${r.forcedAll.contact}, ${r.storey.contact}`,
-    );
     materialChecks("high", r);
     const rt = r.roundTrip;
     check(
-      "high -> standard -> high: the same materials and classes, no GL error",
+      "high -> standard -> high: the same materials and classes, no GL error, no shader variant switch",
       !!rt &&
         rt.sameStd &&
         rt.sameHigh &&
@@ -422,40 +434,6 @@ sections.add(
         rt.errStd === 0 &&
         rt.errHigh === 0,
       JSON.stringify(rt),
-    );
-    const probes = r.load.probes,
-      grids = r.load.grids;
-    check(
-      "high: light probe grids (one per storey) baked at load",
-      probes > 0 &&
-        grids.length >= 1 &&
-        r.load.passes >= 1 &&
-        r.load.caps >= probes &&
-        r.load.probeOn === 1,
-      JSON.stringify({
-        probes,
-        grids,
-        caps: r.load.caps,
-        passes: r.load.passes,
-        on: r.load.probeOn,
-      }),
-    );
-    check(
-      "high: no probe baked while idle, on forced / camera frames or a look change that keeps the light",
-      r.idle.caps === 0 && r.forcedAll.caps === 0 && r.look.caps === 0,
-      `${r.idle.caps}, ${r.forcedAll.caps}, ${r.look.caps}`,
-    );
-    const g0 = Math.min(...grids),
-      g1 = Math.max(...grids);
-    check(
-      "high: a sky rebuild rebakes every grid once (at most twice), a lamp switched its storey's grid",
-      r.big.caps >= probes &&
-        r.big.caps <= 2 * probes &&
-        r.lamp.caps >= g0 &&
-        r.lamp.caps <= 2 * g1 &&
-        (grids.length < 2 || r.lamp.caps < probes) &&
-        r.small.caps <= 2 * probes,
-      `sky ${r.big.caps}, lamp ${r.lamp.caps}, small sun step ${r.small.caps} for ${probes} probes in grids ${grids.join(" + ")}`,
     );
     if (errors.length)
       check(
@@ -633,7 +611,8 @@ sections.add(
     await waitQuiet(page, "the load");
     const state = () =>
       ev(`(() => { const v = ${card}._view, a = v.auto.state();
-      return { ...a, tier: v.look.quality(), bloom: !!v.look._bloom, env: !!v.scene.environment, tm: v.renderer.toneMapping, switches: v.stats.autoSwitches, frames: v.stats.frames,
+      const p = v.look.indirect.probes;
+      return { ...a, tier: v.look.quality(), bloom: !!v.look._bloom, env: !!v.scene.environment, tm: v.renderer.toneMapping, probes: p ? p.size : 0, switches: v.stats.autoSwitches, frames: v.stats.frames,
         later: (v.auto.ctl.due(performance.now() + 1e9) || {}).level || null }; })()`);
     const s0 = await state();
     check(
@@ -684,14 +663,16 @@ sections.add(
     await rafs(page, 2);
     const s2 = await state();
     check(
-      "auto: once idle, down to standard (no bloom, no sky environment, the recipe tone mapping)",
+      "auto: once idle, down to standard (no bloom, fewer probes; the same sky environment and AgX)",
       s2.level === "standard" &&
         s2.tier === "standard" &&
         !s2.bloom &&
-        !s2.env &&
-        s2.tm !== 6 &&
+        s2.env &&
+        s2.tm === 6 &&
+        s2.probes > 0 &&
+        s2.probes < s0.probes &&
         s2.switches === 1,
-      JSON.stringify(s2),
+      JSON.stringify({ ...s2, highProbes: s0.probes }),
     );
     // still slow, a full window of samples at standard: no level below it here (pixel ratio 1)
     const low = await runUntil(`(x) => x.samples >= ${T.window}`);
@@ -731,6 +712,7 @@ sections.add(
         s4.tier === "high" &&
         s4.bloom &&
         s4.env &&
+        s4.probes === s0.probes &&
         s4.switches === 2,
       JSON.stringify({ upDue, ...s4 }),
     );
@@ -1004,8 +986,11 @@ for (const quality of ["standard", "high"])
         avg: times.reduce((a, b) => a + b, 0) / Math.max(1, times.length),
         p90: sorted[Math.floor(sorted.length * 0.9)] || 0,
       });
+      const built = await page.evaluate(
+        `(() => { const v = ${card}._view, p = v.look.indirect.probes; return { env: v.stats.envBuilds, probes: p ? p.size : 0, caps: v.stats.probeCaptures }; })()`,
+      );
       console.log(
-        `     render ms per frame (40 forced frames, 1200 x 700, test mode): ${quality} avg ${r.avg.toFixed(1)} p90 ${r.p90.toFixed(1)}`,
+        `     render ms per frame (40 forced frames, 1200 x 700, test mode): ${quality} avg ${r.avg.toFixed(1)} p90 ${r.p90.toFixed(1)}; load: ${built.env} environment build(s), ${built.probes} probes a pass, ${built.caps} baked`,
       );
       if (quality !== "high") return;
       const timed = (body) =>
@@ -1026,7 +1011,7 @@ for (const quality of ["standard", "high"])
       const std = frameTimes.standard;
       // the budget of the whole tier (env, bloom, contact shadows, physical materials, probe grids)
       check(
-        "bench: high (bloom, contact, physical materials, probes included): frame time <= 2.5 x standard + 8 ms",
+        "bench: high (bloom, finer probes): frame time <= 2.5 x standard + 8 ms",
         !!std && r.avg <= 2.5 * std.avg + 8,
         `${r.avg.toFixed(1)} vs ${std ? std.avg.toFixed(1) : "–"} ms`,
       );

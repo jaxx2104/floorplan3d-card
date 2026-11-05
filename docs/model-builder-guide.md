@@ -162,7 +162,7 @@ below), unknown keys are ignored, out-of-range numbers are clamped with a warnin
 
 ```js
 house.userData.fp = { render: {
-  toneMapping: 'ACESFilmic',   // None | Linear | Reinhard | Cineon | ACESFilmic | AgX | Neutral
+  toneMapping: 'ACESFilmic',   // the curve `exposure` was tuned for: the card shows AgX with the matched exposure
   exposure: 1.25,              // 0.05..4
   outputColorSpace: 'srgb',    // srgb | srgb-linear
   pixelRatioMax: 1.5,          // 0.5..3 (the device pixel ratio is capped to this)
@@ -171,7 +171,7 @@ house.userData.fp = { render: {
                                              // that never cuts the house or the sky dome
   sun: { shadowMapSize: 2048, bias: -0.0005, normalBias: 0.02 },  // map 256..4096 (power of two)
   lampShadows: { max: 6, mapSize: 1024, bias: -0.004, normalBias: 0, radius: 1 },  // max 0..8, map 128..1024 (default 4 × 512)
-  day: { hemi: ['#c4d6ff', '#2a2520', 0.9], sun: ['#fff0dc', 2.6] },   // [sky, ground, intensity], [colour, intensity]
+  day: { hemi: ['#c4d6ff', '#2a2520', 0.9], sun: ['#fff0dc', 2.6] },   // [sky, ground (below the sky's horizon), intensity (unused)], [colour, intensity]
   night: { hemi: ['#c4d6ff', '#2a2520', 0.14], sun: ['#fff0dc', 0] },
   glowIntensityPerBrightness: 3,  // glow mesh emissive per unit of lamp brightness
 } };
@@ -236,12 +236,13 @@ option `render.materials` takes the same object and comes after the model's (REA
 of it applies when the model loads next (reload the dashboard). Invalid selectors or classes are
 skipped with a warning (`bun run check-model` lists them).
 
-### Indirect light: probe grids and baked lightmaps (`render: { quality: high }`)
+### Indirect light: probe grids and baked lightmaps (every render quality)
 
-The sky environment of `quality: high` has no walls: on its own it fills every surface as if it stood
-outdoors. So with `quality: high` the card also bakes three's light probe grid (`LightProbeGridWebGL`)
+The sky environment (the fill light of every quality tier) has no walls: on its own it fills every surface as if it
+stood outdoors. So the card also bakes three's light probe grid (`LightProbeGridWebGL`)
 for each storey that has indoor rooms (the model's rooms with an outline and the drawn rooms; not
-zones): a box over the storey's rooms from floor to ceiling with a probe every 0.5 m, each a small
+zones): a box over the storey's rooms from floor to ceiling with a probe every 0.5 m (1 m in `quality: standard`,
+about a quarter of the probes to bake), each a small
 cube view of the scene lit as now (the sun through the windows, the lamps that are on, the sky through
 the openings). A probe that would sit in or right beside a wall is moved into its room, at least
 0.2 m from the walls. The grid's broad light (L2 spherical harmonics, blended between neighbouring
@@ -270,11 +271,10 @@ mat.userData.fp_lightmap = {             // or the long form; every key optional
 };
 ```
 
-With `quality: high` a `light` lightmap is the surface's ambient light instead of the sky's (and the
-probe grid); it follows the sky's brightness, so it is dark at night. The sun and the lamps stay
+A `light` lightmap is the surface's ambient light instead of the sky's (and the
+probe grid), in every quality tier; it follows the sky's brightness, so it is dark at night. The sun and the lamps stay
 live lights on top, so bake without them. A storey whose rooms are all baked (most of each room's meshes
 carry a lightmap) gets no grid at all. `type: ao` uses a baked occlusion texture from `texture` as the material's ambient occlusion.
-In `standard` the extras do nothing: an occlusion texture stays the glTF occlusion it is to any viewer.
 
 Blender (Cycles), per object or group of objects that shares one lightmap image:
 
@@ -368,18 +368,18 @@ Later types (`door`, `gate`, `fan`, `vacuum`, …) can be tagged already; they b
 
 ### Light hints
 
-| key          | meaning                                                                                                                                                                         | default         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| `beam`       | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light)                                                                        | `point`         |
-| `max`        | light intensity at full brightness (real light = brightness / 255 × `max`)                                                                                                      | 5               |
-| `distance`   | metres the light reaches (0 = no limit)                                                                                                                                         | 0               |
-| `decay`      | fall-off (2 = physical)                                                                                                                                                         | 2               |
-| `angle`      | spot cone, degrees (5–80)                                                                                                                                                       | 24              |
-| `penumbra`   | spot edge softness 0–1                                                                                                                                                          | 0.6             |
-| `target`     | `[x, y, z]` model point a spot aims at                                                                                                                                          | straight down   |
-| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters                                                                                                                    | true            |
-| `offset`     | `[x, y, z]` metres added to the light position (model axes)                                                                                                                     | none            |
-| `lumens`     | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) when the object has no `KHR_lights_punctual` lamp | 800 (spots 300) |
+| key          | meaning                                                                                                                                                                              | default         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
+| `beam`       | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light)                                                                             | `point`         |
+| `max`        | the lamp's weight: a `light_strip` gets a real light only with it, the light pool fills largest first, its wash size; the intensity itself is physical (`lumens` or the file's lamp) | 5               |
+| `distance`   | metres the light reaches (0 = no limit)                                                                                                                                              | 0               |
+| `decay`      | unused: real lights fall off with the inverse square (physical lamps)                                                                                                                | 2               |
+| `angle`      | spot cone, degrees (5–80)                                                                                                                                                            | 24              |
+| `penumbra`   | spot edge softness 0–1                                                                                                                                                               | 0.6             |
+| `target`     | `[x, y, z]` model point a spot aims at                                                                                                                                               | straight down   |
+| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters                                                                                                                         | true            |
+| `offset`     | `[x, y, z]` metres added to the light position (model axes)                                                                                                                          | none            |
+| `lumens`     | luminous flux at full brightness, used by the card's physical lamps (candela = lm / 4π, spots lm / π) when the object has no `KHR_lights_punctual` lamp                              | 800 (spots 300) |
 
 #### Lamps in the file (`KHR_lights_punctual`)
 
@@ -393,7 +393,7 @@ would be on all the time and bound to nothing); the first point or spot light in
 - a spot aims along the light's -Z axis (the glTF convention), unless `hints.target` is set;
 - type, cone (`outerConeAngle` -> `angle`, `innerConeAngle` -> `penumbra`) and `range` (->
   `distance`) are the defaults of the hints, which still win where they are given;
-- with `render.quality: high` its intensity (candela) at full brightness is the lamp's, scaled by
+- its intensity (candela) at full brightness is the lamp's, scaled by
   the HA brightness and the card's exposure; `hints.lumens` is only the fallback for objects
   without such a light. The colour stays the HA light's.
 

@@ -127,7 +127,10 @@ export const SCHEMA: FormSchema[] = [
                 value: "auto",
                 label: "Auto (default: high, standard when frames are slow)",
               },
-              { value: "high", label: "High (bloom, soft shadows, materials)" },
+              {
+                value: "high",
+                label: "High (bloom, softer sun shadow, finer light probes)",
+              },
               { value: "standard", label: "Standard (lighter on the GPU)" },
               {
                 value: "still",
@@ -320,9 +323,9 @@ const HELPERS: Record<string, string> = {
   render:
     "With a 3D model: use its render recipe (exposure, camera, shadows, day / night light) or ignore it",
   render_quality:
-    "Auto renders high and steps down to standard (and back) by the measured frame times. Standard costs the least GPU time (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.",
+    "Auto renders high and steps down to standard (and back) by the measured frame times. Every quality has the same light; standard skips the bloom and bakes coarser light probes (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.",
   render_tone_mapping:
-    "Auto: AgX in high / still (and auto while at high), otherwise the model's recipe",
+    "Auto: AgX in every quality (the model's recipe sets the exposure)",
   layout_key:
     "Cards with the same name share one plan. Letters, digits, - and _.",
   model:

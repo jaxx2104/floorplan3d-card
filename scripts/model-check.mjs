@@ -12,6 +12,8 @@ import { inverseTransformPoint, transformPoint } from "../src/bindings.ts";
 import { alignModelPoint } from "../src/views.ts";
 import { pixelToPlan } from "../src/mower-image.ts";
 import { fitOutline, HOUSE_OUTLINE } from "../src/load-outline.ts";
+import { matchExposure } from "../src/render-recipe.ts";
+import { ENV_DAY } from "../src/view/env-light.ts";
 
 const failures = [];
 const check = (name, ok, detail = "") => {
@@ -98,9 +100,9 @@ const waitTrue = (page, expr, label, timeout = 30000) =>
   );
 let allErrors = [];
 const sections = new Sections();
-// The sections check the card against the render recipe's own numbers (ACES, exposure, hemisphere, lamp
-// intensity = level x hints.max): they run at quality 'standard' unless their query sets one. The default tier
-// ('high') has its own section here (quality-default) and the tier checks in perf-check.
+// The sections run at quality 'standard' (the cheap tier: no bloom, coarser probes; the same light as 'high') unless
+// their query sets one. The default tier ('high') has its own section here (quality-default) and the tier checks in
+// perf-check.
 const addSection = sections.add.bind(sections);
 sections.add = (name, opts, fn) =>
   addSection(
@@ -550,7 +552,7 @@ sections.add(
     fills: (() => { let n = 0; v.staticGroup.traverse((o) => { if (o.isMesh && o.userData.roomId) n++; }); return n; })(),
     labels: ${card}.shadowRoot.querySelectorAll('.fp-room-label:not(.fp-obj-label)').length, tagged: v.isTagged(),
     hasModel: ${card}._stage.classList.contains('has-model'), dayHidden: ${card}.shadowRoot.querySelector('button.daynight').hidden }; })()`);
-    check("ACES tone mapping with a model", look.tm === 4, String(look.tm));
+    check("AgX tone mapping with a model", look.tm === 6, String(look.tm));
     check(
       "shadows on, shadow camera fitted to the model",
       look.sm === true && look.sr < 40,
@@ -692,7 +694,7 @@ sections.add(
 
     const lights = () =>
       page.evaluate(
-        `({ sun: ${card}._view.sun.intensity, hemi: ${card}._view.hemi.intensity, cast: ${card}._view.sun.castShadow })`,
+        `({ sun: ${card}._view.sun.intensity, hemi: ${card}._view.hemi.intensity, env: ${card}._view.scene.environmentIntensity, cast: ${card}._view.sun.castShadow })`,
       );
     const day = await lights();
     await page.evaluate(
@@ -704,10 +706,12 @@ sections.add(
     await idle(page);
     const night = await lights();
     check(
-      "night: sun off, hemisphere 0.14",
+      "night: sun off, the night sky's environment dimmer than the day's, no hemisphere light",
       night.sun === 0 &&
         night.cast === true &&
-        Math.abs(night.hemi - 0.14) < 0.001,
+        night.hemi === 0 &&
+        night.env > 0 &&
+        night.env < ENV_DAY,
       JSON.stringify(night),
     );
     check(
@@ -735,16 +739,18 @@ sections.add(
     await idle(page);
     const sNight = await lights();
     check(
-      "auto: sun at -20 deg -> hemi 0.14, sun 0",
-      Math.abs(sNight.hemi - 0.14) < 0.001 && sNight.sun === 0,
+      "auto: sun at -20 deg -> sun 0, the night sky's environment, no hemisphere light",
+      sNight.hemi === 0 && sNight.env < ENV_DAY && sNight.sun === 0,
       JSON.stringify(sNight),
     );
     await tint(30, 180);
     await idle(page);
     const sDay = await lights();
     check(
-      "auto: sun at +30 deg -> hemi 0.9, sun 2.6",
-      Math.abs(sDay.hemi - 0.9) < 0.001 && Math.abs(sDay.sun - 2.6) < 0.001,
+      "auto: sun at +30 deg -> sun 2.6, the day sky's environment, no hemisphere light",
+      sDay.hemi === 0 &&
+        Math.abs(sDay.env - ENV_DAY) < 1e-6 &&
+        Math.abs(sDay.sun - 2.6) < 0.001,
       JSON.stringify(sDay),
     );
     const shadowsBefore = await page.evaluate(`${card}._view.stats.shadow`);
@@ -954,8 +960,11 @@ sections.add(
     await idle(page);
     const r = await renderState(page);
     check(
-      "render recipe: exposure 1.1 and fov 38 from the model",
-      r.exposure === 1.1 && r.fov === 38 && r.from && r.from.keys === 11,
+      "render recipe: exposure 1.1 (ACES) from the model as AgX's matched exposure, fov 38",
+      r.exposure === matchExposure("ACESFilmic", 1.1, "AgX") &&
+        r.fov === 38 &&
+        r.from &&
+        r.from.keys === 11,
       JSON.stringify(r),
     );
     check(
@@ -1012,8 +1021,8 @@ sections.add(
     await idle(page);
     const r = await renderState(page);
     check(
-      "render: default ignores the recipe (exposure 1.25, fov 35, 4 lamp shadows)",
-      r.exposure === 1.25 &&
+      "render: default ignores the recipe (exposure 1.25 ACES as AgX's matched exposure, fov 35, 4 lamp shadows)",
+      r.exposure === matchExposure("ACESFilmic", 1.25, "AgX") &&
         r.fov === 35 &&
         r.from === null &&
         r.shadows === 4 &&
@@ -1238,14 +1247,14 @@ sections.add(
     await wx(60);
     const part = await sky();
     check(
-      "weather 60 %: cloud shadows on ~60 % of the ground, the sun keeps its strength between them, rooms x0.55, shadow 0.61, more fill",
+      "weather 60 %: cloud shadows on ~60 % of the ground, the sun keeps its strength between them, rooms x0.55, shadow 0.61",
       part.shadows === 1 &&
         Math.abs(part.cover - 0.4) < 0.001 &&
         Math.abs(part.strength - 0.9) < 0.001 &&
         part.sun === clear.sun &&
         Math.abs(part.roomShade - 0.55) < 0.001 &&
         Math.abs(part.shadow - 0.61) < 0.001 &&
-        Math.abs(part.hemi / clear.hemi - 1.21) < 0.001 &&
+        part.hemi === 0 &&
         Math.abs(part.disc - 0.52) < 0.001,
       JSON.stringify(part),
     );
@@ -3074,17 +3083,23 @@ sections.add(
       (await look()).glow.dock > 0,
     );
     await setState("lawn_mower.demo", "mowing");
-    // brightness: the pool light follows (bri / 255 x hints.max)
+    // brightness: the pool light follows (its candela x bri / 255)
+    const living0 = (await look()).near.lamp_living,
+      bri0 = await page.evaluate(
+        `${card}._hass.states['light.demo_living'].attributes.brightness`,
+      );
     await page.evaluate(
       `${card}._hass.callService('light', 'turn_on', { entity_id: 'light.demo_living', brightness: 51 })`,
     );
     await idle(page);
     L = await look();
     check(
-      "brightness 51 -> the lamp's pool light at 51/255 x max 20 = 4",
+      "brightness 51 -> the lamp's pool light at 51 / brightness before of its light",
       L.near.lamp_living.length === 1 &&
-        Math.abs(L.near.lamp_living[0] - 4) < 0.05,
-      JSON.stringify(L.near.lamp_living),
+        living0 &&
+        living0.length === 1 &&
+        Math.abs(L.near.lamp_living[0] - (living0[0] * 51) / bri0) < 0.01,
+      JSON.stringify({ now: L.near.lamp_living, before: living0, bri0 }),
     );
     // a tap on the lamp toggles its entity (the mock records callService)
     const lampAt = (id) =>
@@ -3850,7 +3865,7 @@ sections.add(
       page.evaluate(`(() => { const c = ${card}, v = c._view, l = c._objects;
     const kitchen = l._slots.get('lamp_kitchen');
     const pools = [...l.parts].filter(([, p]) => p.wash).flatMap(([id, p]) => p.wash.placements.map((pl, i) => ({ id, variant: pl.variant, real: l._slots.has(id), shown: p.wash.meshes[i].visible })));
-    return { option: v.look.renderOpt.quality, quality: v.look.quality(), tm: v.renderer.toneMapping, physical: l.physical, env: !!(v.look._env && v.look._env.enabled !== false),
+    return { option: v.look.renderOpt.quality, quality: v.look.quality(), tm: v.renderer.toneMapping, env: !!(v.look._env && v.look._env.enabled !== false),
       kitchen: kitchen ? +kitchen.light.intensity.toFixed(2) : null, hemi: +v.hemi.intensity.toFixed(3),
       real: [...l._slots.keys()], realWashes: pools.filter((x) => x.real && x.shown).map((x) => x.id + ':' + x.variant), walls: pools.filter((x) => x.variant !== 'pool' && x.shown).length }; })()`);
     let hi = await look();
@@ -3859,7 +3874,6 @@ sections.add(
       hi.option === "auto" &&
         hi.quality === "high" &&
         hi.tm === 6 &&
-        hi.physical &&
         hi.kitchen === 15.92 &&
         hi.hemi === 0,
       JSON.stringify(hi),
@@ -3885,12 +3899,12 @@ sections.add(
     await idle(page);
     const std = await look();
     check(
-      "quality standard: ACES, recipe lamps (max 20), hemisphere light, no wash from a lamp with a real light, washes from lamps without",
+      "quality standard: the same light as high (AgX, physical lamps, sky environment, no hemisphere light), no wash from a lamp with a real light, washes from lamps without",
       std.quality === "standard" &&
-        std.tm === 4 &&
-        !std.physical &&
-        std.kitchen === 20 &&
-        std.hemi > 0 &&
+        std.tm === 6 &&
+        std.env &&
+        std.kitchen === 15.92 &&
+        std.hemi === 0 &&
         std.realWashes.length === 0 &&
         std.walls > 0,
       JSON.stringify(std),

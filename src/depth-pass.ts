@@ -1,4 +1,4 @@
-// Depth pre-pass of the opaque meshes for the screen effects (ao.js, dof.js): every visible mesh that
+// Depth pre-pass of the opaque meshes for the screen effects (finish.ts: bokeh): every visible mesh that
 // writes depth, drawn with a depth-only stand-in of its material (same side, clipping planes and alpha
 // test, so the cut-away stays cut). Colour red = front face: the inside of a cut wall (its back faces)
 // is told apart. Transparent things, helpers, glass, sprites, points and lines are left out.

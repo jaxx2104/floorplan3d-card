@@ -1,7 +1,7 @@
 // The card YAML contract (Lovelace `type: custom:floorplan3d-card`). parseCardConfig never throws:
 // a value of the wrong type is dropped (the option's default applies) and reported, numbers given as
 // strings are read as numbers. Options with structured values owned by another module (render,
-// ao, bokeh, views, actions ...) are typed here but validated by that module (owned()).
+// bokeh, views, actions ...) are typed here but validated by that module (owned()).
 // The types in src/types/config.ts are derived from this schema.
 
 import {
@@ -20,6 +20,7 @@ import {
   string,
   union,
   withDefault,
+  INVALID,
   type Infer,
   type Issue,
   type Schema,
@@ -32,6 +33,15 @@ const opt = optional;
 const owned = <T = unknown>(): Schema<T> => ({
   expected: "a value",
   parse: (v) => v as T,
+});
+
+/** An option the card no longer has: any value is reported (`why`) and dropped. */
+const removed = (why: string): Schema<never> => ({
+  expected: "nothing",
+  parse: (_v, path, ctx) => {
+    ctx.warnings.push({ path, message: why });
+    return INVALID;
+  },
 });
 
 /** A string; a number in YAML (`layout_key: 2`) is read as its text. */
@@ -103,7 +113,8 @@ export const cardConfigSchema = object({
   /** 'model' | 'default' (the render recipe), or the object form (render-recipe.ts normRenderOption). */
   render: opt(owned<RenderCardOption>()),
   max_fps: opt(owned()),
-  ao: opt(owned()),
+  /** Removed: the probe grids and contact shadows shade corners and contact in every quality tier. */
+  ao: opt(removed("no longer used")),
   bokeh: opt(owned()),
   grade: opt(owned()),
   background: opt(owned()),

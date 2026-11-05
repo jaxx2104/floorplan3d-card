@@ -1,4 +1,4 @@
-// Indirect light of the model under render quality 'high': light probe grids per storey (light-probes.ts) and
+// Indirect light of the model (every render quality): light probe grids per storey (light-probes.ts) and
 // lightmaps baked into the GLB (lightmap.ts). The grids are baked here, with the view's overlays hidden and the whole
 // house shown (every level, no cut), so a room sees its ceiling and the storey above even while the plan shows
 // one floor; the bake neither draws a shadow map (those are the frame's) nor uses the probes it builds.
@@ -169,6 +169,7 @@ export class IndirectLight {
     floors: unknown;
     model: unknown;
     baked: string;
+    spacing: number;
   } | null;
   _roomsKey: string;
 
@@ -191,12 +192,10 @@ export class IndirectLight {
     this.lightmaps = { root, entries };
   }
 
-  // The tier's probes and lightmaps on with a model (made on first use), else off (freed / restored). Runs on model
-  // load and look changes.
+  // The probes and lightmaps on with a model (made on first use), else off (freed / restored); a tier change
+  // regrids the probes at its spacing (the next step). Runs on model load and look changes.
   sync(): void {
-    const t = this.view.look.tier(),
-      model = this.view.model;
-    const on = !!model && t.lightProbes;
+    const on = !!this.view.model;
     if (on && !this.probes) {
       this.probes = new LightProbes(
         this.view.renderer,
@@ -217,13 +216,12 @@ export class IndirectLight {
     this._syncLightmaps(); // other look changes (theme, day / night) keep the probes: their inputs decide
   }
 
-  // Lightmaps applied in high, restored otherwise; their light follows the sky. -> any recompiles.
+  // Lightmaps applied with the model, restored without it; their light follows the sky. -> any recompiles.
   _syncLightmaps(): boolean {
     const lm = this.lightmaps,
       model = this.view.model;
     if (!lm) return false;
-    const on =
-      !!model && model.root === lm.root && this.view.look.tier().bakedLightmaps;
+    const on = !!model && model.root === lm.root;
     const sky = this.view.scene.environmentIntensity / ENV_DAY;
     let changed = false;
     for (const e of lm.entries) if (applyLightmap(e, on, sky)) changed = true;
@@ -262,13 +260,15 @@ export class IndirectLight {
         ":" +
         lm.entries.length
       : "";
+    const spacing = v.look.tier().probeSpacing;
     const f = this._setupFor;
     if (
       f &&
       f.rooms === v._rooms &&
       f.floors === v.floors &&
       f.model === v.model &&
-      f.baked === baked
+      f.baked === baked &&
+      f.spacing === spacing
     )
       return;
     this._setupFor = {
@@ -276,6 +276,7 @@ export class IndirectLight {
       floors: v.floors,
       model: v.model,
       baked,
+      spacing,
     };
     const { rooms, storeys } = probeRooms(v._rooms, v.floors);
     // a storey whose rooms are all baked gets no grid
@@ -294,10 +295,11 @@ export class IndirectLight {
       v.model ? v.model.id : null,
       rooms.map((r) => [r.key, r.polygon, r.y0, r.y1]),
       [...skip],
+      spacing,
     ]);
     if (key === this._roomsKey && this.probes!.setup) return; // the same rooms again (a new structure, same content)
     this._roomsKey = key;
-    const setup: ProbeSetup = { rooms, storeys, skip };
+    const setup: ProbeSetup = { rooms, storeys, skip, spacing };
     this.probes!.setRooms(setup);
   }
 
@@ -339,7 +341,6 @@ export class IndirectLight {
     const light = [
       v.sun.intensity,
       v.moonLight.intensity,
-      v.hemi.intensity,
       v.scene.environmentIntensity,
     ]
       .map(lightStep)

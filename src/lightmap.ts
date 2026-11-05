@@ -1,4 +1,4 @@
-// Baked lightmaps (render quality 'high', QualityTier.bakedLightmaps): light the owner baked in Blender, shipped in
+// Baked lightmaps (every render quality): light the owner baked in Blender, shipped in
 // the GLB on a second UV set. A material says so in its glTF extras:
 //
 //   "fp_lightmap": "occlusion"

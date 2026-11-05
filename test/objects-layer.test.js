@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import * as THREE from "three";
 import { ObjectLayer } from "../src/objects/layer.ts";
+import { lampIntensity } from "../src/photometry.ts";
 import { st } from "./helpers/hass.js";
 import {
   fakeView,
@@ -63,7 +64,9 @@ describe("ObjectLayer", () => {
     expect(on).toHaveLength(1);
     expect(points(layer).indexOf(on[0])).toBeLessThan(4);
     expect(on[0].position.toArray()).toEqual([3, 2, 0]);
-    expect(on[0].intensity).toBeCloseTo((128 / 255) * 10);
+    expect(on[0].intensity).toBeCloseTo(
+      lampIntensity(null, 128 / 255, "point"),
+    ); // physical: the flux, not hints.max
     expect(on[0].distance).toBe(9);
     expect(view.shadow).toBe(1);
     expect(
@@ -95,7 +98,7 @@ describe("ObjectLayer", () => {
     );
     const l = lit(points(layer))[0];
     expect(points(layer).indexOf(l)).toBeLessThan(4); // a shadow light
-    expect(l.intensity).toBeCloseTo(1);
+    expect(l.intensity).toBeCloseTo(lampIntensity(null, 51 / 255, "point"));
     expect(l.color.g).toBeCloseTo(0);
     expect(view.shadow).toBe(s); // shadow maps depend on position only
     expect(view.dirty).toBeGreaterThan(d);
@@ -113,7 +116,7 @@ describe("ObjectLayer", () => {
     layer.update({ "light.row": st("on") }, ctx);
     const on = lit(points(layer));
     expect(on).toHaveLength(1);
-    expect(on[0].intensity).toBeCloseTo(3);
+    expect(on[0].intensity).toBeCloseTo(lampIntensity(null, 1, "point") * 1.5);
     expect(on[0].position.x).toBe(9); // g10 of g1..g20
     expect(points(layer).indexOf(on[0])).toBeGreaterThanOrEqual(4); // groups never cast shadows
   });

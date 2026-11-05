@@ -152,8 +152,6 @@ export class ObjectLayer {
   _labelSig?: string | null;
   badTargets?: Map<string, BadTarget>;
   washCfg?: WashConfig | null;
-  /** Physical lamp light (render quality 'high', setPhysical): HA's colour, candela from the model lamp or lumens. */
-  physical = false;
 
   constructor(view: ObjectLayerHost) {
     this.view = view;
@@ -530,16 +528,6 @@ export class ObjectLayer {
     for (const p of this.parts.values()) p.inputs = null; // re-evaluate every chain once
   }
 
-  // Physical lamp light on / off (the quality tier): every lamp is evaluated and lit again at the next update.
-  // -> true when it changed (the caller asks for that update).
-  setPhysical(on: boolean): boolean {
-    if (on === this.physical) return false;
-    this.physical = on;
-    for (const p of this.parts.values()) p.inputs = null;
-    this._budgetSig = null;
-    return true;
-  }
-
   update(states: Record<string, HassEntity>, ctx: LayerUpdateCtx = {}): void {
     if (!this.model) return;
     this.stats.updates++;
@@ -592,7 +580,6 @@ export class ObjectLayer {
           states,
           entity: hidden ? null : (binding && binding.entity) || null,
           mowerEntity,
-          physical: this.physical,
         });
         changed = true;
         if (p.result.moved && p.part.moving) movedParts.push(p.part.moving);
@@ -913,7 +900,7 @@ export class ObjectLayer {
           ),
         );
       l.distance = h.distance;
-      l.decay = this.physical ? 2 : h.decay; // physical: candela with inverse-square fall-off
+      l.decay = 2; // physical: candela with inverse-square fall-off
       if (l instanceof THREE.SpotLight) {
         l.angle = h.angle * DEG;
         l.penumbra = h.penumbra;
@@ -947,14 +934,12 @@ export class ObjectLayer {
     );
     const h = p.part.hints;
     slot.light.intensity =
-      (this.physical
-        ? lampIntensity(
-            h.lumens,
-            r.level,
-            slot.light instanceof THREE.SpotLight ? "spot" : "point",
-            h.candela,
-          )
-        : r.level * h.max) * slot.factor;
+      lampIntensity(
+        h.lumens,
+        r.level,
+        slot.light instanceof THREE.SpotLight ? "spot" : "point",
+        h.candela,
+      ) * slot.factor;
   }
 
   _darken(): void {

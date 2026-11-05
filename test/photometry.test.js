@@ -203,36 +203,25 @@ describe("ObjectLayer physical lamps", () => {
   };
   const lamp = (layer) => layer.pool.points.find((l) => l.intensity > 0);
 
-  it("standard: hints.max and decay as modelled; physical: candela, inverse square, HA's colour", () => {
+  it("every tier: candela, inverse square, HA's colour (hints.max and decay no longer set the light)", () => {
     const layer = new ObjectLayer(fakeView());
     layer.setModel(model({ max: 20, distance: 8, decay: 1.5 }));
     layer.setBindings(bind, {});
     layer.update(states, ctx);
-    expect(lamp(layer).intensity).toBeCloseTo(20);
-    expect(lamp(layer).decay).toBe(1.5);
-    const std = lamp(layer).color.clone();
-    expect(layer.setPhysical(true)).toBe(true);
-    expect(layer.setPhysical(true)).toBe(false);
-    layer.update(states, ctx);
     expect(lamp(layer).intensity).toBeCloseTo(lampIntensity(null, 1, "point"));
     expect(lamp(layer).decay).toBe(2);
-    // colour temperature mode: HA's rgb_color in both tiers
+    // colour temperature mode: HA's rgb_color
     expect(lamp(layer).color.getHex()).toBe(
       new THREE.Color()
         .setRGB(255 / 255, 166 / 255, 87 / 255, THREE.SRGBColorSpace)
         .getHex(),
     );
-    expect(lamp(layer).color.equals(std)).toBe(true);
-    layer.setPhysical(false);
-    layer.update(states, ctx);
-    expect(lamp(layer).intensity).toBeCloseTo(20);
-    expect(lamp(layer).color.equals(std)).toBe(true);
+    expect(layer).not.toHaveProperty("setPhysical");
   });
   it("hints.lumens overrides the default flux", () => {
     const layer = new ObjectLayer(fakeView());
     layer.setModel(model({ lumens: 1600 }));
     layer.setBindings(bind, {});
-    layer.setPhysical(true);
     layer.update(states, ctx);
     expect(lamp(layer).intensity).toBeCloseTo(lampIntensity(1600, 1, "point"));
   });
@@ -264,7 +253,6 @@ describe("ObjectLayer physical lamps", () => {
     const layer = new ObjectLayer(fakeView());
     layer.setModel(m);
     layer.setBindings(bind, {});
-    layer.setPhysical(true);
     layer.update(states, ctx);
     const l = layer.pool.spots.find((x) => x.intensity > 0);
     expect(l).toBeTruthy();

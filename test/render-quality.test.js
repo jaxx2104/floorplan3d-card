@@ -6,6 +6,7 @@ import {
   matchExposure,
   toneGrey,
   QUALITY_TIERS,
+  LOOK_TONE_MAPPING,
   QUALITIES,
   RENDER_OPTION_DEFAULTS,
   RENDER_DEFAULTS,
@@ -81,35 +82,39 @@ describe("normRenderOption", () => {
       /needs model, default or an object/,
     );
   });
-  it("tiers: standard turns nothing on, high the sky environment with AgX", () => {
+  it("tiers: the same light in each, only cost knobs differ", () => {
     expect(QUALITIES).toEqual(["standard", "high", "still"]);
+    // no tier switches a light or a fake effect on or off: sky environment, probes, lightmaps, contact shadows,
+    // physical lamps and the tone mapping are in every tier (and no hemisphere light with a model)
+    for (const q of QUALITIES)
+      expect(Object.keys(QUALITY_TIERS[q]).sort()).toEqual([
+        "bloom",
+        "pathTrace",
+        "probeSpacing",
+        "sunShadowRadius",
+      ]);
     expect(QUALITY_TIERS.standard).toEqual({
-      toneMapping: null,
-      envLight: false,
-      hemiScale: 1,
-      physicalLights: false,
       bloom: false,
       sunShadowRadius: 1.5,
-      contactShadows: false,
-      lightProbes: false,
-      bakedLightmaps: false,
+      probeSpacing: 1,
       pathTrace: false,
     });
-    expect(QUALITY_TIERS.high.pathTrace).toBe(false);
+    expect(QUALITY_TIERS.high).toEqual({
+      bloom: true,
+      sunShadowRadius: 3,
+      probeSpacing: 0.5,
+      pathTrace: false,
+    });
+    // standard: about a quarter of high's probes per pass
+    expect(QUALITY_TIERS.standard.probeSpacing).toBe(
+      2 * QUALITY_TIERS.high.probeSpacing,
+    );
     // 'still' is 'high' plus idle path tracing
     expect({ ...QUALITY_TIERS.still, pathTrace: false }).toEqual({
       ...QUALITY_TIERS.high,
     });
     expect(QUALITY_TIERS.still.pathTrace).toBe(true);
     expect(normRenderOption({ quality: "still" }).option.quality).toBe("still");
-    expect(QUALITY_TIERS.high.lightProbes).toBe(true);
-    expect(QUALITY_TIERS.high.bakedLightmaps).toBe(true);
-    expect(QUALITY_TIERS.high.contactShadows).toBe(true);
-    expect(QUALITY_TIERS.high.physicalLights).toBe(true);
-    expect(QUALITY_TIERS.high.bloom).toBe(true);
-    expect(QUALITY_TIERS.high.toneMapping).toBe("AgX");
-    expect(QUALITY_TIERS.high.envLight).toBe(true);
-    expect(QUALITY_TIERS.high.hemiScale).toBe(0); // the sky environment (and indoors the probes) is the fill
   });
   it("sun shadow: every tier on three's PCF map, the tiers differ by the tap spread only", () => {
     for (const q of QUALITIES) {
@@ -128,40 +133,24 @@ describe("normRenderOption", () => {
 });
 
 describe("tone mapping and exposure", () => {
-  const STANDARD = { ...RENDER_OPTION_DEFAULTS, quality: "standard" };
-  it("standard keeps the recipe tone mapping and exposure exactly", () => {
-    for (const toneMapping of TONE_MAPPINGS) {
-      expect(renderTone({ toneMapping, exposure: 1.1 }, STANDARD)).toEqual({
-        toneMapping,
-        exposure: 1.1,
+  it("every tier: AgX with the exposure that keeps the recipe's mid grey", () => {
+    for (const quality of ["standard", "high", "still", "auto"])
+      expect(
+        renderTone(RENDER_DEFAULTS, { ...RENDER_OPTION_DEFAULTS, quality }),
+      ).toEqual({
+        toneMapping: LOOK_TONE_MAPPING,
+        exposure: matchExposure("ACESFilmic", 1.25, "AgX"),
       });
-    }
-    expect(renderTone(RENDER_DEFAULTS, STANDARD)).toEqual({
-      toneMapping: "ACESFilmic",
-      exposure: 1.25,
-    });
-    // auto: the tier of its level (high until it has one)
+    expect(LOOK_TONE_MAPPING).toBe("AgX");
+    // a recipe already in AgX keeps its exposure exactly
     expect(
-      renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS).toneMapping,
-    ).toBe("AgX");
-    expect(
-      renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS, "standard"),
-    ).toEqual({ toneMapping: "ACESFilmic", exposure: 1.25 });
+      renderTone({ toneMapping: "AgX", exposure: 1.1 }, RENDER_OPTION_DEFAULTS),
+    ).toEqual({ toneMapping: "AgX", exposure: 1.1 });
   });
-  it("high defaults to AgX; the card tone_mapping wins over the tier", () => {
+  it("the card tone_mapping wins", () => {
     expect(
       renderTone(RENDER_DEFAULTS, {
         ...RENDER_OPTION_DEFAULTS,
-        quality: "high",
-      }).toneMapping,
-    ).toBe("AgX");
-    expect(
-      renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS).toneMapping,
-    ).toBe("AgX"); // high is the default
-    expect(
-      renderTone(RENDER_DEFAULTS, {
-        ...RENDER_OPTION_DEFAULTS,
-        quality: "high",
         toneMapping: "ACESFilmic",
       }),
     ).toEqual({ toneMapping: "ACESFilmic", exposure: 1.25 });
@@ -195,10 +184,7 @@ describe("tone mapping and exposure", () => {
       }
     }
     // the demo / default recipes: AgX needs a little more exposure than ACES for the same mid grey
-    const agx = renderTone(RENDER_DEFAULTS, {
-      ...RENDER_OPTION_DEFAULTS,
-      quality: "high",
-    }).exposure;
+    const agx = renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS).exposure;
     expect(agx).toBeGreaterThan(1.25);
     expect(agx).toBeLessThan(1.6);
   });

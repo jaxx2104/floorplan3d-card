@@ -197,18 +197,24 @@ describe("card config (YAML)", () => {
     const p = parseCardConfig({
       type: "t",
       render,
-      ao: "strong",
       views: { a: {} },
       actions: { "light.a": {} },
       weather: false,
     });
     expect(p.value.render).toBe(render);
     expect(p.value).toMatchObject({
-      ao: "strong",
       views: { a: {} },
       weather: false,
     });
     expect(p.warnings).toEqual([]);
+  });
+
+  it("ao is no longer an option: dropped with a warning", () => {
+    for (const ao of [true, { intensity: 2 }, false]) {
+      const p = parseCardConfig({ type: "t", ao });
+      expect(p.value).not.toHaveProperty("ao");
+      expect(p.warnings).toEqual([{ path: "ao", message: "no longer used" }]);
+    }
   });
 
   it("never throws", () => {

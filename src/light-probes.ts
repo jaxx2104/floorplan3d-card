@@ -1,9 +1,9 @@
-// Light probe grids (render quality 'high', QualityTier.lightProbes): the indirect light indoors. The sky
+// Light probe grids (every render quality; QualityTier.probeSpacing sets their density): the indirect light indoors. The sky
 // environment (view/env-light.ts) has no occlusion: every surface gets the sky's fill as if it stood outdoors,
 // corners are as bright as the middle of a wall and nothing bounces between walls. So each storey with indoor rooms
 // gets one of three's irradiance volumes (LightProbeGridWebGL: a box of L2 spherical-harmonics probes, baked on the
 // GPU from cube renders, sampled trilinearly by three's own lights_fragment_begin), over the box of its indoor rooms
-// from floor to ceiling, a probe every PROBE_SPACING_M. A probe sees the scene as it is lit now (the sun through the
+// from floor to ceiling, a probe every PROBE_SPACING_M (the tier's spacing). A probe sees the scene as it is lit now (the sun through the
 // windows, the lamps that are on, the sky seen through the openings). Three adds a grid's irradiance to the
 // material's light; the patched model materials (cloud-shadow.ts, material userData.fpProbe) take it in place of
 // the sky environment's diffuse fill instead and dim the sky's reflections by the same ratio (PROBE_BEGIN /
@@ -15,7 +15,7 @@
 //
 // Rebuilt only when what they see changes: the rooms or the model, the sky environment (it is rebuilt when the sun
 // or moon moved > ENV_ANGLE_DEG, clouds, day / night, throttled), a lamp turned on / off or its brightness or colour,
-// the light levels (sun, moon, hemisphere, environment) by more than PROBE_LIGHT_STEP. A change starts a pass that
+// the light levels (sun, moon, environment) by more than PROBE_LIGHT_STEP. A change starts a pass that
 // bakes probes for up to PROBE_BUDGET_MS a frame into a second set of grids and swaps them in at its end; changes during a pass
 // make one more pass after it, at most every PROBE_THROTTLE_MS except for rooms and sky.
 import * as THREE from "three";
@@ -25,7 +25,7 @@ import type { PlanPoint } from "./types/layout.ts";
 
 /** Storeys with a grid at most (a grid is a 3D texture unit in every lit shader). */
 export const PROBE_MAX_FLOORS = 4;
-/** Probe spacing (m) across the plan, probes per axis at most, probe layers per storey. */
+/** Default probe spacing (m) across the plan (the tiers set theirs), probes per axis at most, probe layers per storey. */
 export const PROBE_SPACING_M = 0.5;
 export const PROBE_MAX_AXIS = 32;
 export const PROBE_LAYERS = 1;
@@ -181,11 +181,12 @@ export function probeSpot(
 
 // The grid of each storey: over the plan box of its indoor rooms (no margin: an outer wall's outside face, read
 // half a spacing out along its normal, falls outside the box and keeps the sky), floor to ceiling, a probe every
-// PROBE_SPACING_M (at most PROBE_MAX_AXIS a side), PROBE_LAYERS high. skip: storeys without a grid.
+// spacing (at most PROBE_MAX_AXIS a side), PROBE_LAYERS high. skip: storeys without a grid.
 export function probeGrids(
   rooms: readonly ProbeRoom[],
   storeys: readonly ProbeStorey[],
   skip: ReadonlySet<number> = new Set(),
+  spacing: number = PROBE_SPACING_M,
 ): ProbeGridSpec[] {
   const out: ProbeGridSpec[] = [];
   storeys.forEach((s, k) => {
@@ -209,7 +210,7 @@ export function probeGrids(
       y0 = s.y0 - 0.02,
       h = s.y1 + 0.02 - y0;
     const n = (len: number) =>
-      Math.max(1, Math.min(PROBE_MAX_AXIS, Math.round(len / PROBE_SPACING_M)));
+      Math.max(1, Math.min(PROBE_MAX_AXIS, Math.round(len / spacing)));
     const nx = n(w),
       nz = n(d);
     const spots: PlanPoint[] = [];
@@ -373,6 +374,8 @@ export interface ProbeSetup {
   rooms: ProbeRoom[];
   storeys: ProbeStorey[];
   skip: ReadonlySet<number>;
+  /** probe spacing (m): the quality tier's */
+  spacing?: number;
 }
 
 // One storey's grid: three's grid whose probes capture at their spots (moved off the walls) rather than on the
@@ -475,7 +478,12 @@ export class LightProbes {
     this._free();
     this.setup = setup;
     this.uniforms.fpProbeOn.value = 0;
-    const specs = probeGrids(setup.rooms, setup.storeys, setup.skip);
+    const specs = probeGrids(
+      setup.rooms,
+      setup.storeys,
+      setup.skip,
+      setup.spacing,
+    );
     this.live = specs.map((s) => new StoreyGrid(s));
     this.spare = specs.map((s) => new StoreyGrid(s));
     for (const g of this.live) {

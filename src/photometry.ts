@@ -1,4 +1,4 @@
-// Physical lamp light (render quality 'high', QualityTier.physicalLights): the colour HA reports (rgb_color,
+// Physical lamp light (every render quality): the colour HA reports (rgb_color,
 // which HA also fills in colour temperature mode), a blackbody 2700 K bulb for a lamp that reports no colour at
 // all; intensity in candela (three's unit for point and spot lights) from the model lamp (KHR_lights_punctual)
 // or a luminous flux, scaled by HA brightness. Pure functions, unit-tested.

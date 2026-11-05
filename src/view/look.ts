@@ -1,6 +1,5 @@
 // Render look of the floorplan view: the render recipe, tone mapping, sun / sky light and the sun's
-// shadow box, the house dome, city lights, plant sway, surround light, ambient occlusion and the frame
-// finish (bokeh / grade), furniture colours and animated screens. The light objects (hemi, sun,
+// shadow box, the house dome, city lights, plant sway, surround light and the frame finish (bokeh / grade), furniture colours and animated screens. The light objects (hemi, sun,
 // moonLight) stay on the view.
 
 import * as THREE from "three";
@@ -25,7 +24,6 @@ import {
   cityLightsOn,
 } from "../render-recipe.ts";
 import { cloudLight } from "../weather.ts";
-import { AmbientOcclusion, normAo } from "../ao.ts";
 import { ScreenFinish, normBokeh, normGrade } from "../finish.ts";
 import { normSway, swayLean } from "../cloud-shadow.ts";
 import { shadowInfo, sunDirection } from "../render-rules.ts";
@@ -100,7 +98,6 @@ export class RenderLook {
   _sway: SwaySettings | null;
   _swayClock: { at: number } | null;
   _surround: DayNight | null;
-  _ao: AmbientOcclusion | null;
   _finishOpts: FinishSettings | null;
   _finish: ScreenFinish | null;
   _depthPass: DepthPrepass | null;
@@ -134,10 +131,9 @@ export class RenderLook {
     this._sway = null; // card option sway (normalised) or null
     this._swayClock = null; // { at }: last sway frame
     this._surround = null; // card option surround_light (normalised) or null
-    this._ao = null; // AmbientOcclusion or null
     this._finishOpts = null; // { bokeh, grade } (normalised)
     this._finish = null; // ScreenFinish or null
-    this._depthPass = null; // DepthPrepass for ao / finish, created on first use
+    this._depthPass = null; // DepthPrepass for the finish, created on first use
     this._screens = null; // fp_anim screens of the model
     this._screenStates = null; // hass.states for the screens
     this._dome = null; // { centre: Vector3 (house centre on the ground), radius }
@@ -182,7 +178,7 @@ export class RenderLook {
     return level ? levelQuality(level) : "high";
   }
 
-  // What the quality tier in use turns on (QUALITY_TIERS).
+  // What the quality tier in use costs (QUALITY_TIERS).
   tier(): Readonly<QualityTier> {
     return QUALITY_TIERS[this.quality()];
   }
@@ -304,10 +300,10 @@ export class RenderLook {
       hemi = this.view.hemi,
       sun = this.view.sun;
     const k = skyLights(this.render, t); // the recipe's day / night colours and intensities
-    hemi.color.setHex(k.hemiSky);
-    hemi.groundColor.setHex(k.hemiGround);
     const L = cloudLight(this.view.skyLayer.weather.applied || 0, t);
-    hemi.intensity = k.hemiIntensity * L.hemi * this.tier().hemiScale;
+    // with a model the sky's environment light is the fill (indoors the probe grids): the hemisphere light (the plan's
+    // light without a model) on top lit every surface a second time, unoccluded, closed rooms included
+    hemi.intensity = 0;
     sun.color.setHex(k.sunColor);
     // cloud shadows on: the sun keeps its clear-sky strength (the patches and the rooms' shade dim it)
     sun.intensity =
@@ -340,10 +336,9 @@ export class RenderLook {
     this.indirect.skyChanged(); // baked light follows the sky's brightness
   }
 
-  // The tier's environment light from the sky: on with a model when the tier asks for it (made then), else
-  // off (freed). Changes of the sky ask for a rebuild (throttled, see env-light.ts); the brightness follows now.
+  // The environment light from the sky: on with a model (made then), else off (freed). Changes of the sky ask for a rebuild (throttled, see env-light.ts); the brightness follows now.
   _syncEnv(): void {
-    const on = !!this.view.model && this.tier().envLight;
+    const on = !!this.view.model;
     if (!on) {
       if (this._env) {
         this._env.dispose();
@@ -359,10 +354,8 @@ export class RenderLook {
     this._skyEnv();
   }
 
-  // The tier's selective bloom, physical lamp light and contact shadows: on
-  // with a model when the tier asks for them. A change of the lamp model re-evaluates the lamps (the card's object
-  // update); the shadow variants recompile the model materials that changed (the callers flag
-  // every material anyway).
+  // Selective bloom with a model when the tier asks for it; contact shadows and the probe / lightmap variant of the
+  // model materials with every model (set once per material: a tier change recompiles nothing).
   _syncTierLook(): void {
     const t = this.tier(),
       model = this.view.model;
@@ -372,20 +365,17 @@ export class RenderLook {
       this._bloom.dispose();
       this._bloom = null;
     }
-    if (model && t.contactShadows && !this._contact)
+    if (model && !this._contact)
       this._contact = new ContactShadows(
         this.view.renderer,
         this.view.skyLayer._cloudU,
       );
-    if (!(model && t.contactShadows) && this._contact) {
+    if (!model && this._contact) {
       this._contact.dispose();
       this._contact = null;
     }
     if (model) {
-      const variant = {
-        contact: t.contactShadows,
-        probe: t.lightProbes || t.bakedLightmaps,
-      };
+      const variant = { contact: true, probe: true };
       model.root.traverse((o) => {
         if (!isMesh(o)) return;
         for (const m of ([] as (THREE.Material | undefined)[]).concat(
@@ -396,9 +386,6 @@ export class RenderLook {
     }
     this.indirect.sync();
     this.view.still.sync(); // the path tracer (quality still) freed in the other tiers and without a model
-    const layer = this.view.objectLayer;
-    if (layer && layer.setPhysical(t.physicalLights))
-      this.view._objectsInvalid();
   }
 
   _skyEnv(): void {
@@ -532,32 +519,6 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
-  // The ao pass of a frame: the card option's, in the tiers without the probe grids and contact shadows only.
-  // Those already shade the corners, wall feet and the floor under furniture, and on top of them the pass (which
-  // multiplies the finished frame, the lamps' and the sun's direct light included) darkened a quarter of the demo's
-  // interior views to 0.65 of their light, the probes' corners a second time.
-  aoPass(): AmbientOcclusion | null {
-    const t = this.tier();
-    return this._ao && !(t.lightProbes || t.contactShadows) ? this._ao : null;
-  }
-
-  // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
-  setAo(opt: unknown): void {
-    const next = normAo(opt);
-    if (
-      JSON.stringify(next) ===
-      JSON.stringify(this._ao ? this._ao.settings : null)
-    )
-      return;
-    if (this._ao) this._ao.dispose();
-    this._ao = null;
-    if (next) {
-      this._ao = new AmbientOcclusion(this.view.renderer, next);
-      this.view.scene.add(this._ao.object);
-    }
-    this.view.dirty = true;
-  }
-
   // Card options bokeh (true or { strength, start, range, tilt }) and grade (true or { saturation, contrast,
   // vignette }): the finish over the frame, see finish.js.
   setBokeh(opt: unknown): void {
@@ -663,7 +624,7 @@ export class RenderLook {
         this._cityWindows();
       } // once per model
       const rd = this.render;
-      const tone = renderTone(rd, this.renderOpt, this.quality()); // the recipe's unless the card or its quality tier sets one
+      const tone = renderTone(rd, this.renderOpt); // AgX unless the card sets one; the recipe's exposure kept
       r.toneMapping = TONE[tone.toneMapping] ?? THREE.ACESFilmicToneMapping;
       r.toneMappingExposure = tone.exposure;
       r.outputColorSpace =
@@ -857,7 +818,6 @@ export class RenderLook {
     if (this._contact) this._contact.dispose();
     this._contact = null;
     this.indirect.dispose();
-    this.setAo(null);
     this._setFinish({ bokeh: null, grade: null });
     if (this._depthPass) this._depthPass.dispose();
     this._depthPass = null;

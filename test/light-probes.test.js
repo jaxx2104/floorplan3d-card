@@ -179,6 +179,12 @@ describe("probe placement", () => {
     expect(g.spots[0][1]).toBeGreaterThan(1);
     expect(u.storey).toBe(1);
     expect(u.center[1]).toBeCloseTo(4.3);
+    // the tier's spacing (standard 1 m): the same box, a quarter of the probes
+    const [c] = probeGrids(rooms, storeys, new Set(), 1);
+    expect(c.center).toEqual(g.center);
+    expect(c.size).toEqual(g.size);
+    expect(c.res).toEqual([6, PROBE_LAYERS, 2]);
+    expect(c.spots.length * 4).toBe(g.spots.length);
     // skipped (baked) storeys and huge plans
     expect(
       probeGrids(rooms, storeys, new Set([0])).map((s) => s.storey),

@@ -5,7 +5,8 @@
 
 import { normMaterialRules, type MaterialRule } from "./material-class.ts";
 
-/** [sky colour, ground colour, intensity] */
+/** [sky colour, ground colour, intensity]. With a model only the ground colour is used (the ground below the sky
+ * environment's horizon, view/env-light.ts); the sky's environment light is the fill, so the intensity is unused. */
 export type HemiSetting = [number, number, number];
 /** [colour, intensity] */
 export type SunSetting = [number, number];
@@ -503,70 +504,47 @@ export const cityLightsOn = (night: unknown): number => {
 
 // --- card option render: recipe source, quality tier, tone mapping ---
 
-/** Quality tiers, cheapest first. 'high' is the default; 'standard' is the look before tiers existed (the cheap tier). */
+/** Quality tiers, cheapest first. 'high' is the default; 'standard' is the cheap tier. Every tier has the same light:
+ * the sky environment (view/env-light.ts) as the fill outdoors, the light probe grids (light-probes.ts) indoors, baked
+ * lightmaps (lightmap.ts), contact shadows (contact-shadow.ts), physical lamps (photometry.ts) and AgX tone mapping
+ * (LOOK_TONE_MAPPING). A tier only sets how much that costs. */
 export type Quality = "standard" | "high" | "still";
-/** What a tier turns on. A new effect adds a field here, off in 'standard', so 'standard' stays as it was. */
+/** The cost knobs of a tier. A new effect is on in every tier; only what it costs may differ here. */
 export interface QualityTier {
-  /** Tone mapping when the card sets none (null: the recipe's). */
-  toneMapping: string | null;
-  /** Image-based light from the sky (view/env-light.ts). */
-  envLight: boolean;
-  /** Hemisphere light factor: 1 without envLight; 0 with it (the sky's environment light is the fill, and indoors the
-   * probe grids: a hemisphere light on top lit every surface a second time, unoccluded, closed rooms included). */
-  hemiScale: number;
-  /** Lamps in physical units: HA's colour (a 2700 K blackbody without one), candela from the model lamp or lumens (photometry.ts). */
-  physicalLights: boolean;
-  /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts). */
+  /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts): a blur chain
+   * per frame with a glow in view. */
   bloom: boolean;
   /** Spread of the sun shadow's PCF taps in shadow-map texels at clear sky (three's PCFShadowMap, shadow.radius; clouds
    * widen it, weather.ts cloudLight). A uniform: a tier change redraws nothing and recompiles no shader. */
   sunShadowRadius: number;
-  /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
-  contactShadows: boolean;
-  /** Light probe grids per storey: the captured light (sun through windows, lamps, sky) as the indoor ambient fill (light-probes.ts). */
-  lightProbes: boolean;
-  /** Lightmaps baked into the model (extras fp_lightmap on a second UV set) as the ambient light of their surfaces (lightmap.ts). */
-  bakedLightmaps: boolean;
+  /** Light probe spacing (m) across the plan (light-probes.ts): a probe bake is six cube renders, so twice the
+   * spacing bakes about a quarter of the probes per pass (load, sun steps, lamps). A tier change regrids. */
+  probeSpacing: number;
   /** Idle progressive path tracing: the view traced and faded in once the camera has been still (still.ts). */
   pathTrace: boolean;
 }
+/** Tone mapping of every tier when the card sets none (render.tone_mapping); the recipe's tone mapping and exposure
+ * only set the exposure (matchExposure keeps its mid grey). */
+export const LOOK_TONE_MAPPING = "AgX";
 export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
   Object.freeze({
     standard: Object.freeze({
-      toneMapping: null,
-      envLight: false,
-      hemiScale: 1,
-      physicalLights: false,
       bloom: false,
       sunShadowRadius: 1.5,
-      contactShadows: false,
-      lightProbes: false,
-      bakedLightmaps: false,
+      probeSpacing: 1,
       pathTrace: false,
     }),
     high: Object.freeze({
-      toneMapping: "AgX",
-      envLight: true,
-      hemiScale: 0,
-      physicalLights: true,
       bloom: true,
       sunShadowRadius: 3,
-      contactShadows: true,
-      lightProbes: true,
-      bakedLightmaps: true,
+      probeSpacing: 0.5,
       pathTrace: false,
     }),
     // experimental (desktop GPUs): 'high' while the camera moves; path traced once the view is idle (still.ts)
     still: Object.freeze({
-      toneMapping: "AgX",
-      envLight: true,
-      hemiScale: 0,
-      physicalLights: true,
       bloom: true,
       sunShadowRadius: 3,
-      contactShadows: true,
-      lightProbes: true,
-      bakedLightmaps: true,
+      probeSpacing: 0.5,
       pathTrace: true,
     }),
   });
@@ -607,7 +585,7 @@ export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({
 });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'auto' (default: high, adapting to the frame times; auto-quality.ts) | 'high' | 'standard' (cheaper, the look before tiers) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'auto' (default: high, adapting to the frame times; auto-quality.ts) | 'high' | 'standard' (cheaper: no bloom, coarser probes, harder sun shadow) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): {
@@ -736,18 +714,13 @@ export function matchExposure(
   return Math.round(((lo + hi) / 2) * 1000) / 1000;
 }
 
-// Tone mapping and exposure on screen: the card's tone_mapping, else the tier's, else the recipe's. Another
-// tone mapping than the recipe's gets the exposure that keeps mid grey where the recipe had it. quality: the tier
-// in use ('auto' picks one; without it 'auto' counts as high).
+// Tone mapping and exposure on screen: the card's tone_mapping, else LOOK_TONE_MAPPING. Another tone mapping than the
+// recipe's gets the exposure that keeps mid grey where the recipe had it.
 export function renderTone(
   render: Pick<RenderSettings, "toneMapping" | "exposure">,
-  option: RenderOption,
-  quality: Quality = option.quality === "auto" ? "high" : option.quality,
+  option: Pick<RenderOption, "toneMapping">,
 ): { toneMapping: string; exposure: number } {
-  const toneMapping =
-    option.toneMapping ??
-    QUALITY_TIERS[quality].toneMapping ??
-    render.toneMapping;
+  const toneMapping = option.toneMapping ?? LOOK_TONE_MAPPING;
   return {
     toneMapping,
     exposure: matchExposure(render.toneMapping, render.exposure, toneMapping),

@@ -1,10 +1,10 @@
-// Sky-driven environment light (render quality 'high'): three's Sky (Preetham, its own clouds from the weather) for
+// Sky-driven environment light (every render quality, with a model): three's Sky (Preetham, its own clouds from the weather) for
 // the current sun, or by night for the moon, with a ground below the horizon, rendered into a small cube map and
 // prefiltered with PMREMGenerator into scene.environment, so model materials get image-based fill light and sky
 // reflections. The Sky is used as three ships it (no shader patch). The background stays the card's colour. Rebuilt only when the sky changes noticeably (sun / moon moved > ENV_ANGLE_DEG,
 // clouds, day / night), at most every ENV_THROTTLE_MS (a day / night flip at once) and never per frame;
 // the brightness in between is scene.environmentIntensity (a uniform). Lamps are separate lights and stay
-// as they are. Nothing here is created until the tier asks for it.
+// as they are. Nothing here is created before a model is loaded.
 
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";

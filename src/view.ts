@@ -63,10 +63,10 @@ export interface ViewStats {
   frames: number;
   shadowLights: number; // per-light shadow map redraws requested
   cloudFrames: number;
-  envBuilds: number; // environment maps built from the sky (render quality 'high')
-  bloomPasses: number; // frames with a selective bloom pass (render quality 'high', an emissive surface in view)
-  contactBuilds: number; // contact shadow rebuilds (render quality 'high', the shadow casters changed)
-  probeCaptures: number; // light probes baked (render quality 'high', up to PROBE_BUDGET_MS a frame while a pass runs)
+  envBuilds: number; // environment maps built from the sky (with a model)
+  bloomPasses: number; // frames with a selective bloom pass (render quality high / still, an emissive surface in view)
+  contactBuilds: number; // contact shadow rebuilds (the shadow casters changed)
+  probeCaptures: number; // light probes baked (up to PROBE_BUDGET_MS a frame while a pass runs)
   stillSessions: number; // idle path tracing sessions started (render quality 'still')
   stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
   stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
@@ -662,9 +662,6 @@ export class FloorplanView {
   setSurroundLight(opt: LookArgs<"setSurroundLight">[0]) {
     return this.look.setSurroundLight(opt);
   }
-  setAo(opt: LookArgs<"setAo">[0]) {
-    return this.look.setAo(opt);
-  }
   setBokeh(opt: LookArgs<"setBokeh">[0]) {
     return this.look.setBokeh(opt);
   }
@@ -1047,31 +1044,19 @@ export class FloorplanView {
     if (this.onObjectsInvalidate && this.model) this.onObjectsInvalidate();
   }
 
-  // The frame into the drawing buffer: depth pre-pass (ao, finish), the scene, bloom, finish. count: a frame of the
+  // The frame into the drawing buffer: depth pre-pass (finish), the scene, bloom, finish. count: a frame of the
   // loop (false: the 'still' tier drawing the frame on screen again to keep it under the trace).
   _drawGl(count: boolean): void {
     const look = this.look;
-    const ao = this.model ? look.aoPass() : null,
-      fin = this.model ? look._finish : null;
-    if (ao || (fin && fin.needsDepth)) {
+    const fin = this.model ? look._finish : null;
+    if (fin && fin.needsDepth) {
       if (!look._depthPass) look._depthPass = new DepthPrepass(this.renderer);
-      const depth = look._depthPass.render(
-        this.scene,
-        this.camera,
-        ao ? ao.settings.resolution : 0.5,
-      );
-      if (ao) ao.begin(depth, this.camera);
-      if (fin && fin.needsDepth) {
-        this.camera.updateMatrixWorld();
-        fin.setFocus(look._focusBox());
-        fin.prepare(depth, this.camera);
-      }
+      const depth = look._depthPass.render(this.scene, this.camera, 0.5);
+      this.camera.updateMatrixWorld();
+      fin.setFocus(look._focusBox());
+      fin.prepare(depth, this.camera);
     }
-    try {
-      this.renderer.render(this.scene, this.camera);
-    } finally {
-      if (ao) ao.end();
-    }
+    this.renderer.render(this.scene, this.camera);
     const bloom = this.model ? look._bloom : null;
     if (bloom && bloom.render(this.scene, this.camera) && count)
       this.stats.bloomPasses++; // before the finish: it grades the bloom too
@@ -1185,7 +1170,7 @@ export class FloorplanView {
     this.modelLayer._disposePreview();
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
-    this.look.dispose(); // ao, finish, depth pass
+    this.look.dispose(); // finish, depth pass
     this.still.dispose(); // the path tracer
     this.mower.setMapOverlay(null);
     this.mower.setMowerWarning(null);

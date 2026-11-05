@@ -1,4 +1,4 @@
-// Selective bloom (render quality 'high', QualityTier.bloom): only emissive things glow — lamp glow meshes of
+// Selective bloom (render quality 'high' and 'still', QualityTier.bloom): only emissive things glow — lamp glow meshes of
 // lights that are on, screens, any emissive model material — never walls lit by a lamp or the sun.
 // After the frame render: the emissive surfaces alone (everything opaque drawn black, so walls in front still
 // hide a lamp) at half the drawing buffer size in a half-float target, blurred by three's UnrealBloomPass (its

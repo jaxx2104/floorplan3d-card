@@ -36,8 +36,6 @@ export interface UpdateCtx {
   states: States;
   entity: string | null;
   mowerEntity?: string | null;
-  /** Physical lamp light (render quality 'high'): photometry.ts physicalColor. */
-  physical?: boolean;
   [key: string]: unknown;
 }
 
@@ -69,7 +67,7 @@ export interface Hints {
   target: number[] | null;
   castShadow: boolean;
   offset: number[] | null;
-  /** Luminous flux (lm) at full brightness for physical light (render quality 'high'); null: DEFAULT_LUMENS. */
+  /** Luminous flux (lm) at full brightness (the lamp's physical light); null: DEFAULT_LUMENS. */
   lumens: number | null;
   /** Luminous intensity (cd) at full brightness of the model's own lamp (KHR_lights_punctual); before lumens. */
   candela: number | null;
@@ -376,18 +374,11 @@ function paint(glow: THREE.Mesh | null): void {
   }
 }
 
-function updateLight(
-  part: LightPart,
-  chain: ChainState,
-  ctx?: UpdateCtx,
-): TypeResult {
+function updateLight(part: LightPart, chain: ChainState): TypeResult {
   const level = chain.lit
     ? lightLevel(chain.source || { state: "on", attributes: {} })
     : 0;
-  const color =
-    ctx && ctx.physical
-      ? physicalColor(chain.source, lightColor)
-      : lightColor(chain.source);
+  const color = physicalColor(chain.source, lightColor);
   part.level = level;
   part.color = color;
   paint(part.glow);
