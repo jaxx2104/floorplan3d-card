@@ -59,15 +59,32 @@ export async function launch() {
       fs.createReadStream(file).pipe(res);
     })
     .listen(0);
-  const browser = await puppeteer.launch({
-    executablePath: findChrome(),
-    headless: true,
-    args: [
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-      "--ignore-gpu-blocklist",
-    ],
-  });
+  // Chrome's start is environment setup, not a check: a loaded runner can take longer than puppeteer's 30 s to
+  // print the WS endpoint, so a generous timeout and one relaunch
+  const start = () =>
+    puppeteer.launch({
+      executablePath: findChrome(),
+      headless: true,
+      timeout: 120000,
+      args: [
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--ignore-gpu-blocklist",
+      ],
+    });
+  let browser;
+  try {
+    browser = await start();
+  } catch (e) {
+    console.log(`     (Chrome did not start: ${e.message}; once more)`);
+    try {
+      browser = await start();
+    } catch (e2) {
+      server.closeAllConnections();
+      server.close();
+      throw e2;
+    }
+  }
   const close = async () => {
     await browser.close();
     server.closeAllConnections();
