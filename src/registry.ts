@@ -246,10 +246,26 @@ export function isActive(
   return !!st && ACTIVE.has(st.state);
 }
 
+/**
+ * A marker's value text: a sensor's state, a climate's current temperature. Formatted by HA
+ * (hass.formatEntityState / formatEntityAttributeValue: display precision, units, locale) where the
+ * frontend provides it; the plain fallback below otherwise (the demo, old HA).
+ */
 export function displayValue(hass: Hass, eid: string): string {
   const st = hass.states[eid];
   if (!st) return "";
   const d = eid.split(".")[0];
+  if (d === "sensor" && typeof hass.formatEntityState === "function")
+    return hass.formatEntityState(st);
+  if (
+    d === "climate" &&
+    typeof hass.formatEntityAttributeValue === "function"
+  ) {
+    const t = st.attributes.current_temperature;
+    return t !== undefined && t !== null
+      ? hass.formatEntityAttributeValue(st, "current_temperature")
+      : "";
+  }
   if (d === "sensor") {
     const n = Number(st.state);
     const unit = st.attributes.unit_of_measurement || "";
@@ -261,6 +277,51 @@ export function displayValue(hass: Hass, eid: string): string {
     return t !== undefined && t !== null ? String(t) + "°" : "";
   }
   return "";
+}
+
+const cssKey = (v: unknown): string =>
+  String(v)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_");
+
+/**
+ * HA's state colour as one CSS value (frontend state_color.ts): --state-<domain>-<device_class>-<state>-color,
+ * --state-<domain>-<state>-color, --state-<domain>-active-color, --state-active-color, nested, the
+ * fallback last (no HA theme: the demo). For active states and alerts.
+ */
+export function stateColorCss(
+  st: Pick<HassEntity, "state" | "attributes">,
+  domain: string,
+  fallback: string,
+): string {
+  const key = cssKey(st.state);
+  const dc = st.attributes && st.attributes.device_class;
+  const props = [
+    ...(typeof dc === "string" && dc
+      ? [`--state-${domain}-${cssKey(dc)}-${key}-color`]
+      : []),
+    `--state-${domain}-${key}-color`,
+    `--state-${domain}-active-color`,
+    "--state-active-color",
+  ];
+  return props.reduceRight((acc, p) => `var(${p}, ${acc})`, fallback);
+}
+
+/** A marker's colour: HA's state colour while active or alerting, else "" (the card's neutral look). */
+export function markerColor(
+  st: HassEntity | null | undefined,
+  domain: string,
+  alert: MarkerLook["alert"],
+): string {
+  if (!st) return "";
+  if (alert)
+    return stateColorCss(st, domain, alert === "red" ? "#e53935" : "#fbc02d");
+  if (!isActive(st)) return "";
+  return stateColorCss(
+    st,
+    domain,
+    domain === "light" ? "#ffb74d" : "var(--primary-color)",
+  );
 }
 
 export const TOGGLE_DOMAINS = new Set([

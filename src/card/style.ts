@@ -39,10 +39,11 @@ export const STYLE: string = `
     border: 1.5px solid var(--divider-color, rgba(0,0,0,.15)); box-shadow: 0 1px 4px rgba(0,0,0,.25);
     transition: background .2s, color .2s, transform .1s; --mdc-icon-size: 17px; }
   .fp-marker:hover .fp-dot { transform: scale(1.12); }
-  .fp-marker.active .fp-dot { background: var(--primary-color); border-color: var(--primary-color);
+  /* --fp-state: HA's state colour (registry.ts markerColor), --fp-light: the light's own colour */
+  .fp-marker.active .fp-dot { background: var(--fp-state, var(--primary-color)); border-color: var(--fp-state, var(--primary-color));
     color: var(--text-primary-color, #fff); }
-  .fp-marker.active.light .fp-dot { background: var(--fp-light, var(--state-light-active-color, #ffb74d));
-    border-color: var(--fp-light, var(--state-light-active-color, #ffb74d)); color: #fff; }
+  .fp-marker.active.light .fp-dot { background: var(--fp-light, var(--fp-state, #ffb74d));
+    border-color: var(--fp-light, var(--fp-state, #ffb74d)); color: #fff; }
   .fp-marker.unavailable .fp-dot { opacity: .45; border-style: dashed; }
   .fp-marker.offline .fp-dot { opacity: .5; filter: grayscale(1); }
   .fp-mower-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px; border-radius: 10px; font-size: 11px; font-weight: 600;
@@ -62,10 +63,10 @@ export const STYLE: string = `
   .fp-dot { position: relative; }
   .fp-marker.shape-square .fp-dot { border-radius: 7px; }
   .fp-marker.shape-diamond .fp-dot { border-radius: 4px; transform: rotate(45deg) scale(.9); }
-  .fp-marker.shape-diamond .fp-dot > ha-icon { transform: rotate(-45deg); }
+  .fp-marker.shape-diamond .fp-dot > :is(ha-icon, ha-state-icon) { transform: rotate(-45deg); }
   .fp-marker.shape-diamond:hover .fp-dot { transform: rotate(45deg) scale(1.02); }
-  .fp-marker.alert-red .fp-dot { background: #e53935; border-color: #e53935; color: #fff; }
-  .fp-marker.alert-yellow .fp-dot { background: #fbc02d; border-color: #fbc02d; color: #212121; }
+  .fp-marker.alert-red .fp-dot { background: var(--fp-state, #e53935); border-color: var(--fp-state, #e53935); color: #fff; }
+  .fp-marker.alert-yellow .fp-dot { background: var(--fp-state, #fbc02d); border-color: var(--fp-state, #fbc02d); color: #212121; }
   .fp-in:empty { display: none; }
   .fp-marker.kind-value .fp-dot { width: auto; min-width: 28px; padding: 0 6px 0 4px; gap: 2px; --mdc-icon-size: 13px; }
   .fp-marker.kind-value .fp-in { font-size: 11px; font-weight: 600; white-space: nowrap; color: var(--primary-text-color); line-height: 1; }
@@ -74,7 +75,7 @@ export const STYLE: string = `
     font: italic 700 8px/10px Georgia, serif; text-align: center; color: var(--card-background-color, #fff); background: var(--secondary-text-color, #727272); }
   .fp-dot > img.fp-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: none; }
   .fp-dot.has-pic > img.fp-pic { display: block; }
-  .fp-dot.has-pic > ha-icon { visibility: hidden; }
+  .fp-dot.has-pic > :is(ha-icon, ha-state-icon) { visibility: hidden; }
   .fp-marker.kind-picture .fp-dot { overflow: hidden; padding: 0; }
   /* device badges: integration logo (top right), status dot (bottom right), low battery chip (above) */
   .fp-marker > .fp-logo { position: absolute; top: -6px; right: -8px; width: 14px; height: 14px; box-sizing: border-box; padding: 1px;

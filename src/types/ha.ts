@@ -122,5 +122,13 @@ export interface Hass {
     target?: HassServiceTarget,
   ): Promise<unknown>;
   hassUrl(path?: string): string;
+  /** HA's state text (translated, display precision, unit); frontend 2023.9+. */
+  formatEntityState?(stateObj: HassEntity, state?: string): string;
+  /** HA's attribute value text (translated, unit). */
+  formatEntityAttributeValue?(
+    stateObj: HassEntity,
+    attribute: string,
+    value?: unknown,
+  ): string;
   fetchWithAuth(path: string, init?: RequestInit): Promise<Response>;
 }

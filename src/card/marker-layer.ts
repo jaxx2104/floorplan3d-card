@@ -6,7 +6,7 @@
 import {
   buildMarkers,
   isActive,
-  iconFor,
+  markerColor,
   markerLook,
   displayValue,
   pictureKey,
@@ -27,6 +27,7 @@ import { attachedPosition } from "../objects/logic.ts";
 import { badgeOptions, badgeInfo } from "../badges.ts";
 import { applyBadges } from "../badge-dom.ts";
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from "./constants.ts";
+import { paintStateIcon } from "./state-icon.ts";
 import type { Floorplan3dCard } from "../card-impl.ts";
 import type { LayoutPin } from "../types/layout.ts";
 import type { GlowSpec } from "../view/structure.ts";
@@ -322,7 +323,7 @@ export class MarkerLayer {
     const el: MarkerEl = document.createElement("div");
     el.className = "fp-marker " + m.domain;
     el.innerHTML =
-      '<div class="fp-dot"><ha-icon></ha-icon><span class="fp-in"></span></div><div class="fp-val"></div>';
+      '<div class="fp-dot"><span class="fp-in"></span></div><div class="fp-val"></div>';
     el.title = m.name;
     let start: [number, number] | null = null,
       timer: ReturnType<typeof setTimeout> | null = null,
@@ -413,14 +414,18 @@ export class MarkerLayer {
         "offline",
         m.id === this._mowerMarkerId && !!this.card._mowerOffline,
       );
-      const icon = el.querySelector("ha-icon")!; // the markup of _markerElement
-      const ic =
-        m.id === this._mowerMarkerId
-          ? "mdi:robot-mower"
-          : iconFor(h, m.entityId);
-      if (icon.getAttribute("icon") !== ic) icon.setAttribute("icon", ic);
+      const dot = el.querySelector(".fp-dot")!; // the markup of _markerElement
+      paintStateIcon(
+        dot,
+        h,
+        m.entityId,
+        m.id === this._mowerMarkerId ? "mdi:robot-mower" : null,
+      );
       const look = markerLook(h, m);
       this._applyLook(el, look);
+      const color = markerColor(st, m.domain, look.alert);
+      if (el.style.getPropertyValue("--fp-state") !== color)
+        el.style.setProperty("--fp-state", color);
       const own = look.kind === "value" ? "" : displayValue(h, m.entityId);
       const val =
         own ||

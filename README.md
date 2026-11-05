@@ -166,7 +166,17 @@ showing the value; a binary sensor a rounded square with its state icon (door op
 alarm classes (smoke, gas, safety, moisture, carbon monoxide: red; problem, tamper: yellow) are
 **diamonds**, coloured while active; devices that only open more-info get a rounded square with a
 small "i". People, media players, image entities and lawn mowers with an `entity_picture` show the
-picture in a circle (the icon when it fails to load). Icons stay HA's (entity icon, device class).
+picture in a circle (the icon when it fails to load).
+
+State text, icons and colours come from Home Assistant, as on its own cards: a marker's value is
+HA's formatted state (`hass.formatEntityState`: display precision, unit, language; a climate's
+current temperature through `formatEntityAttributeValue`), the icon is HA's `<ha-state-icon>` (the
+entity's own icon, else HA's icon for the domain, device class and state; the mower marker keeps
+`mdi:robot-mower`), and an active or alerting marker takes HA's state colour theme variables
+(`--state-<domain>-<device_class>-<state>-color`, `--state-<domain>-<state>-color`,
+`--state-<domain>-active-color`, `--state-active-color`), so a theme that recolours them recolours
+the markers. A lit light keeps its own colour. Outside HA (the demo) the card falls back to its own
+text, icon table and colours.
 
 **Tap hints** (Devices tab, `layout.tap_hints`): a small dot on every tappable model object, filled
 (in the lamp's colour while lit) when a tap works, hollow grey when the object or its device is
