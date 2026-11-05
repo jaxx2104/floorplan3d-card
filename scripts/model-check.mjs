@@ -3373,7 +3373,7 @@ sections.add(
       ),
     );
     const grp = () =>
-      page.evaluate(`(() => { const g = ${sr}.querySelector('label.grp[data-grp=facade]'); return g && { warn: !!g.querySelector('.badge.warn'), val: g.querySelector('input').value,
+      page.evaluate(`(() => { const g = ${sr}.querySelector('.grp[data-grp=facade]'); return g && { warn: !!g.querySelector('.badge.warn'), val: g.querySelector('input').value,
     saved: JSON.stringify((${card}._layout.tags || {}).facade || null), eff: JSON.stringify(${card}._groups.facade || null) }; })()`);
     const setGrp = async (v) => {
       await page.evaluate(

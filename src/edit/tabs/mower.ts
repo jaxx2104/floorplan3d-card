@@ -12,15 +12,16 @@ import {
 } from "../tools/map-tools.ts";
 import { html, nothing } from "lit/html.js";
 import { classMap } from "lit/directives/class-map.js";
-import { live } from "lit/directives/live.js";
 import {
   act,
-  entityInput,
+  checkField,
+  entityField,
   entityList,
   field,
   flash,
+  floorField,
   fmt,
-  options,
+  selectField,
   slider,
 } from "../html.ts";
 import type { TemplateResult } from "lit/html.js";
@@ -216,29 +217,28 @@ export function mowerTab(ed: EditMode): TemplateResult {
     html`<input name=${name} .value=${value} placeholder=${placeholder ?? nothing} @change=${(e: Event) => onChange(field(e).value)}>`;
   // one template whatever is set up: the controls keep their elements (and focus) as sections appear
   return html`${setupView(ed)}<div class="sub">Position</div>
-      <label>Entity ${entityInput(ed, { name: "mower-entity", list: "fp-pos-ents", value: m.entity || "", placeholder: "device_tracker.mower_position", onChange: (v) => setMower(ed, { entity: v.trim() }) })}</label>
+      ${entityField(ed, "Entity", { name: "mower-entity", list: "fp-pos-ents", domains: ["device_tracker", "sensor", "lawn_mower", "vacuum"], value: m.entity || "", placeholder: "device_tracker.mower_position", onChange: (v) => setMower(ed, { entity: v.trim() }) })}
       ${entityList(ed, "fp-pos-ents", posIds)}
-      <label>Source <select name="mower-source" .value=${live(source)} @change=${(e: Event) => setMower(ed, { source: field(e).value, calibration: [] })}>
-        ${options(
-          [
-            ["gps", "GPS (latitude / longitude)"],
-            ["xy", "Map x / y attributes"],
-            ["image", "Live map image (mower found on the map)"],
-          ],
-          source,
-        )}</select></label>
+      ${selectField(ed, {
+        name: "mower-source",
+        label: "Source",
+        value: source,
+        options: [
+          ["gps", "GPS (latitude / longitude)"],
+          ["xy", "Map x / y attributes"],
+          ["image", "Live map image (mower found on the map)"],
+        ],
+        onChange: (v) => setMower(ed, { source: v, calibration: [] }),
+      })}
       ${
         m.source === "xy"
           ? html`<div class="row"><label>x attribute ${text("mower-xattr", m.x_attr || "x", (v) => setMower(ed, { x_attr: v.trim() || "x" }))}</label>
         <label>y attribute ${text("mower-yattr", m.y_attr || "y", (v) => setMower(ed, { y_attr: v.trim() || "y" }))}</label></div>`
           : nothing
       }
-      <label>Floor <select name="mower-floor" .value=${live(floor)} @change=${(e: Event) => setMowerFloor(ed, field(e).value)}>${options(
-        ed.floors.map((f) => [f.id, f.name]),
-        floor,
-      )}</select></label>
+      ${floorField(ed, { name: "mower-floor", label: "Floor", value: floor, onChange: (v) => setMowerFloor(ed, v) })}
       <div class="sub">Warning</div>
-      <label>Error entity (optional) ${entityInput(ed, { name: "mower-error-entity", list: "fp-err-ents", value: m.error_entity || "", placeholder: "binary_sensor.mower_error", onChange: (v) => setMower(ed, { error_entity: v.trim() }) })}</label>
+      ${entityField(ed, "Error entity (optional)", { name: "mower-error-entity", list: "fp-err-ents", domains: ["binary_sensor", "sensor"], value: m.error_entity || "", placeholder: "binary_sensor.mower_error", onChange: (v) => setMower(ed, { error_entity: v.trim() }) })}
       ${entityList(ed, "fp-err-ents", errIds)}
       <label>OK values (optional, comma-separated) ${text("mower-ok-values", Array.isArray(m.ok_values) ? m.ok_values.join(", ") : m.ok_values || "", (v) => setOkValues(ed, v), "rain delay, waiting")}</label>
       <p class="hint">Numbers: 0 = OK, anything else is an error code. Text: ok, none, normal, working, mowing, charging, docked, idle, returning, paused, standby… are OK; add your own above.</p>
@@ -293,31 +293,39 @@ export function autoSection(ed: EditMode, m: LayoutMower): View {
             ? "Auto mode is off: the colour picks below are used."
             : "No static map found: pick the colours below, or set the static map."
       }</p>
-      <label>Static map ${entityInput(ed, {
+      ${entityField(ed, "Static map", {
         name: "mower-static",
         list: "fp-img-ents",
-        value: m.static_entity ?? "",
+        domains: ["image"],
+        none: "No static map",
+        value: m.static_entity === "" ? "none" : (m.static_entity ?? ""),
         placeholder:
           m.static_entity === undefined && det.static
             ? `auto: ${det.static}`
             : "image.mower_map",
         onChange: (v) => setMower(ed, { static_entity: optEntity(v) }),
-      })}</label>
-      <label>Mower picture ${entityInput(ed, {
+      })}
+      ${entityField(ed, "Mower picture", {
         name: "mower-picture",
         list: "fp-img-ents",
-        value: m.picture_entity ?? "",
+        domains: ["image"],
+        none: "No mower picture",
+        value: m.picture_entity === "" ? "none" : (m.picture_entity ?? ""),
         placeholder:
           m.picture_entity === undefined && det.picture
             ? `auto: ${det.picture}`
             : "image.mower_mower_image",
         onChange: (v) => setMower(ed, { picture_entity: optEntity(v) }),
-      })}</label>
+      })}
       ${entityList(ed, "fp-img-ents", imgs)}
       ${
         det.static
-          ? html`<label class="check"><input type="checkbox" name="mower-auto-off" .checked=${live(m.auto === false)}
-        @change=${(e: Event) => setMower(ed, { auto: field(e).checked ? false : undefined })}> Use colour picks instead</label>`
+          ? checkField(ed, {
+              name: "mower-auto-off",
+              label: "Use colour picks instead",
+              checked: m.auto === false,
+              onChange: (v) => setMower(ed, { auto: v ? false : undefined }),
+            })
           : nothing
       }`;
 }
@@ -332,7 +340,7 @@ export function mowerImageSection(
     return html`${autoSection(ed, m)}${markFrontView(ed, m)}`;
   const icols = colorList(ic);
   return html`${autoSection(ed, m)}<div class="sub">Mower icon on the map</div>
-      <label>Image entity ${entityInput(ed, { name: "mower-img-entity", list: "fp-pic-ents", value: ic.entity || "", placeholder: (o && o.entity) || "same as the overlay", onChange: (v) => setImageEntity(ed, v) })}</label>
+      ${entityField(ed, "Image entity", { name: "mower-img-entity", list: "fp-pic-ents", domains: ["image", "camera"], value: ic.entity || "", placeholder: (o && o.entity) || "same as the overlay", onChange: (v) => setImageEntity(ed, v) })}
       ${
         ed.colorPick === true
           ? html`<section class="box"><p>Click the mower icon on the map overlay. Esc cancels.</p>
@@ -449,7 +457,7 @@ export function overlayView(
 ): TemplateResult {
   const o = m.overlay;
   return html`<div class="sub">Map overlay</div>
-      <label>Image or camera entity ${entityInput(ed, { name: "ov-entity", list: "fp-pic-ents", value: (o && o.entity) || "", placeholder: "image.mower_map", onChange: (v) => setOverlayEntity(ed, v) })}</label>
+      ${entityField(ed, "Image or camera entity", { name: "ov-entity", list: "fp-pic-ents", domains: ["image", "camera"], value: (o && o.entity) || "", placeholder: "image.mower_map", onChange: (v) => setOverlayEntity(ed, v) })}
       ${entityList(ed, "fp-pic-ents", picIds)}
       ${o && o.entity ? overlayControls(ed, m, o) : nothing}`;
 }
@@ -467,7 +475,7 @@ function overlayControls(
       ${ovSlider(ed, "opacity", "Opacity", 0, 1, 0.05, o.opacity ?? 0.6)}
       ${ovSlider(ed, "height_offset", "Height offset", -0.5, 0.5, 0.01, o.height_offset ?? 0, "m")}
       ${(o.entity || "").startsWith("camera.") ? ovSlider(ed, "refresh", "Refresh every", 1, 120, 1, o.refresh ?? 10, "s") : nothing}
-      <label class="check"><input type="checkbox" name="ov-edit-only" .checked=${live(!!o.edit_only)} @change=${(e: Event) => setOverlay(ed, { edit_only: field(e).checked })}> Show the map only in edit mode</label>
+      ${checkField(ed, { name: "ov-edit-only", label: "Show the map only in edit mode", checked: !!o.edit_only, onChange: (v) => setOverlay(ed, { edit_only: v }) })}
       ${mapProcessingView(ed, m, o)}
       ${
         a
@@ -528,11 +536,15 @@ export function mapProcessingView(
       })}
       ${
         m.source === "image"
-          ? html`<label class="check"><input type="checkbox" name="ov-hide-icon" .checked=${live(o.hide_icon !== false)}
-        @change=${(e: Event) => setOverlay(ed, { hide_icon: field(e).checked })}> Hide mower icon on the map</label>`
+          ? checkField(ed, {
+              name: "ov-hide-icon",
+              label: "Hide mower icon on the map",
+              checked: o.hide_icon !== false,
+              onChange: (v) => setOverlay(ed, { hide_icon: v }),
+            })
           : nothing
       }
-      <label>Clip to zone <select name="ov-zone" .value=${live(zsel)} @change=${(e: Event) => setOverlay(ed, { zone: field(e).value === "auto" ? null : field(e).value })}>${options(zoneOpts, zsel)}</select></label>
+      ${selectField(ed, { name: "ov-zone", label: "Clip to zone", value: zsel, options: zoneOpts, onChange: (v) => setOverlay(ed, { zone: v === "auto" ? null : v }) })}
       <p class="hint">Pick colours by clicking them on the map. Without a background colour the picture is drawn as it is.
       The zone clip applies once a colour is picked or the icon is hidden.</p>`;
 }

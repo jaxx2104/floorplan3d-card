@@ -12,9 +12,8 @@ import {
   planOf,
 } from "../../surface.ts";
 import { html, nothing } from "lit/html.js";
-import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
-import { act, field, fmt, logoBox, options } from "../html.ts";
+import { act, checkField, field, fmt, logoBox, selectField } from "../html.ts";
 import type { TemplateResult } from "lit/html.js";
 import type { TabDef } from "./tab.ts";
 import type { EditMode, StickMove } from "../../edit-mode.ts";
@@ -38,20 +37,31 @@ export function badgesView(ed: EditMode): TemplateResult {
     >; // YAML: read per key below
   const row = (k: keyof BadgeOptions, label: string) => {
     const fixed = typeof yaml[k] === "boolean";
-    return html`<label class="check"><input type="checkbox" name="badge" data-key=${k} .checked=${live(!!o[k])} ?disabled=${fixed}
-      @change=${(e: Event) => setBadge(ed, k, field(e).checked)}> ${label}${fixed ? html` <span class="dim">(card YAML)</span>` : nothing}</label>`;
+    return checkField(ed, {
+      name: "badge",
+      id: k,
+      dataKey: k,
+      label,
+      checked: !!o[k],
+      disabled: fixed,
+      note: fixed ? html` <span class="dim">(card YAML)</span>` : nothing,
+      onChange: (v) => setBadge(ed, k, v),
+    });
   };
   const th = String(ed.layout.tap_hints || "near");
   return html`<div class="sub">Badges</div>${row("integration", "Show integration logos")}${row("status", "Show status")}${row("battery", "Show low battery")}
-      <label class="tap-hints">Tap hints <select name="tap-hints" .value=${live(th)} @change=${(e: Event) => setTapHints(ed, field(e).value)}>
-        ${options(
-          [
-            ["always", "Always"],
-            ["near", "Near pointer"],
-            ["off", "Off"],
-          ],
-          th,
-        )}</select></label>
+      ${selectField(ed, {
+        name: "tap-hints",
+        cls: "tap-hints",
+        label: "Tap hints",
+        value: th,
+        options: [
+          ["always", "Always"],
+          ["near", "Near pointer"],
+          ["off", "Off"],
+        ],
+        onChange: (v) => setTapHints(ed, v),
+      })}
       <p class="hint">Dots on tappable model objects: filled when a tap works, hollow grey when it is offline or a controller is off.</p>`;
 }
 

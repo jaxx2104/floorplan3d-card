@@ -44,3 +44,52 @@ export async function createCard(
     return null;
   }
 }
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((r) => setTimeout(r, ms));
+// whenDefined with a timeout (false: not there in time)
+const defined = (tag: string, ms: number): Promise<boolean> =>
+  Promise.race([
+    customElements.whenDefined(tag).then(() => true),
+    wait(ms).then(() => false),
+  ]);
+
+let selectorLoad: Promise<boolean> | null = null;
+
+/**
+ * Loads HA's lazy <ha-selector> (the edit panel's pickers): the tile card's editor pulls in ha-form, a
+ * hidden ha-form with a selector field pulls in ha-selector. -> whether it is there now (false outside HA).
+ */
+export function loadSelectors(hass: unknown): Promise<boolean> {
+  if (customElements.get("ha-selector")) return Promise.resolve(true);
+  if (selectorLoad) return selectorLoad;
+  selectorLoad = (async () => {
+    try {
+      if (!customElements.get("ha-form")) {
+        const card = await createCard({ type: "tile", entity: "sun.sun" });
+        const ctor = card
+          ? (card.constructor as { getConfigElement?: () => Promise<unknown> })
+          : null;
+        if (ctor && typeof ctor.getConfigElement === "function")
+          await ctor.getConfigElement();
+      }
+      if (customElements.get("ha-form")) {
+        const form = document.createElement("ha-form") as HTMLElement &
+          Record<string, unknown>;
+        Object.assign(form, {
+          hass,
+          schema: [{ name: "entity", selector: { entity: {} } }],
+          data: {},
+        });
+        form.style.display = "none";
+        document.body.append(form);
+        await defined("ha-selector", 5000);
+        form.remove();
+      }
+    } catch {
+      /* not HA's frontend: native inputs */
+    }
+    return !!customElements.get("ha-selector");
+  })();
+  return selectorLoad;
+}

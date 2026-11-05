@@ -12,12 +12,14 @@ import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   act,
+  checkField,
   entityInput,
   entityList,
   field,
   flash,
   logoBox,
   options,
+  selectField,
 } from "../html.ts";
 import type { TemplateResult } from "lit/html.js";
 import type { TabDef } from "./tab.ts";
@@ -71,14 +73,25 @@ const isLight = (o: ManifestObject) =>
   o.type === "light" || o.type === "light_strip";
 
 function washSelect(
+  ed: EditMode,
   name: string,
   id: string,
   cur: string | undefined,
   def: string,
   onChange: (v: string) => void,
 ): TemplateResult {
-  return html`<label class="owash">Light on wall <select name=${name} data-id=${id} .value=${live(cur || "")} @change=${(e: Event) => onChange(field(e).value)}>
-      ${options([["", `Default (${WASH_LABEL[def] || def})`], ...WASH_DIRS.map((d): [string, string] => [d, WASH_LABEL[d]])], cur || "")}</select></label>`;
+  return selectField(ed, {
+    name,
+    id,
+    cls: "owash",
+    label: "Light on wall",
+    value: cur || "",
+    options: [
+      ["", `Default (${WASH_LABEL[def] || def})`],
+      ...WASH_DIRS.map((d): [string, string] => [d, WASH_LABEL[d]]),
+    ],
+    onChange,
+  });
 }
 
 // Objects tab: model objects by level -> room (rooms collapsed), each with its entity binding.
@@ -133,11 +146,11 @@ export function objectsTab(ed: EditMode): View {
         <div class="orow"><input type="checkbox" class="opick" name="obj-pick" data-id=${o.id} .checked=${live(ed.objPicked.has(o.id))} title="Select for Add tag / Remove tag" aria-label="Select"
           @change=${(e: Event) => pickObject(ed, o.id, field(e).checked)}><ha-icon icon=${ICONS[t] || "mdi:cube-outline"}></ha-icon>${logoBox(ed, b.entity)}<span class="name">${ed.card.objectLabel(o)}</span>${badge}
           ${testable ? html`<button name="obj-test" data-id=${o.id} title="Toggle it like a tap in the view" @click=${act(ed, () => testObject(ed, o.id))}>Test</button>` : nothing}
-          <label class="check"><input type="checkbox" name="obj-hidden" data-id=${o.id} .checked=${live(!!b.hidden)} @change=${(e: Event) => setObj(ed, o.id, { hidden: field(e).checked })}> Hide</label></div>
+          ${checkField(ed, { name: "obj-hidden", id: o.id, label: "Hide", checked: !!b.hidden, onChange: (v) => setObj(ed, o.id, { hidden: v }) })}</div>
         <input class="olabel" name="obj-label" data-id=${o.id} .value=${saved.label || ""} placeholder=${o.label || o.id} title="Label (empty: the model's)" aria-label="Label"
           @change=${(e: Event) => setObj(ed, o.id, { label: field(e).value })}>
-        ${entityInput(ed, { name: "obj-entity", id: o.id, list: `fp-obj-${t}`, value, placeholder: ph, title: "Empty: automatic; type none to leave it unbound", onChange: (v) => setObjEntity(ed, o.id, v) })}
-        ${isLight(o) ? washSelect("obj-wash", o.id, saved.wash, resolveWash(o.hints, undefined, tagsOf(o), lgAll), (v) => setObj(ed, o.id, { wash: washSetting(v) ?? undefined })) : nothing}
+        ${entityInput(ed, { name: "obj-entity", id: o.id, list: `fp-obj-${t}`, domains: DOMAINS[t], label: explicit ? "Entity" : `Entity (${ph})`, none: "No entity", value, placeholder: ph, title: "Empty: automatic; type none to leave it unbound", onChange: (v) => setObjEntity(ed, o.id, v) })}
+        ${isLight(o) ? washSelect(ed, "obj-wash", o.id, saved.wash, resolveWash(o.hints, undefined, tagsOf(o), lgAll), (v) => setObj(ed, o.id, { wash: washSetting(v) ?? undefined })) : nothing}
         <div class="otags">${tagsOf(o).map(
           (
             g,
@@ -196,7 +209,7 @@ export function objectsTab(ed: EditMode): View {
   }
   const nPick = ed.objPicked.size;
   return html`${types.map((t) => entityList(ed, `fp-obj-${t}`, listFor(t)))}<datalist id="fp-tag-names">${allTags.map((x) => html`<option value=${x}></option>`)}</datalist>
-      <p class="hint">Bind each model object to a Home Assistant entity. Empty means automatic; "none" leaves it unbound. Click an object in the plan to find its row. Tap / Hold / Double tap pick its actions (card YAML <code>actions:</code> overrides these). Tags group objects (model group and HA labels by default).</p>
+      <p class="hint">Bind each model object to a Home Assistant entity. Empty means automatic; No entity ("none" in the plain input) leaves it unbound. Click an object in the plan to find its row. Tap / Hold / Double tap pick its actions (card YAML <code>actions:</code> overrides these). Tags group objects (model group and HA labels by default).</p>
       <div class="otagbar"><label>Tag <select name="obj-tag-filter" .value=${live(filter)} @change=${(
         e: Event,
       ) => {
@@ -239,10 +252,10 @@ function tagsView(
           const e = (lg[g] && lg[g].entity) || "",
             gl2 = (lg[g] && lg[g].label) || "";
           const n = objs.filter((o) => tagsOf(o).includes(g)).length;
-          return html`<label class="grp" data-grp=${g}>${gl2 || g} <span class="dim">${n}</span>${e && !states[e] ? html` <span class="badge warn">entity not found</span>` : nothing}
-        ${entityInput(ed, { name: "grp-entity", id: g, list: "fp-grp-ents", value: e, placeholder: "no controller", title: "Empty or none: no controller", onChange: (v) => setTag(ed, g, { entity: v.trim() }) })}
-        <input class="glabel" name="grp-label" data-id=${g} .value=${gl2} placeholder="label: ${g}" title="Label in popups (empty: the controller's name)" @change=${(e2: Event) => setTag(ed, g, { label: field(e2).value })}></label>
-      ${objs.some((o) => isLight(o) && tagsOf(o).includes(g)) ? washSelect("grp-wash", g, lg[g] && lg[g].wash, "model", (v) => setTag(ed, g, { wash: washSetting(v) ?? undefined })) : nothing}`;
+          return html`<div class="grp" data-grp=${g}>${gl2 || g} <span class="dim">${n}</span>${e && !states[e] ? html` <span class="badge warn">entity not found</span>` : nothing}
+        ${entityInput(ed, { name: "grp-entity", id: g, list: "fp-grp-ents", domains: ["light", "switch", "input_boolean"], label: "Controller", value: e, placeholder: "no controller", title: "Empty or none: no controller", onChange: (v) => setTag(ed, g, { entity: v.trim() }) })}
+        <input class="glabel" name="grp-label" data-id=${g} .value=${gl2} placeholder="label: ${g}" title="Label in popups (empty: the controller's name)" @change=${(e2: Event) => setTag(ed, g, { label: field(e2).value })}></div>
+      ${objs.some((o) => isLight(o) && tagsOf(o).includes(g)) ? washSelect(ed, "grp-wash", g, lg[g] && lg[g].wash, "model", (v) => setTag(ed, g, { wash: washSetting(v) ?? undefined })) : nothing}`;
         },
       )}`;
 }
@@ -304,8 +317,21 @@ export function objActionsView(
     const dw = def[w];
     const d = dw ? dw.action : "none";
     const v = cur ? cur.action : "";
-    sels.push(html`<label class="act">${label}<select name="obj-act" data-id=${o.id} data-which=${w} .value=${live(v)} @change=${(e: Event) => setObjAction(ed, o.id, w, field(e).value)}>
-        ${options([["", `Default (${d})`], ...KINDS.map((k): [string, string] => [k, k])], v)}</select></label>`);
+    sels.push(
+      selectField(ed, {
+        name: "obj-act",
+        id: o.id,
+        which: w,
+        cls: "act",
+        label,
+        value: v,
+        options: [
+          ["", `Default (${d})`],
+          ...KINDS.map((k): [string, string] => [k, k]),
+        ],
+        onChange: (x) => setObjAction(ed, o.id, w, x),
+      }),
+    );
     if (cur)
       for (const [key, ph] of FIELDS[cur.action] || []) {
         const fv =
@@ -324,8 +350,23 @@ export function objActionsView(
     const only = Array.isArray(pl) && pl.length === 1 && pl[0] === "toggle";
     const custom = Array.isArray(pl) && !only; // a list written in the layout / model: kept until changed
     const v = only ? "toggle" : custom ? "custom" : "";
-    sels.push(html`<label class="act">Popup<select name="obj-popup" data-id=${o.id} .value=${live(v)} @change=${(e: Event) => setPopup(ed, o.id, field(e).value)}>
-        ${options([["", "Automatic"], ["toggle", "Only on / off"], ...(custom ? [["custom", "Custom (from layout)"] as [string, string]] : [])], v)}</select></label>`);
+    sels.push(
+      selectField(ed, {
+        name: "obj-popup",
+        id: o.id,
+        cls: "act",
+        label: "Popup",
+        value: v,
+        options: [
+          ["", "Automatic"],
+          ["toggle", "Only on / off"],
+          ...(custom
+            ? [["custom", "Custom (from layout)"] as [string, string]]
+            : []),
+        ],
+        onChange: (x) => setPopup(ed, o.id, x),
+      }),
+    );
   }
   return html`<div class="oacts">${sels}</div>${fields}${warn}`;
 }

@@ -6,7 +6,17 @@ import { html, nothing } from "lit/html.js";
 import { classMap } from "lit/directives/class-map.js";
 import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
-import { act, field, fmt, options } from "../html.ts";
+import {
+  act,
+  checkField,
+  field,
+  floorField,
+  fmt,
+  haSelector,
+  haSelectors,
+  options,
+  selectField,
+} from "../html.ts";
 import { switchTab } from "../panel.ts";
 import { startDrawing, finishDrawing, cancelDrawing } from "../tools/draw.ts";
 import {
@@ -88,16 +98,20 @@ export function roomsTab(ed: EditMode): View {
     (r) => !r.area_id || !(ed.hass.areas || {})[r.area_id],
   );
   return html`${selectedRoomView(ed, areas)}
-      <label class="room-labels">Room labels <select name="room-labels" ?disabled=${!!yamlLabels} title=${yamlLabels ? "Set in the card YAML (room_labels)" : nothing}
-        .value=${live(rl)} @change=${(e: Event) => setRoomLabels(ed, field(e).value)}>
-        ${options(
-          [
-            ["size", "Name and size"],
-            ["name", "Name only"],
-            ["none", "None"],
-          ],
-          rl,
-        )}</select></label>
+      ${selectField(ed, {
+        name: "room-labels",
+        cls: "room-labels",
+        label: "Room labels",
+        value: rl,
+        disabled: !!yamlLabels,
+        title: yamlLabels ? "Set in the card YAML (room_labels)" : undefined,
+        options: [
+          ["size", "Name and size"],
+          ["name", "Name only"],
+          ["none", "None"],
+        ],
+        onChange: (v) => setRoomLabels(ed, v),
+      })}
       ${yamlLabels ? html`<p class="hint">Set in the card YAML (room_labels), which wins over this setting.</p>` : nothing}
       ${floorLists}
       ${
@@ -123,12 +137,21 @@ function selectedRoomView(ed: EditMode, areas: HassArea[]): View {
   const fid = ed.floorOf(sel);
   return html`<section class="box">
         <h3>${areaName(ed.hass, sel.area_id)}</h3>
-        <label>Area <select name="room-area" .value=${live(sel.area_id || "")} @change=${(e: Event) => setRoomArea(ed, field(e).value)}>${options(areaOpts, sel.area_id)}</select></label>
-        <label>Floor <select name="room-floor" .value=${live(fid)} @change=${(e: Event) => setRoomFloor(ed, field(e).value)}>${options(
-          ed.floors.map((f) => [f.id, f.name]),
-          fid,
-        )}</select></label>
-        <label class="check"><input type="checkbox" name="room-outdoor" .checked=${live(!!sel.outdoor)} @change=${(e: Event) => setRoomOutdoor(ed, field(e).checked)}> Outdoor (no walls)</label>
+        ${
+          haSelectors()
+            ? html`<div class="fp-field">${haSelector(ed, {
+                name: "room-area",
+                label: "Area",
+                value: sel.area_id || undefined,
+                selector: { area: {} },
+                onChange: (v) => {
+                  if (typeof v === "string" && v) setRoomArea(ed, v);
+                },
+              })}</div>`
+            : html`<label>Area <select name="room-area" .value=${live(sel.area_id || "")} @change=${(e: Event) => setRoomArea(ed, field(e).value)}>${options(areaOpts, sel.area_id)}</select></label>`
+        }
+        ${floorField(ed, { name: "room-floor", label: "Floor", value: fid, onChange: (v) => setRoomFloor(ed, v) })}
+        ${checkField(ed, { name: "room-outdoor", label: "Outdoor (no walls)", checked: !!sel.outdoor, onChange: (v) => setRoomOutdoor(ed, v) })}
         <div class="sub">Doors</div>
         <ul class="plain">${
           (sel.doors || []).length

@@ -237,6 +237,9 @@ export function keyRoute(
 }
 
 export function onKeyDown(ed: EditMode, e: KeyboardEvent) {
+  // keys in HA's pickers (their lists, chips, search fields) are theirs: Esc closes the list, not a tool
+  if (e.composedPath().some((n) => (n as Element).tagName === "HA-SELECTOR"))
+    return;
   const r = keyRoute(ed, e.key, e.composedPath()[0] as Element | undefined);
   if (!r) return;
   switch (r.kind) {

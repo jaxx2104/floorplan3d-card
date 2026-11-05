@@ -37,6 +37,8 @@ import { closeMenu } from "./edit/tools/view-menu.ts";
 import { selectObject } from "./edit/tabs/objects.ts";
 import { onViewChanged } from "./edit/tabs/views.ts";
 import { onModelLoaded, setModelProps } from "./edit/tabs/model.ts";
+import { haSelectors } from "./edit/html.ts";
+import { loadSelectors } from "./ha-helpers.ts";
 
 import type { Mesh, Object3D } from "three";
 import type { FloorplanView } from "./view.ts";
@@ -298,6 +300,11 @@ export class EditMode {
     window.addEventListener("keydown", this._onKey);
     this.view.setStems(true);
     this.render();
+    // HA's pickers: loaded on first use, the panel switches to them once they are there
+    if (!haSelectors())
+      void loadSelectors(this.hass).then((ok) => {
+        if (ok) this.render();
+      });
     refreshOverlay(this);
     this._syncStageClasses();
   }

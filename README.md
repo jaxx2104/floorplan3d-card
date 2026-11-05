@@ -126,7 +126,14 @@ the last step).
 
 ![Edit mode](docs/images/edit-rooms.png)
 
-Entity pickers and device lists in edit mode name the integration ("Lamp · Philips Hue" in the suggestions) and show its 16 px logo, so the same device from two integrations is easy to tell apart.
+The panel's fields are Home Assistant's own pickers (`ha-selector`): entity pickers filtered to the
+domains that fit (lights and switches for lamps, `image` / `camera` for the mower map, ...), the area
+and floor pickers, dropdowns and switches. The card loads them the first time edit mode opens; where
+HA's elements are missing (the demo page) the panel keeps plain inputs, selects and checkboxes, whose
+entity suggestions name the integration ("Lamp · Philips Hue") and show its 16 px logo. HA's picker
+lists open over the plan but inside the panel, so a pick never orbits the camera, and keys typed in
+them (Esc, Enter) stay with the picker. The model tab's level / room tables, the tag filter and the
+slider number fields stay plain.
 
 **Rooms.** Every HA area is listed as _drawn_ or _missing_. Click **Draw** and click the
 corners of the room on the plan. Points snap to 5 cm, to existing corners within 25 cm (so
@@ -201,8 +208,8 @@ the object under the mouse gets an outline and a pointer cursor.
 **Objects.** (Only with a model that has objects.) The model's objects grouped by level and room,
 each with its entity: _auto_ means bound from the model's `suggest.entity`; mower and dock objects
 without a binding whose suggested entity is missing use the Mower tab's entity (_auto: … (from
-Mower tab)_); type another entity
-to rebind, empty returns to auto, `none` leaves it unbound. _entity not found_ means the entity
+Mower tab)_); pick another entity
+to rebind, clear it to return to auto, or switch on _No entity_ (plain input: type `none`) to leave it unbound. _entity not found_ means the entity
 doesn't exist in HA (the object stays unbound). **Tap / Hold / Double tap** pick the object's
 [actions](#actions) (_Default_ = the model's or the type's action; navigate, url and perform-action
 show the fields they need and flag a missing one). **Test** toggles it like a tap, **Hide** ignores the

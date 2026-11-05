@@ -1,7 +1,9 @@
-// Template parts shared by the edit panel's tabs (lit-html): sliders, entity inputs with their
-// integration logo, datalists, select options, and the click wrapper every panel button goes through.
+// Template parts shared by the edit panel's tabs (lit-html): sliders, HA's pickers (<ha-selector>: entity,
+// area, floor, select, boolean) with native fallbacks where HA's elements are missing (entity inputs with
+// their integration logo and datalists, selects, checkboxes), and the click wrapper every panel button goes through.
 
 import { html, nothing } from "lit/html.js";
+import { live } from "lit/directives/live.js";
 import * as E from "../editor.ts";
 import { platformOf, entityOptionLabel, integrationName } from "../badges.ts";
 import { logoSrc, logoFailed } from "../badge-dom.ts";
@@ -174,19 +176,179 @@ export function logoBox(
   return html`<span class="lg">${logo(ed, eid ? platformOf(ed.hass.entities, eid) : null)}</span>`;
 }
 
-export interface EntityInputOpts {
+/** HA's selector element is there (in HA once loadSelectors ran; never on the demo page). */
+export const haSelectors = (): boolean =>
+  typeof customElements !== "undefined" && !!customElements.get("ha-selector");
+
+export interface SelectorOpts {
   name: string;
-  /** row id (Objects tab) */
+  /** row id (Objects tab ...) */
   id?: string;
-  list: string;
+  label?: string;
+  selector: Record<string, unknown>;
+  value: unknown;
+  disabled?: boolean;
+  title?: string;
+  onChange: (v: unknown) => void;
+}
+
+// An HA <ha-selector> (entity / area / floor / select / boolean pickers). Its own value-changed stays here.
+// Its dropdowns and lists open inside the panel's DOM, so their pointer events never reach the stage.
+export function haSelector(ed: EditMode, o: SelectorOpts): TemplateResult {
+  return html`<ha-selector class="fp-sel" name=${o.name} data-id=${o.id ?? nothing} title=${o.title ?? nothing} .hass=${ed.hass}
+    .selector=${o.selector} .value=${o.value} .label=${o.label} .disabled=${!!o.disabled}
+    @value-changed=${(e: CustomEvent<{ value: unknown }>) => {
+      e.stopPropagation();
+      o.onChange(e.detail ? e.detail.value : undefined);
+      ed.render();
+    }}></ha-selector>`;
+}
+
+const NONE = "__fp_none__"; // HA's select has no empty option value: stands for ""
+
+export interface SelectFieldOpts {
+  name: string;
+  id?: string;
+  /** data-which on the native select (Objects tab actions) */
+  which?: string;
+  label: string;
+  /** the native fallback's <label> class */
+  cls?: string;
   value: string;
-  placeholder?: string;
+  options: readonly (readonly [string, string])[];
+  disabled?: boolean;
   title?: string;
   onChange: (v: string) => void;
 }
 
-// An entity input (datalist) with the logo of the typed entity's integration in front; saved on change.
+// A select: HA's select selector (dropdown), else a native <select> in a <label>.
+export function selectField(ed: EditMode, o: SelectFieldOpts): TemplateResult {
+  if (haSelectors())
+    return html`<div class=${`fp-field ${o.cls || ""}`}>${haSelector(ed, {
+      name: o.name,
+      id: o.id,
+      label: o.label,
+      title: o.title,
+      disabled: o.disabled,
+      value: o.value === "" ? NONE : o.value,
+      selector: {
+        select: {
+          mode: "dropdown",
+          options: o.options.map(([value, label]) => ({
+            value: value === "" ? NONE : value,
+            label,
+          })),
+        },
+      },
+      onChange: (v) => {
+        const x = typeof v === "string" ? v : "";
+        o.onChange(x === NONE ? "" : x);
+      },
+    })}</div>`;
+  return html`<label class=${o.cls || nothing}>${o.label} <select name=${o.name} data-id=${o.id ?? nothing} data-which=${o.which ?? nothing}
+    ?disabled=${!!o.disabled} title=${o.title ?? nothing} .value=${live(o.value)} @change=${(e: Event) => o.onChange(field(e).value)}>${options(o.options, o.value)}</select></label>`;
+}
+
+export interface CheckFieldOpts {
+  name: string;
+  id?: string;
+  /** data-key on the native checkbox */
+  dataKey?: string;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  /** after the label (e.g. "(card YAML)") */
+  note?: View;
+  onChange: (v: boolean) => void;
+}
+
+// A checkbox: HA's boolean selector (a switch with its label), else a native checkbox in a label.check.
+export function checkField(ed: EditMode, o: CheckFieldOpts): TemplateResult {
+  if (haSelectors())
+    return html`<div class="fp-field check">${haSelector(ed, {
+      name: o.name,
+      id: o.id,
+      label: o.label,
+      disabled: o.disabled,
+      value: o.checked,
+      selector: { boolean: {} },
+      onChange: (v) => o.onChange(!!v),
+    })}${o.note ?? nothing}</div>`;
+  return html`<label class="check"><input type="checkbox" name=${o.name} data-id=${o.id ?? nothing} data-key=${o.dataKey ?? nothing}
+    .checked=${live(o.checked)} ?disabled=${!!o.disabled} @change=${(e: Event) => o.onChange(field(e).checked)}> ${o.label}${o.note ?? nothing}</label>`;
+}
+
+/** The floor picker: HA's floor selector when every layout floor is an HA floor, else a select of the layout floors. */
+export function floorField(
+  ed: EditMode,
+  o: Omit<SelectFieldOpts, "options">,
+): TemplateResult {
+  const ha = ed.hass.floors || {};
+  const floors = ed.floors;
+  if (haSelectors() && floors.length && floors.every((f) => ha[f.id]))
+    return html`<div class="fp-field">${haSelector(ed, {
+      name: o.name,
+      id: o.id,
+      label: o.label,
+      value: o.value || undefined,
+      selector: { floor: {} },
+      onChange: (v) => {
+        if (typeof v === "string" && v) o.onChange(v);
+      },
+    })}</div>`;
+  return selectField(ed, {
+    ...o,
+    options: floors.map((f): [string, string] => [f.id, f.name]),
+  });
+}
+
+export interface EntityInputOpts {
+  name: string;
+  /** row id (Objects tab) */
+  id?: string;
+  /** the native input's datalist id */
+  list: string;
+  /** HA's entity picker: only these domains */
+  domains?: readonly string[];
+  /** the label of HA's picker (the native input sits in the caller's <label>) */
+  label?: string;
+  value: string;
+  placeholder?: string;
+  title?: string;
+  /** a "none" value (no entity, unlike empty = automatic): HA's picker gets a switch with this label */
+  none?: string;
+  onChange: (v: string) => void;
+}
+
+// An entity picker: HA's entity selector (domains filter), else an input (datalist) with the logo of the
+// typed entity's integration in front; saved on change.
 export function entityInput(ed: EditMode, o: EntityInputOpts): TemplateResult {
+  if (haSelectors()) {
+    const isNone = !!o.none && o.value === "none";
+    const pick = haSelector(ed, {
+      name: o.name,
+      id: o.id,
+      label: o.label,
+      title: o.title,
+      value: isNone ? undefined : o.value || undefined,
+      disabled: isNone,
+      selector: {
+        entity: o.domains ? { filter: { domain: [...o.domains] } } : {},
+      },
+      onChange: (v) => o.onChange(typeof v === "string" ? v : ""),
+    });
+    return html`<span class="entin ha">${pick}${
+      o.none
+        ? checkField(ed, {
+            name: `${o.name}-none`,
+            id: o.id,
+            label: o.none,
+            checked: isNone,
+            onChange: (v) => o.onChange(v ? "none" : ""),
+          })
+        : nothing
+    }</span>`;
+  }
   const key = `ent:${o.name}:${o.id ?? ""}`;
   const draft = ed.drafts.get(key);
   const cur = (draft ?? o.value).trim();
@@ -203,11 +365,23 @@ export function entityInput(ed: EditMode, o: EntityInputOpts): TemplateResult {
     }}></span>`;
 }
 
+// A labelled entity picker: HA's carries the label itself, the native input sits in a <label>.
+export function entityField(
+  ed: EditMode,
+  label: string,
+  o: EntityInputOpts,
+): TemplateResult {
+  return haSelectors()
+    ? html`<div class="fp-field">${entityInput(ed, { ...o, label })}</div>`
+    : html`<label>${label} ${entityInput(ed, o)}</label>`;
+}
+
 // <datalist> of entities: value = entity id, label = "<name> · <Integration>"
 export function entityList(
   ed: EditMode,
   id: string,
   ids: readonly string[],
-): TemplateResult {
+): View {
+  if (haSelectors()) return nothing; // HA's pickers list the entities themselves
   return html`<datalist id=${id}>${ids.map((x) => html`<option value=${x} label=${entityOptionLabel(ed.hass, x)}></option>`)}</datalist>`;
 }

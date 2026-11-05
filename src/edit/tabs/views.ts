@@ -19,9 +19,8 @@ import { cancelPivot } from "../tools/pivot.ts";
 import { closeMenu } from "../tools/view-menu.ts";
 import { html, nothing } from "lit/html.js";
 import { classMap } from "lit/directives/class-map.js";
-import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
-import { act, field, options, slider } from "../html.ts";
+import { act, checkField, field, selectField, slider } from "../html.ts";
 import type { TemplateResult } from "lit/html.js";
 import type { TabDef } from "./tab.ts";
 import type { View } from "../html.ts";
@@ -126,14 +125,16 @@ export function viewsTab(ed: EditMode): TemplateResult {
   const rules = layoutRules(ed, v.id);
   const on = (fn: (v: ResolvedView) => void) => act(ed, () => fn(v)); // buttons act on the edited view
   return html`<p class="hint">Each view is a button on the card. Choose what it shows: click a part of the model, or use the eyes below.</p>
-      <label>View <select name="vw-view" .value=${live(v.id)} @change=${(e: Event) => chooseView(ed, field(e).value)}>
-        ${options(
-          views.map((x): [string, string] => [
-            x.id,
-            `${x.label}${x.hidden ? " (hidden)" : ""}`,
-          ]),
-          v.id,
-        )}</select></label>
+      ${selectField(ed, {
+        name: "vw-view",
+        label: "View",
+        value: v.id,
+        options: views.map((x): [string, string] => [
+          x.id,
+          `${x.label}${x.hidden ? " (hidden)" : ""}`,
+        ]),
+        onChange: (x) => chooseView(ed, x),
+      })}
       <label>Label <input name="vw-label" .value=${v.label} @change=${(e: Event) => card.saveViewPatch(v.id, { label: field(e).value.trim() || undefined })}></label>
       <div class="row"><button @click=${on(() => addView(ed, v))}>Add view</button>
         <button ?disabled=${!v.hidden && v.source !== "added" && visible <= 1} class=${classMap({ danger: v.source === "added" })} @click=${on(() => hideView(ed, v))}>${hideLabel}</button>
@@ -143,10 +144,14 @@ export function viewsTab(ed: EditMode): TemplateResult {
       <div class="floor-links">${repeat(
         ed.floors,
         (f) => f.id,
-        (
-          f,
-        ) => html`<label class="check"><input type="checkbox" name="vw-floor" data-id=${f.id} .checked=${live(st.floors.includes(f.id))}
-        @change=${(e: Event) => linkFloor(ed, v, f.id, field(e).checked)}> ${f.name}</label>`,
+        (f) =>
+          checkField(ed, {
+            name: "vw-floor",
+            id: f.id,
+            label: f.name,
+            checked: st.floors.includes(f.id),
+            onChange: (x) => linkFloor(ed, v, f.id, x),
+          }),
       )}</div>
       <p class="hint">Devices on linked floors show in this view. None checked: the view belongs to no floor (e.g. a garden view).</p>
       <div class="sub">Camera${top ? " (top view)" : ""}</div>
@@ -167,20 +172,26 @@ export function viewsTab(ed: EditMode): TemplateResult {
           : html`<button ?disabled=${!!v.hidden || v.id !== card._viewId} title="Click a point: the camera rotates and zooms around it" @click=${act(ed, () => startPivot(ed))}>Set rotation centre</button>`
       }</div>
       ${ed.pivoting ? html`<p class="hint">Click where the rotation centre should be (Esc cancels).</p>` : nothing}
-      <label>Zoom towards <select name="vw-zoom-to" .value=${live(zoom)} @change=${(e: Event) => card.saveViewPatch(v.id, { zoom_to: field(e).value || undefined })}>
-        ${options(
-          [
-            ["", `Card default (${zoomToFor(null, card._config)})`],
-            ["center", "Centre"],
-            ["cursor", "Cursor"],
-          ],
-          zoom,
-        )}</select></label>
+      ${selectField(ed, {
+        name: "vw-zoom-to",
+        label: "Zoom towards",
+        value: zoom,
+        options: [
+          ["", `Card default (${zoomToFor(null, card._config)})`],
+          ["center", "Centre"],
+          ["cursor", "Cursor"],
+        ],
+        onChange: (x) => card.saveViewPatch(v.id, { zoom_to: x || undefined }),
+      })}
       ${sectionView(ed, v, lv)}
       ${
         ed.view.model && !ed.view.isTagged()
-          ? html`<label class="check"><input type="checkbox" name="vw-cut" .checked=${live(v.cut ?? v.id !== "all")}
-        @change=${(e: Event) => card.saveViewPatch(v.id, { cut: field(e).checked })}> Cut at storey height</label>`
+          ? checkField(ed, {
+              name: "vw-cut",
+              label: "Cut at storey height",
+              checked: v.cut ?? v.id !== "all",
+              onChange: (x) => card.saveViewPatch(v.id, { cut: x }),
+            })
           : nothing
       }
       ${modelTreeView(ed, v, st.effective, rules)}
@@ -294,10 +305,13 @@ export function sectionView(
     sectionAt(dir.normal, Math.round(x * 100) / 100);
   return html`<div class="sub">Side section</div>
       <p class="hint">The Section button (box cutter) cuts the house here and looks at the cut face. ${src}</p>
-      <label>Direction <select name="vw-sec-dir" .value=${live(dir.id)} @change=${(e: Event) => setSectionDir(ed, v, field(e).value)}>${options(
-        SECTION_DIRS.map((d) => [d.id, d.label]),
-        dir.id,
-      )}</select></label>
+      ${selectField(ed, {
+        name: "vw-sec-dir",
+        label: "Direction",
+        value: dir.id,
+        options: SECTION_DIRS.map((d): [string, string] => [d.id, d.label]),
+        onChange: (x) => setSectionDir(ed, v, x),
+      })}
       ${slider(ed, {
         name: "vw-sec-pos",
         label: `Position (${dir.normal[0] ? "east" : "north"})`,

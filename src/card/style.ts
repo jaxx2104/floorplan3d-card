@@ -156,8 +156,13 @@ export const STYLE: string = `
   .panel p { margin: 6px 0; }
   .panel .box { border: 1px solid var(--divider-color, rgba(0,0,0,.12)); border-radius: 8px; padding: 8px 10px;
     margin: 8px 0; }
-  .panel label { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 12px;
+  .panel label, .panel div.grp { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 12px;
     color: var(--secondary-text-color); }
+  .panel .fp-field { display: block; margin: 8px 0; }
+  .panel .fp-field.check { margin: 2px 0; }
+  .panel ha-selector.fp-sel { display: block; width: 100%; }
+  .panel .entin.ha { display: flex; flex-direction: column; gap: 2px; }
+  .panel ul.otree li.obj .oacts .fp-field.act { flex: 1; min-width: 120px; margin: 0; }
   .panel label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--primary-text-color); }
   .panel select, .panel input[type=number] { font: inherit; padding: 5px 6px; border-radius: 6px;
     border: 1px solid var(--divider-color, rgba(0,0,0,.2)); background: var(--card-background-color, #fff);
