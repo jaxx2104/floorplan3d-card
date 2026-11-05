@@ -209,3 +209,43 @@ describe("night_markers", () => {
     expect(s.card._stage.classList.contains("awake")).toBe(true); // no timer left to remove it
   });
 });
+
+// The time scrubber's shadow settle (SkyController.setSunTime): what model-check used to read in a browser as "the
+// shadow map waits" right after an input, a "not yet" against the real clock.
+describe("sun time scrubber: the sun's shadow map follows 150 ms after the last move", () => {
+  afterEach(() => vi.useRealTimers());
+  const sky = () => {
+    const s = new SkyController({
+      _config: {},
+      _stage: document.createElement("div"),
+      _syncMarkerMode() {},
+      _syncToolbar() {},
+    });
+    s._applySky = vi.fn();
+    return s;
+  };
+  it("dragging: sky now without the shadow, the shadow once 150 ms passed since the last move", () => {
+    vi.useFakeTimers();
+    const s = sky();
+    s.setSunTime(600, { settle: false });
+    expect(s._applySky).toHaveBeenLastCalledWith(true, { shadow: false });
+    vi.advanceTimersByTime(100);
+    s.setSunTime(615, { settle: false }); // still dragging: the settle starts over
+    vi.advanceTimersByTime(149);
+    expect(s._applySky).toHaveBeenCalledTimes(2);
+    expect(s._applySky.mock.calls.every((c) => c[1]?.shadow === false)).toBe(
+      true,
+    );
+    vi.advanceTimersByTime(1);
+    expect(s._applySky).toHaveBeenCalledTimes(3);
+    expect(s._applySky).toHaveBeenLastCalledWith(true);
+    s.setSunTime(null);
+  });
+  it("a settled set (release, Now) applies the shadow at once", () => {
+    vi.useFakeTimers();
+    const s = sky();
+    s.setSunTime(600);
+    expect(s._applySky).toHaveBeenCalledWith(true);
+    s.setSunTime(null);
+  });
+});

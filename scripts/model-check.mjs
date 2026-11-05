@@ -20,7 +20,6 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? " – " + detail : ""}`);
   if (!ok) failures.push(name);
 };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // wait until the 400 ms camera tween has finished (fixed sleeps flake under load)
 const settle = async (page, card) => {
   await page
@@ -55,16 +54,14 @@ const camAndOcclusion = async (page, cam) => {
     )
     .catch(() => console.log("     (the camera move was not drawn in 5 s)"));
 };
-// A press held past the long press (LONG_PRESS_MS, 500 ms): the hold is real time (the input under test, 700 ms
-// as before), then held on until the card's long-press timer has fired (on a loaded runner it runs late, and an
-// early release would be a tap), then released and idle.
+// A press held past the long press (LONG_PRESS_MS, 500 ms): held until the card's own gesture says its long-press
+// timer has fired (g.long: the timing is the card's, nothing timed here), then released and idle.
 const holdAt = async (page, p) => {
   await page.mouse.move(p[0], p[1]);
   await page.mouse.down();
-  await sleep(700);
   await waitTrue(
     page,
-    `(() => { const g = ${card}._objectInput._gesture; return !g || g.long; })()`,
+    `(() => { const g = ${card}._objectInput._gesture; return !!g && g.long; })()`,
     "the long press",
     10000,
   );
@@ -230,10 +227,12 @@ sections.add(
     g.translate(-cx, -cy, -cz).scale(200 / (bb.max.x - bb.min.x), 0.1 / (bb.max.y - bb.min.y), 200 / (bb.max.z - bb.min.z));
     const m = new sofa.constructor(g, sofa.material.clone());
     m.name = 'test_terrain'; m.userData.fp = { layer: 'terrain' }; m.position.set(6, -0.3, -4.5);
-    v.model.root.add(m); c._loadModel(); await new Promise((r) => setTimeout(r, 100));
+    // drawn: an animation frame with no tween and no frame due (instead of fixed waits)
+    const drawn = () => new Promise((r) => { const f = () => (!v._tween && !v.dirty ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    v.model.root.add(m); c._loadModel(); await drawn();
     const cam = v.getCamera(), t = cam.target, p = cam.position, d = Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2]);
     v.setCamera({ target: t, position: p.map((x, i) => t[i] + ((x - t[i]) * 130) / d) }, { instant: true });
-    await new Promise((r) => setTimeout(r, 300));
+    await drawn();
     v.persp.updateMatrixWorld();
     let far = 0; m.updateMatrixWorld(true);
     for (const [x, z] of [[-100, -100], [100, -100], [100, 100], [-100, 100]]) {
@@ -242,7 +241,7 @@ sections.add(
     }
     const out = { cornerDepth: far, near: v.persp.near, far: v.persp.far, dist: 130 };
     v.model.root.remove(m); g.dispose(); m.material.dispose(); c._loadModel(); v.setCamera(cam, { instant: true });
-    await new Promise((r) => setTimeout(r, 100));
+    await drawn();
     return out; })()`);
     check(
       "far plane covers a 200 m terrain from 130 m away",
@@ -271,9 +270,10 @@ sections.add(
     const ghost =
       await page.evaluate(`(async () => { const c = ${card}, v = c._view; const m = v.model.root.getObjectByName('sofa_body').material;
     const pane = v.model.root.getObjectByName('window_pane_living').material;
-    c._config = { ...c._config, model_opacity: 0.6 }; c._loadModel(); await new Promise((r) => setTimeout(r, 100));
+    const drawn = () => new Promise((r) => { const f = () => (!v._tween && !v.dirty ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    c._config = { ...c._config, model_opacity: 0.6 }; c._loadModel(); await drawn();
     const out = { depthWrite: m.depthWrite, alphaHash: m.alphaHash, transparent: m.transparent, opacity: m.opacity, paneOpacity: pane.opacity, paneTransparent: pane.transparent };
-    c._config = { ...c._config, model_opacity: 1 }; c._loadModel(); await new Promise((r) => setTimeout(r, 100));
+    c._config = { ...c._config, model_opacity: 1 }; c._loadModel(); await drawn();
     out.back = { alphaHash: m.alphaHash, opacity: m.opacity, depthWrite: m.depthWrite };
     return out; })()`);
     check(
@@ -1119,13 +1119,12 @@ async function sunTimeChecks(page) {
     JSON.stringify(t12),
   );
   check("button shows the scrubbed time", t12.label === "12:00", t12.label);
-  // dragging: lights now, sun shadow map 150 ms after the last move
+  // dragging: lights now, sun shadow map once the scrubber settles (its 150 ms settle is unit-tested in
+  // test/card-timers.test.js). The input and the read in one task, so the settle timer cannot run in between.
   const n0 = await page.evaluate(`${card}._view.stats.shadowLights`);
-  await page.evaluate(
-    `(() => { const r = ${card}.shadowRoot.querySelector('.fp-suntime input'); r.value = '600'; r.dispatchEvent(new Event('input')); })()`,
-  );
   const mid = await page.evaluate(
-    `({ n: ${card}._view.stats.shadowLights, stale: ${card}._view._sunStale, el: ${card}._sunNow.elevation })`,
+    `(() => { const r = ${card}.shadowRoot.querySelector('.fp-suntime input'); r.value = '600'; r.dispatchEvent(new Event('input'));
+    return { n: ${card}._view.stats.shadowLights, stale: ${card}._view._sunStale, el: ${card}._sunNow.elevation }; })()`,
   );
   check(
     "dragging: the sun moves, its shadow map waits",
@@ -1136,14 +1135,14 @@ async function sunTimeChecks(page) {
   );
   await page
     .waitForFunction(`${card}._view.stats.shadowLights > ${n0}`, {
-      timeout: 3000,
+      timeout: 10000,
     })
     .catch(() => {});
   const after = await page.evaluate(
     `({ n: ${card}._view.stats.shadowLights, stale: ${card}._view._sunStale })`,
   );
   check(
-    "settled (150 ms): the sun shadow map redrawn once",
+    "settled: the sun shadow map redrawn once",
     after.n === n0 + 1 && after.stale === false,
     JSON.stringify(after),
   );
@@ -1186,7 +1185,7 @@ async function sunTimeChecks(page) {
   await set(480);
   const was = await page.evaluate(`${card}._sunTime`);
   await page
-    .waitForFunction(`${card}._sunTime === null`, { timeout: 3000 })
+    .waitForFunction(`${card}._sunTime === null`, { timeout: 10000 })
     .catch(() => {});
   check(
     "idle: back to live after the timeout",
@@ -1976,7 +1975,7 @@ sections.add(
     await page
       .waitForFunction(
         `!!${card}.shadowRoot.querySelector('.fp-popup .fp-pop-row.ha .fp-demo-tile')`,
-        { timeout: 3000 },
+        { timeout: 10000 },
       )
       .catch(() => {});
     const pop = () =>
@@ -2324,7 +2323,7 @@ sections.add(
         `[...${sr}.querySelectorAll('.fp-popup .fp-demo-tile [data-feature]')].map((f) => f.dataset.feature).join()`,
       );
     const tileReady = () =>
-      page.waitForFunction(`!!${tile}`, { timeout: 3000 }).catch(() => {});
+      page.waitForFunction(`!!${tile}`, { timeout: 10000 }).catch(() => {});
     await open();
     await tileReady();
     const r0 = await rows();
@@ -2482,8 +2481,6 @@ sections.add(
     await page.evaluate(`(() => {
     window.__locs = [];
     window.addEventListener('location-changed', () => window.__locs.push(location.pathname + location.search));
-    window.__upAt = 0;
-    window.addEventListener('pointerup', () => { window.__upAt = performance.now(); }, true);
   })()`);
     const origin = await page.evaluate("location.pathname + location.search");
     const setActions = async (actions) => {
@@ -2618,42 +2615,51 @@ sections.add(
       page.evaluate(
         `window.__serviceCalls.slice(${k}).map((c, i) => ({ c, t: window.__serviceCallTimes[${k} + i] }))`,
       );
+    const hallOf = (x) => x.c[2] && x.c[2].entity_id === "light.demo_hall",
+      livingOf = (x) => x.c[2] && x.c[2].entity_id === "light.demo_living";
+    // The double-tap window (DOUBLE_TAP_MS, unit-tested on TapSequencer in test/actions.test.js) held open through
+    // the card's tap sequencer while two taps must land inside it, so no check races the runner's clock.
+    const tapMs = await page.evaluate(`${card}._taps.ms`);
+    const holdTaps = (on) =>
+      page.evaluate(`${card}._taps.ms = ${on ? 600000 : tapMs}`);
     let k = await calls();
-    await page.mouse.click(pl[0], pl[1]); // pending: waits 250 ms for a second tap
+    await holdTaps(true);
+    await page.mouse.click(pl[0], pl[1]); // pending: waits for a second tap
     await page.mouse.click(ph[0], ph[1]); // other object: immediate
-    const tUp = await page.evaluate("window.__upAt");
-    // by order, not by a 50 ms read and a 100 ms budget: the hall call is in as soon as its click is through, and
-    // before the living lamp's pending tap (which waits out the 250 ms double-tap window; a hall tap held behind
-    // it would come after it)
     const early = await since(k);
-    await idle(page);
-    const all = await since(k);
-    const hallCall = all.find(
-      (x) => x.c[2] && x.c[2].entity_id === "light.demo_hall",
-    );
-    const livingCall = all.find(
-      (x) => x.c[2] && x.c[2].entity_id === "light.demo_living",
+    const pendingLiving = await page.evaluate(
+      `${card}._taps.pending.has('object:lamp_living')`,
     );
     check(
       "actions: a single tap on another object is not delayed by a pending double tap",
-      !!hallCall &&
-        !!livingCall &&
-        early.some((x) => x.c[2] && x.c[2].entity_id === "light.demo_hall") &&
-        hallCall.t < livingCall.t,
-      JSON.stringify(all.map((x) => [x.c[2], Math.round(x.t - tUp)])),
+      early.some(hallOf) && !early.some(livingOf) && pendingLiving,
+      JSON.stringify({ early: early.map((x) => x.c[2]), pendingLiving }),
     );
+    // the held tap dropped, the window back to the card's own: a single tap runs once it is out (waited for)
+    await page.evaluate(`${card}._taps.cancel()`);
+    await holdTaps(false);
+    k = await calls();
+    await page.mouse.click(pl[0], pl[1]);
+    await waitTrue(
+      page,
+      `!${card}._taps.pending.size`,
+      "the double-tap window",
+      10000,
+    );
+    await idle(page);
     let later = (await since(k)).map((x) => x.c);
     check(
-      "actions: the pending single tap runs after 250 ms (toggle)",
+      "actions: the pending single tap runs after the double-tap window (toggle)",
       later.some(
         (c) => c[1] === "toggle" && c[2].entity_id === "light.demo_living",
       ),
       JSON.stringify(later),
     );
     k = await calls();
+    await holdTaps(true);
     await page.mouse.click(pl[0], pl[1]);
-    await sleep(60); // the second tap inside the double-tap window
-    await page.mouse.click(pl[0], pl[1]);
+    await page.mouse.click(pl[0], pl[1]); // the second tap inside the (held) window
+    await holdTaps(false);
     await idle(page);
     later = (await since(k)).map((x) => x.c);
     check(
@@ -2804,8 +2810,10 @@ sections.add(
       page.evaluate(`(() => { const c = ${card}; const o = c._objects.objectAt('mower');
     const w = o.obj.node.getWorldPosition(new c._view.camera.position.constructor());
     const g = o.part.glow && o.part.glow.material; return { x: w.x, z: w.z, marker: !!c._mowerMarkerId, live: !!c._mowerLive && !!c._mowerLive.x, em: g ? g.emissive.g : -1 }; })()`);
+    // the demo mower held and moved by its step hook (not by its 500 ms timer), then until the node has moved
+    await page.evaluate("window.__demoMowerPaused = true");
     const a = await pos();
-    // until the node has moved (the demo mower steps every 500 ms; it moved in 2.5 s before)
+    await page.evaluate("window.__demoMowerStep(); window.__demoMowerStep()");
     await waitTrue(
       page,
       `(() => { const c = ${card}, o = c._objects.objectAt('mower'), w = o.obj.node.getWorldPosition(new c._view.camera.position.constructor());
@@ -2907,7 +2915,7 @@ sections.add(
     await page
       .waitForFunction(
         `${card}._view.sprites.labels('object', true).some((t) => t.includes('21.5'))`,
-        { timeout: 3000 },
+        { timeout: 10000 },
       )
       .catch(() => {});
     const lbl = await page.evaluate(
@@ -3503,7 +3511,7 @@ sections.add(
     await page.evaluate(`${card}._popup.close()`);
     await page.mouse.click(dk.d[0], dk.d[1]);
     await page
-      .waitForFunction(`!!${card}._popup.el`, { timeout: 3000 })
+      .waitForFunction(`!!${card}._popup.el`, { timeout: 10000 })
       .catch(() => {});
     const pop = await page.evaluate(
       `(() => { const c = ${card}, el = c._popup.el; return el ? { id: c._popup._id, rows: [...el.querySelectorAll('.fp-pop-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()) } : null; })()`,
@@ -5223,7 +5231,7 @@ sections.add(
     await page
       .waitForFunction(
         `!!${card}._view.pivotMarker && ${card}._view.pivotMarker.visible`,
-        { timeout: 3000 },
+        { timeout: 10000 },
       )
       .catch(() => {});
     check(
@@ -7113,7 +7121,9 @@ sections.add(
     const same = await page.evaluate(`(async () => {
     const root = ${card}.shadowRoot; const s = root.querySelector('[name=md-rotation]');
     s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    for (const v of ['20', '30', '40']) { s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); await new Promise((r) => setTimeout(r, 150)); }
+    // after each input tick the panel render it queued has run (where the element would be replaced)
+    const rendered = () => new Promise((r) => { const f = () => (${card}._edit._renderQueued ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); });
+    for (const v of ['20', '30', '40']) { s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); await rendered(); }
     const stillThere = root.querySelector('[name=md-rotation]') === s;
     s.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     s.dispatchEvent(new Event('change', { bubbles: true }));
@@ -7480,13 +7490,20 @@ sections.add(
           () => false,
         );
       check("after the load the drawing overlay is gone", gone);
-      // the same demo again, caches kept; the model's HEAD answered late so the drawing has time to show
+      // the same demo again, caches kept; the model's HEAD held until the drawing has been checked (released
+      // below), so the drawing shows however fast the load would be
       gets.length = 0;
       await page.setRequestInterception(true);
+      const heldHeads = [];
+      let releaseHeads = false;
       const delay = (r) => {
         if (r.isInterceptResolutionHandled()) return;
-        if (r.url().includes("/demo/house.glb") && r.method() === "HEAD")
-          setTimeout(() => r.continue(), 600);
+        if (
+          !releaseHeads &&
+          r.url().includes("/demo/house.glb") &&
+          r.method() === "HEAD"
+        )
+          heldHeads.push(r);
         else r.continue();
       };
       page.on("request", delay);
@@ -7523,6 +7540,8 @@ sections.add(
           lock.leaked === 0 && lock.controls === false && lock.onDrawing,
           JSON.stringify(lock),
         );
+        releaseHeads = true;
+        for (const r of heldHeads.splice(0)) r.continue();
         await page.waitForFunction(
           `!!${card}._view.model && ${card}._loadUI.readyAt !== null`,
           { timeout: 20000 },
@@ -7714,17 +7733,17 @@ if (optional && process.env.REAL_MODEL) {
     );
     await input.uploadFile(process.env.REAL_MODEL);
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
-    await sleep(500);
+    await idle(page);
     await page.evaluate(
       `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
     ); // leave edit mode
-    await sleep(800);
+    await idle(page);
     const ids = await page.evaluate(
       `${card}._floors.map((f) => f.id).concat('all')`,
     );
     for (const id of ids) {
       await page.evaluate(`${card}._setFloor(${JSON.stringify(id)})`);
-      await sleep(1200);
+      await settle(page, card);
       await page.screenshot({
         path: path.join(root, "screenshots", `real-${id}-day.png`),
       });
@@ -7733,7 +7752,7 @@ if (optional && process.env.REAL_MODEL) {
     await page.evaluate(
       `${card}.shadowRoot.querySelector('button.daynight').click()`,
     );
-    await sleep(800);
+    await settle(page, card);
     await page.screenshot({
       path: path.join(
         root,
@@ -7784,7 +7803,7 @@ if (optional && process.env.USER_MODEL) {
         { timeout: 120000 },
       );
       const ms = Date.now() - t0;
-      await sleep(1500);
+      await idle(page);
       const st = await page
         .evaluate(`JSON.stringify(${card}._view.mergeStats)`)
         .then(JSON.parse);
