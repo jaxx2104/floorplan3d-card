@@ -572,11 +572,44 @@ describe("ObjectLayer", () => {
       expect(on[0].position.z).toBeCloseTo(0.1);
     });
 
+    it("a lamp with a real light draws no wash; one without (a strip without hints.max) does", () => {
+      withSurfaces(view);
+      const m = model([
+        { id: "a", x: 1, hints: { beam: "down", max: 5 } },
+        { id: "s", x: 4, type: "light_strip", hints: { beam: "down" } },
+      ]);
+      layer.setModel(m);
+      layer.setBindings(
+        bind([
+          ["a", "light.a"],
+          ["s", "light.s"],
+        ]),
+        {},
+      );
+      layer.update({ "light.a": st("on"), "light.s": st("on") }, ctx);
+      expect(lit(points(layer)).length).toBe(1);
+      expect(shownWashes(layer, "a")).toEqual([]);
+      expect(shownWashes(layer, "s")).toEqual([layer.washes.materials.down]);
+    });
+
+    // light strips without hints.max: no real light, so their washes show
     it("object > tag > model: tag both draws two quads (down + up), the object setting wins", () => {
       withSurfaces(view);
       const m = model([
-        { id: "a", x: 1, group: "facade", hints: { beam: "down", max: 5 } },
-        { id: "b", x: 4, group: "facade", hints: { beam: "down", max: 5 } },
+        {
+          id: "a",
+          x: 1,
+          type: "light_strip",
+          group: "facade",
+          hints: { beam: "down" },
+        },
+        {
+          id: "b",
+          x: 4,
+          type: "light_strip",
+          group: "facade",
+          hints: { beam: "down" },
+        },
       ]);
       layer.setModel(m);
       const b = bind([

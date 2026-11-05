@@ -1,5 +1,5 @@
-// Wall washes: every lit lamp lights the wall (or floor / ceiling) next to it with a soft additive decal,
-// at no real-light cost (only a few pool lights exist). Pure placement + texels (unit-tested) and the
+// Wall washes: every lit lamp left without a real light (only a few pool lights exist) lights the wall (or
+// floor / ceiling) next to it with a soft additive decal, at no real-light cost. Pure placement + texels (unit-tested) and the
 // Three.js layer: four shared materials made once (compiled on the first frame through invisible warm-up
 // meshes), one small quad per lamp made the first time it is lit; per update only `visible`, the
 // transform and the quad's vertex colours change, so toggling lamps never recompiles a shader.
@@ -129,19 +129,16 @@ export function washSize(h: WashHints): WashSize {
 }
 
 /**
- * A wash's opacity at lamp level 0..1: 0.6 x level, half next to a real light. A floor / ceiling pool of a lamp
- * that got a real light: none. The real light already lights that surface with inverse-square fall-off, and the
- * additive decal (not tone mapped) on top of it blew the area right under the lamp out to white (a kitchen table
- * under a ceiling lamp: display luminance 0.35 lit, 0.83 with the pool, 0.27 in the path-traced frame).
+ * A wash's opacity at lamp level 0..1: 0.6 x level for a lamp without a real light; none for a lamp that got one.
+ * The real light already lights the wall, floor or ceiling next to it (inverse-square fall-off, the spot's cone up
+ * or down the wall), and the additive decal (not tone mapped) on top of it blew that surface out: under a kitchen
+ * ceiling lamp a pool took the table top from 0.35 to 0.83 display luminance (0.27 path traced); on the demo
+ * facade the half-strength wall washes over the wall lamps' and uplights' real lights took the washed wall from
+ * 0.53 to 0.70 by day (0.29 to 0.41 at night) in standard, 0.54 to 0.70 in high, clipping 18-41 % of it instead
+ * of 4-7 %.
  */
-export const washOpacity = (
-  level: number,
-  real: boolean,
-  variant: WashVariant | null = null,
-): number =>
-  level > 0 && !(real && variant === "pool")
-    ? level * 0.6 * (real ? 0.5 : 1)
-    : 0;
+export const washOpacity = (level: number, real: boolean): number =>
+  level > 0 && !real ? level * 0.6 : 0;
 
 const isArr = (v: V3): v is readonly number[] => Array.isArray(v);
 const toArr = (v: V3): readonly number[] => (isArr(v) ? v : [v.x, v.y, v.z]);

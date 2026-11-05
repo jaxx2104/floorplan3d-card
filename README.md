@@ -30,8 +30,8 @@ position over its map.
 - Model objects are the controls: lamps glow and really light rooms and the facade (night is dark,
   the lamps carry it), tap a lamp to toggle it, hold it for brightness and colour; the mower model
   drives on the plan, the dock, EV charger and climate units show their state. Objects bind to
-  their entities from the model's suggestions without setup. Every lit lamp washes its wall with
-  light, and tags (model groups, HA labels) give groups of lamps a shared controller
+  their entities from the model's suggestions without setup. Every lit lamp lights its wall (a real
+  light, or a light decal once the real lights are used up), and tags (model groups, HA labels) give groups of lamps a shared controller
 - Follows the HA theme, light and dark
 
 ## Install
@@ -456,12 +456,12 @@ has no marker: the object is the control.
   the pool is full, a group may keep its glow only. Other lit lamps only glow. `lights: off` keeps glow only and
   takes the light pool out of the shaders (the switch recompiles them once). Shadow maps are
   redrawn only for lit lamps that changed and for the sun while it is up.
-- **Wall washes:** since only a few real lights exist, every lit lamp also washes the surface next to
-  it with a soft additive light decal in its colour and brightness: the nearest wall within 0.6 m
-  (a cone below a down light, above an uplight, an oval around a `point` lamp), else a pool on the
-  floor (or the ceiling for an uplight); spots light a pool where they aim. Size follows
-  `hints.max` / `hints.distance`; lamps that also got a real light wash their wall at half strength and
-  draw no pool (the real light lights the floor under them, the pool on top of it blew that spot out). A wash is
+- **Wall washes:** since only a few real lights exist, every lit lamp left without a real light washes
+  the surface next to it with a soft additive light decal in its colour and brightness instead: the nearest
+  wall within 0.6 m (a cone below a down light, above an uplight, an oval around a `point` lamp), else a pool
+  on the floor (or the ceiling for an uplight); spots light a pool where they aim. Size follows
+  `hints.max` / `hints.distance`. Lamps that got a real light draw no wash: the real light lights that wall or
+  floor itself, and the decal on top of it blew the surface out. A wash is
   placed the first time its lamp is lit (and again after the model is moved); turning lamps on and
   off only shows and hides them, no shader is rebuilt. `hints.beam: "updown"` (or `"both"`), or
   _Light on wall: Up and down_ in the Objects tab, draws two washes, a cone below and one above the

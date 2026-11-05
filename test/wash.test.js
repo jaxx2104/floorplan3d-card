@@ -33,16 +33,14 @@ describe("washKind / washSize", () => {
     expect(d.height).toBeCloseTo(1.2);
     expect(d.width).toBeCloseTo(1);
   });
-  it("opacity follows the level (x 0.6), half next to a real light", () => {
+  it("opacity follows the level (x 0.6)", () => {
     expect(washOpacity(1, false)).toBeCloseTo(0.6);
-    expect(washOpacity(0.5, true)).toBeCloseTo(0.15);
+    expect(washOpacity(0.5, false)).toBeCloseTo(0.3);
     expect(washOpacity(0, false)).toBe(0);
   });
-  it("a real light draws no floor / ceiling pool (it lights that surface itself); wall washes stay at half", () => {
-    expect(washOpacity(1, true, "pool")).toBe(0);
-    expect(washOpacity(1, false, "pool")).toBeCloseTo(0.6);
-    expect(washOpacity(1, true, "down")).toBeCloseTo(0.3);
-    expect(washOpacity(1, true, "oval")).toBeCloseTo(0.3);
+  it("a lamp with a real light draws no wash at all (the real light lights that surface itself)", () => {
+    expect(washOpacity(1, true)).toBe(0);
+    expect(washOpacity(0.5, true)).toBe(0);
   });
 });
 

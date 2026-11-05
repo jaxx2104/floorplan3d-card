@@ -812,7 +812,7 @@ export class ObjectLayer {
         this.washes.paint(
           m,
           r.color || [255, 255, 255],
-          pl ? washOpacity(r.level, real, pl.variant) : 0,
+          pl ? washOpacity(r.level, real) : 0,
         );
       });
       changed = true;
