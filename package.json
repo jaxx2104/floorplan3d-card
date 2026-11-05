@@ -24,13 +24,13 @@
   "license": "MIT",
   "dependencies": {
     "lit": "3.3.3",
-    "three": "0.180.0",
-    "three-gpu-pathtracer": "0.0.24",
-    "three-mesh-bvh": "0.7.8"
+    "three": "0.187.0",
+    "three-gpu-pathtracer": "0.0.28",
+    "three-mesh-bvh": "0.9.18"
   },
   "devDependencies": {
     "@mdi/js": "7.4.47",
-    "@types/three": "0.180.0",
+    "@types/three": "0.187.0",
     "happy-dom": "21.0.4",
     "puppeteer-core": "25.12.0"
   }

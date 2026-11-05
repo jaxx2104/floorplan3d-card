@@ -1026,7 +1026,9 @@ export class FloorplanView {
 
   _flagShadows(lights: THREE.Light[] | null | undefined): void {
     if (!lights || !lights.length) return;
-    for (const l of lights) l.shadow!.needsUpdate = true; // only shadow-casting lights are passed
+    for (const l of lights)
+      (l as THREE.Light & { shadow: THREE.LightShadow }).shadow.needsUpdate =
+        true; // only shadow-casting lights are passed
     this.renderer.shadowMap.needsUpdate = true;
     this.stats.shadowLights += lights.length;
   }

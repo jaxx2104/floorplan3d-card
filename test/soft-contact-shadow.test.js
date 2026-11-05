@@ -4,7 +4,8 @@ import {
   pcssFrame,
   penumbraM,
   kernelTexels,
-  pcssDirectional,
+  pcssLightLoop,
+  PCSS_HEAD,
   PCSS_SUN_TAN,
   PCSS_MIN_TEXELS,
   PCSS_MAX_TEXELS,
@@ -49,13 +50,168 @@ describe("soft sun shadows (PCSS)", () => {
     expect(kernelTexels(0.06, 24, 2048)).toBeCloseTo(5.12);
     expect(kernelTexels(5, 24, 2048)).toBe(PCSS_MAX_TEXELS);
   });
-  it("pcssDirectional swaps only the directional lookup of three's light loop", () => {
+  it("pcssLightLoop swaps the directional and point lookups of three's light loop", () => {
     const src = THREE.ShaderChunk.lights_fragment_begin,
-      out = pcssDirectional(src);
+      out = pcssLightLoop(src);
     expect(out).toContain("fpPcssShadow( directionalShadowMap[ i ]");
     expect(out).not.toContain("getShadow( directionalShadowMap");
-    expect(out).toContain("getShadow( spotShadowMap[ i ]"); // lamps keep three's sampling
-    expect(pcssDirectional("no light loop")).toBe(null);
+    expect(out).toContain("fpPointShadow( pointShadowMap[ i ]");
+    expect(out).not.toContain("getPointShadow( pointShadowMap");
+    expect(out).toContain("getShadow( spotShadowMap[ i ]"); // spots cast no shadow here: three's lookup
+    expect(pcssLightLoop("no light loop")).toBe(null);
+  });
+});
+
+// A GLSL preprocessor just big enough for three's shadow chunks: #if / #ifdef / #ifndef / #elif / #else / #endif
+// and object-like #define, over defines { NAME: value }. -> the active lines, defines added.
+function preprocess(src, defines) {
+  const defs = { ...defines },
+    out = [],
+    stack = []; // stack: { on, taken, parent }
+  const active = () => stack.every((f) => f.on);
+  const evalIf = (expr) => {
+    const js = expr
+      .replace(/defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)/g, (_, a, b) =>
+        (a || b) in defs ? "1" : "0",
+      )
+      .replace(/\b[A-Za-z_]\w*\b/g, (n) =>
+        n in defs && defs[n] !== "" ? String(Number(defs[n]) || 0) : "0",
+      );
+    return !!Function(`return (${js});`)();
+  };
+  for (const line of src.split("\n")) {
+    const m = /^\s*#\s*(\w+)\s*(.*)$/.exec(line);
+    if (!m) {
+      if (active()) out.push(line);
+      continue;
+    }
+    const [, dir, rest] = m;
+    if (dir === "if" || dir === "ifdef" || dir === "ifndef") {
+      const parent = active();
+      const on =
+        parent &&
+        (dir === "if"
+          ? evalIf(rest)
+          : dir === "ifdef"
+            ? rest.trim() in defs
+            : !(rest.trim() in defs));
+      stack.push({ on, taken: on });
+    } else if (dir === "elif") {
+      const f = stack.at(-1),
+        parent = stack.slice(0, -1).every((x) => x.on);
+      f.on = parent && !f.taken && evalIf(rest);
+      f.taken ||= f.on;
+    } else if (dir === "else") {
+      const f = stack.at(-1),
+        parent = stack.slice(0, -1).every((x) => x.on);
+      f.on = parent && !f.taken;
+      f.taken = true;
+    } else if (dir === "endif") stack.pop();
+    else if (dir === "define" && active()) {
+      const [name, ...v] = rest.trim().split(/\s+/);
+      defs[name] = v.join(" ");
+      out.push(line);
+    } else if (active()) out.push(line);
+  }
+  return { code: out.join("\n"), defs };
+}
+
+// Functions a GLSL fragment calls that it does not define (and that are not GLSL built-ins).
+const BUILTINS = new Set([
+  "texture2D",
+  "textureCube",
+  "texture",
+  "step",
+  "mix",
+  "clamp",
+  "sqrt",
+  "cos",
+  "sin",
+  "fract",
+  "dot",
+  "normalize",
+  "abs",
+  "max",
+  "min",
+  "length",
+  "cross",
+  "vec2",
+  "vec3",
+  "vec4",
+  "float",
+  "int",
+  "bool",
+  "if",
+  "for",
+  "while",
+  "return",
+]);
+const strip = (code) =>
+  code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const calls = (code) =>
+  new Set([...strip(code).matchAll(/\b([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1]));
+const definedFns = (code) =>
+  new Set(
+    [
+      ...code.matchAll(
+        /\b(?:float|vec[234]|void|bool|int)\s+([A-Za-z_]\w*)\s*\(/g,
+      ),
+    ].map((m) => m[1]),
+  );
+// The declared type of a uniform array (e.g. directionalShadowMap) and the first parameter type of a function.
+const uniformType = (code, name) =>
+  (new RegExp(`uniform\\s+(\\w+)\\s+${name}\\s*\\[`).exec(code) || [])[1];
+const firstParam = (code, fn) =>
+  (new RegExp(`\\b${fn}\\s*\\(\\s*(\\w+)\\s+\\w+`).exec(code) || [])[1];
+
+describe("soft shadow GLSL against three's shadow chunks", () => {
+  const LIGHTS = {
+    USE_SHADOWMAP: "",
+    NUM_DIR_LIGHT_SHADOWS: 1,
+    NUM_POINT_LIGHT_SHADOWS: 2,
+    NUM_SPOT_LIGHT_SHADOWS: 0,
+    NUM_SUN_LIGHT_SHADOWS: 0,
+    NUM_SPOT_LIGHT_COORDS: 0,
+    NUM_SPOT_LIGHT_MAPS: 0,
+  };
+  const build = (type) => {
+    const defines = { ...LIGHTS, [type]: "" };
+    const lib = preprocess(
+      [
+        THREE.ShaderChunk.common,
+        THREE.ShaderChunk.packing,
+        THREE.ShaderChunk.shadowmap_pars_fragment,
+      ].join("\n"),
+      defines,
+    );
+    const head = preprocess(PCSS_HEAD, lib.defs);
+    return { lib: lib.code, head: head.code, defs: head.defs };
+  };
+  it("Basic maps (the soft-shadow tier): the functions take the sampler types three declares, and call only what exists", () => {
+    const { lib, head } = build("SHADOWMAP_TYPE_BASIC");
+    expect(uniformType(lib, "directionalShadowMap")).toBe("sampler2D");
+    expect(firstParam(head, "fpPcssShadow")).toBe(
+      uniformType(lib, "directionalShadowMap"),
+    );
+    expect(firstParam(head, "fpPointShadow")).toBe(
+      uniformType(lib, "pointShadowMap"),
+    );
+    const known = new Set([
+      ...BUILTINS,
+      ...definedFns(lib),
+      ...definedFns(head),
+    ]);
+    expect([...calls(head)].filter((f) => !known.has(f))).toEqual([]);
+  });
+  it("PCF maps (sampler2DShadow): three's lookups by name instead, no function of ours", () => {
+    const { lib, head, defs } = build("SHADOWMAP_TYPE_PCF");
+    expect(uniformType(lib, "directionalShadowMap")).toBe("sampler2DShadow");
+    expect(definedFns(head).size).toBe(0);
+    expect(defs.fpPcssShadow).toBe("getShadow");
+    expect(defs.fpPointShadow).toBe("getPointShadow");
+    expect(
+      definedFns(lib).has("getShadow") && definedFns(lib).has("getPointShadow"),
+    ).toBe(true);
   });
 });
 

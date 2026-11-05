@@ -4,7 +4,7 @@
 // never inside the rooms (a mask of the room footprints, from the floor up), where the sun gets the
 // average dimming instead. Uniforms only after the one-time material patch.
 import * as THREE from "three";
-import { PCSS_HEAD, pcssDirectional } from "./soft-shadow.ts";
+import { PCSS_HEAD, pcssLightLoop } from "./soft-shadow.ts";
 import {
   CONTACT_HEAD,
   CONTACT_BODY,
@@ -361,7 +361,7 @@ export function patchCloudShadow(
             : "";
     let fs = sh.fragmentShader;
     // quality high: soft sun shadows (PCSS), contact shadows, thin glass; standard compiles none of them (and keeps its cache key)
-    const pcss = mat.userData.fpPcss ? pcssDirectional(begin) : null;
+    const pcss = mat.userData.fpPcss ? pcssLightLoop(begin) : null;
     if (pcss) {
       begin = pcss;
       fs = fs.replace(

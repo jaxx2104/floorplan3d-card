@@ -114,6 +114,21 @@ export function clampSamples(material: THREE.ShaderMaterial): void {
   material.needsUpdate = true;
 }
 
+// three-gpu-pathtracer 0.0.25+ deprecates WebGLPathTracer for its WebGPU tracer (real WebGPU only, not the WebGL2
+// fallback the card renders with), and it still starts a THREE.Clock (deprecated in three r183): both warn at
+// construction. The warnings are dropped there and only there.
+function quietly<T>(make: () => T): T {
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (!/deprecated/i.test(String(args[0]))) warn.apply(console, args);
+  };
+  try {
+    return make();
+  } finally {
+    console.warn = warn;
+  }
+}
+
 // Lift (m) of a polygon-offset sheet above the surface it lies on, for the trace.
 const SHEET_LIFT_M = 0.003;
 
@@ -246,7 +261,7 @@ export class PathTraceSession {
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
-    const t = new WebGLPathTracer(renderer);
+    const t = quietly(() => new WebGLPathTracer(renderer));
     t.renderToCanvas = false; // the view draws: the raster frame, then the trace over it
     t.rasterizeScene = false;
     t.renderDelay = 0;
@@ -323,11 +338,6 @@ export class PathTraceSession {
   // was rebuilt and the materials when one changed. -> the geometry was built now.
   prepare(src: TraceSource, camera: THREE.Camera): boolean {
     this._src = src;
-    // the sky cube is read back synchronously (CubeToEquirectGenerator): no pack buffer may be left bound. Probe
-    // read-backs already unbind theirs (packSafe in light-probes.ts); this guards any other async read-back
-    const gl = this.renderer.getContext();
-    if (gl instanceof WebGL2RenderingContext)
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     return this._ownOpacity(() => {
       const t = this.tracer,
         inner = t as unknown as TracerInternals;
@@ -545,7 +555,7 @@ export class PathTraceSession {
 
   dispose(): void {
     const inner = this.tracer as unknown as TracerInternals;
-    // WebGLPathTracer.dispose (0.0.23) frees a quad it does not have: free its parts here
+    // not WebGLPathTracer.dispose: it leaves the low-res renderer, the uniforms' GPU textures and the merged geometry
     for (const p of [inner._pathTracer, inner._lowResPathTracer]) {
       // the BVH, attribute, material, texture array, light and environment uniforms are GPU textures
       for (const u of Object.values(p.material.uniforms)) {

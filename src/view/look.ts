@@ -79,6 +79,8 @@ const TONE: Record<string, THREE.ToneMapping> = {
   Neutral: THREE.NeutralToneMapping,
 };
 
+// PCF tap spread of the sun's shadow (texels at clear sky): about the softness of r169's PCFSoftShadowMap
+export const SUN_PCF_RADIUS = 1.5;
 const SHADOW_MESH_M = 30; // untagged models: meshes up to this size make the sun's shadow box
 const SHADOW_MARGIN_M = 4;
 // Frame interval (ms) of the plants' sway.
@@ -327,8 +329,9 @@ export class RenderLook {
       k.sunIntensity *
       (this.sky.sun ?? 1) *
       (this.view.skyLayer._cloudShadowsOn() ? 1 : L.sun);
-    // softer, fainter sun shadow under clouds: uniforms only (radius has no effect with PCFSoftShadowMap)
-    sun.shadow.radius = L.shadowRadius;
+    // softer, fainter sun shadow under clouds: uniforms only (the PCF taps spread by the radius, PCSS widens by it)
+    sun.shadow.radius =
+      (this.tier().softShadows ? 1 : SUN_PCF_RADIUS) * L.shadowRadius;
     sun.shadow.intensity = L.shadowIntensity;
     this.view.skyLayer._applyMoonLight();
     this.view.skyLayer._cloudLook();
@@ -709,8 +712,10 @@ export class RenderLook {
           : THREE.SRGBColorSpace;
       r.shadowMap.enabled = true;
       r.shadowMap.autoUpdate = false; // re-rendered on demand (needsUpdate), not every frame
+      this._shadowType(
+        this.tier().softShadows ? THREE.BasicShadowMap : THREE.PCFShadowMap,
+      );
       this._shadowDirty();
-      r.shadowMap.type = THREE.PCFSoftShadowMap;
       this._syncEnv(); // before the lights: they set its brightness
       this._syncTierLook();
       this._applyLights();
@@ -827,6 +832,24 @@ export class RenderLook {
     if (this.view.objectLayer)
       this.view._flagShadows(this.view.objectLayer.shadowsStale());
     this.view.stats.shadow++;
+  }
+
+  // The renderer's shadow map type: PCF (hardware compare, soft by shadow.radius), or Basic for the soft-shadow
+  // tier (raw depths for its PCSS blocker search, soft-shadow.ts). The maps of the other type are dropped, also of
+  // lights that are not drawn now (the sun by night, unlit lamps): a map of the old type under the new samplers
+  // fails every draw. They are re-created when they are next drawn (_shadowDirty flags what is lit).
+  _shadowType(type: THREE.ShadowMapType): void {
+    const r = this.view.renderer;
+    if (r.shadowMap.type === type) return;
+    r.shadowMap.type = type;
+    this.view.scene.traverse((o) => {
+      const shadow = (o as Partial<THREE.DirectionalLight | THREE.PointLight>)
+        .shadow;
+      if (!shadow || !shadow.map) return;
+      if (shadow.map.depthTexture) shadow.map.depthTexture.dispose();
+      shadow.map.dispose();
+      shadow.map = null;
+    });
   }
 
   // Sun map: redraw now when the sun is up, else once it rises (setSky).

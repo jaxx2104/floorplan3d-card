@@ -97,27 +97,34 @@ export function skyUniforms(sky: EnvSky): {
   };
 }
 
-// three's Sky without the sun disc (the sun is the directional light already; a disc in the map would
-// light everything twice), with a ground below the horizon, cloud grey and a tint.
-function makeSky(): Sky {
+// three's Sky without its sun disc (the sun is the directional light already; a disc in the map would light
+// everything twice) and without its clouds (the weather's grey stands for them), with a ground below the horizon,
+// cloud grey and a tint. three r183 dropped the sky's own gamma (retColor = pow( texColor, 1 / ( 1.2 + 1.2 * sunfade ) ));
+// it is applied here again: the environment's brightness (ENV_DAY and the rest) is tuned to it.
+export function makeSky(): Sky {
   const sky = new Sky();
   const m = sky.material;
+  m.uniforms.showSunDisc.value = 0;
+  m.uniforms.cloudCoverage.value = 0;
   m.uniforms.fpGrey = { value: 0 };
   m.uniforms.fpTint = { value: new THREE.Vector3(1, 1, 1) };
   m.uniforms.fpGround = { value: new THREE.Vector3(...GROUND) };
   const fs = m.fragmentShader;
-  const disc = "L0 += ( vSunE * 19000.0 * Fex ) * sundisk;";
-  const out = "gl_FragColor = vec4( retColor, 1.0 );";
-  if (!fs.includes(disc) || !fs.includes(out))
+  const out = "gl_FragColor = vec4( texColor, 1.0 );";
+  if (
+    fs.split(out).length !== 2 ||
+    !m.vertexShader.includes("varying float vSunfade;")
+  )
     throw new Error("floorplan3d: unexpected Sky shader");
   m.fragmentShader =
-    "uniform float fpGrey;\nuniform vec3 fpTint;\nuniform vec3 fpGround;\n" +
-    fs.replace(disc, "").replace(
+    "uniform float fpGrey;\nuniform vec3 fpTint;\nuniform vec3 fpGround;\nvarying float vSunfade;\n" +
+    fs.replace(
       out,
       `
+    vec3 retColor = pow( max( texColor, vec3( 0.0 ) ), vec3( 1.0 / ( 1.2 + ( 1.2 * vSunfade ) ) ) );
     retColor = mix( retColor, vec3( dot( retColor, vec3( 0.2126, 0.7152, 0.0722 ) ) ), fpGrey );
     retColor *= mix( vec3( 1.0 ), fpGround, smoothstep( 0.0, -0.06, direction.y ) ) * fpTint;
-    ${out}`,
+    gl_FragColor = vec4( retColor, 1.0 );`,
     );
   sky.scale.setScalar(100);
   return sky;
@@ -139,7 +146,7 @@ export class EnvLight {
   _cube: THREE.WebGLCubeRenderTarget | null;
   _cubeCam: THREE.CubeCamera | null;
   _pmrem: THREE.PMREMGenerator | null;
-  _target: THREE.WebGLRenderTarget | null;
+  _target: THREE.WebGLCubeRenderTarget | null;
 
   // onDue: a build is due (the view renders a frame, which calls flush()).
   constructor(

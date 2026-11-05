@@ -142,7 +142,7 @@ export function fallbackOutline(box: THREE.Box3): PlanPoint[] {
   ];
 }
 
-// @types/three 0.169 declares deinterleaveAttribute(geometry): void; three's function takes an interleaved
+// @types/three (0.169 to 0.187) declares deinterleaveAttribute(geometry): void; three's function takes an interleaved
 // attribute and returns a new BufferAttribute.
 const deinterleave = deinterleaveAttribute as unknown as (
   a: THREE.InterleavedBufferAttribute,

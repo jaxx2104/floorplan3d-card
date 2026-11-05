@@ -25,7 +25,7 @@ interface MapPlaneData {
   external?: boolean;
   url?: string;
   rawTex?: THREE.Texture;
-  canvasTex?: THREE.CanvasTexture | null;
+  canvasTex?: THREE.CanvasTexture<HTMLCanvasElement | OffscreenCanvas> | null;
   loaded?: {
     url?: string;
     image: MapPicture | null;
@@ -37,7 +37,7 @@ interface MapPlaneData {
 const mapData = (plane: MapPlane): MapPlaneData =>
   plane.userData as MapPlaneData;
 /** The size a processed canvas texture was made for. */
-const canvasSize = (t: THREE.CanvasTexture): { w?: number; h?: number } =>
+const canvasSize = (t: THREE.Texture): { w?: number; h?: number } =>
   t.userData as { w?: number; h?: number };
 
 /** Mower map overlay (setMapOverlay). */
@@ -369,10 +369,10 @@ export class MowerLayer {
         ct = null;
       }
       if (!ct) {
-        ct = new THREE.CanvasTexture(res.canvas);
-        ct.colorSpace = THREE.SRGBColorSpace;
-        ct.userData = { w: res.width, h: res.height };
-        u.canvasTex = ct;
+        const fresh = new THREE.CanvasTexture(res.canvas);
+        fresh.colorSpace = THREE.SRGBColorSpace;
+        fresh.userData = { w: res.width, h: res.height };
+        u.canvasTex = ct = fresh;
       }
       ct.needsUpdate = true;
       next = ct;

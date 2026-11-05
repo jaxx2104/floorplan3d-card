@@ -25,28 +25,6 @@ import { LightProbeGenerator } from "three/addons/lights/LightProbeGenerator.js"
 import { insidePolygon } from "./lightmap.ts";
 import type { PlanPoint, Vec3 } from "./types/layout.ts";
 
-// three r169's readRenderTargetPixelsAsync leaves the PIXEL_PACK buffer bound while it waits for the GPU
-// fence, so any synchronous readPixels in that window fails (INVALID_OPERATION) and getError() reports it.
-// It binds its buffer again before reading the data back, so unbinding right after it starts is safe.
-export function packSafe(renderer: THREE.WebGLRenderer): THREE.WebGLRenderer {
-  if (
-    typeof renderer.getContext !== "function" ||
-    typeof renderer.readRenderTargetPixelsAsync !== "function"
-  )
-    return renderer;
-  const gl = renderer.getContext() as WebGL2RenderingContext;
-  const read = renderer.readRenderTargetPixelsAsync.bind(renderer);
-  const out = Object.create(renderer) as THREE.WebGLRenderer;
-  out.readRenderTargetPixelsAsync = (
-    ...args: Parameters<THREE.WebGLRenderer["readRenderTargetPixelsAsync"]>
-  ) => {
-    const p = read(...args);
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    return p;
-  };
-  return out;
-}
-
 /** Rooms with a probe at most, and storeys. */
 export const PROBE_MAX = 32;
 export const PROBE_MAX_FLOORS = 4;
@@ -482,7 +460,7 @@ export const PROBE_BODY = /* glsl */ `
   #ifdef USE_LIGHTMAP
   iblIrradiance = vec3( 0.0 );
   #else
-  vec3 fpNW = inverseTransformDirection( geometryNormal, viewMatrix );
+  vec3 fpNW = transformDirectionByInverseViewMatrix( geometryNormal, viewMatrix );
   float fpOpen, fpEdge;
   int fpPR = fpProbeRoom( fpNW, fpOpen, fpEdge );
   if ( fpPR >= 0 ) {
@@ -529,7 +507,6 @@ export class LightProbes {
   _tex: THREE.DataTexture | null;
   _tile: { w: number; h: number };
   _cube: THREE.WebGLCubeRenderTarget | null;
-  _packSafe: THREE.WebGLRenderer | null;
   _cam: THREE.CubeCamera | null;
   _type: THREE.TextureDataType;
   _disposed: boolean;
@@ -558,7 +535,6 @@ export class LightProbes {
     this._tex = null;
     this._tile = { w: 1, h: 1 };
     this._cube = null;
-    this._packSafe = null;
     this._cam = null;
     // HDR capture when the half-float target can be read back, else 8 bit (light above 1 clips)
     this._type = renderer.capabilities.textureTypeReadable(THREE.HalfFloatType)
@@ -683,10 +659,7 @@ export class LightProbes {
     this.stats.captures++;
     this._busy = true;
     const gen = this._gen;
-    LightProbeGenerator.fromCubeRenderTarget(
-      (this._packSafe ??= packSafe(this.renderer)),
-      this._cube,
-    ).then(
+    LightProbeGenerator.fromCubeRenderTarget(this.renderer, this._cube).then(
       (probe) => {
         if (gen !== this._gen || this._disposed) return;
         this._busy = false;

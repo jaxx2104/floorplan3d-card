@@ -7,7 +7,7 @@ position and map overlay.
 
 ## Stack
 
-- Vanilla custom element, Three.js 0.169, Bun.build bundle -> `dist/floorplan3d-card.js`
+- Vanilla custom element, Three.js 0.187 (WebGLRenderer), Bun.build bundle -> `dist/floorplan3d-card.js`
 - Toolchain: bun (a dated canary pinned in mise.toml) for install, lint (`bun lint`, .oxlintrc.json),
   format (`bun fmt`), type check (`bun check`), tests (`bun test`, happy-dom) and build
 - TypeScript (`bun check`, strict; shared contracts in `src/types/`).
