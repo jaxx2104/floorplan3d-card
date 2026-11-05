@@ -2,7 +2,7 @@
 //   bun scripts/screenshot.mjs [--view=3d|top] [--floor=id|all] [--out=file] [--logos=0]
 import fs from "node:fs";
 import path from "node:path";
-import { openDemo, root } from "./lib/demo-browser.mjs";
+import { openDemo, root, idle } from "./lib/demo-browser.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")),
@@ -16,7 +16,7 @@ const { page, errors, close } = await openDemo(
   { brands: logos, test: false },
 );
 try {
-  await new Promise((r) => setTimeout(r, 300));
+  await idle(page, 30000); // settled (no camera tween, frame or update pending) instead of a fixed 300 ms
   const stats = await page.evaluate(() =>
     [...document.querySelectorAll("floorplan3d-card-impl")].map((c) => ({
       markers: c._view.markerObjects.size,
