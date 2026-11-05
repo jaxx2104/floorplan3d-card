@@ -124,9 +124,10 @@ export const SCHEMA: FormSchema[] = [
             mode: "dropdown",
             options: [
               {
-                value: "high",
-                label: "High (default: bloom, soft shadows, materials)",
+                value: "auto",
+                label: "Auto (default: high, standard when frames are slow)",
               },
+              { value: "high", label: "High (bloom, soft shadows, materials)" },
               { value: "standard", label: "Standard (lighter on the GPU)" },
               {
                 value: "still",
@@ -319,9 +320,9 @@ const HELPERS: Record<string, string> = {
   render:
     "With a 3D model: use its render recipe (exposure, camera, shadows, day / night light) or ignore it",
   render_quality:
-    "Standard costs the least GPU time (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.",
+    "Auto renders high and steps down to standard (and back) by the measured frame times. Standard costs the least GPU time (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.",
   render_tone_mapping:
-    "Auto: AgX in high / still, otherwise the model's recipe",
+    "Auto: AgX in high / still (and auto while at high), otherwise the model's recipe",
   layout_key:
     "Cards with the same name share one plan. Letters, digits, - and _.",
   model:
@@ -336,7 +337,7 @@ const RENDER_FIELDS = {
 } as const;
 const RENDER_FIELD_DEFAULTS = {
   render: "model",
-  render_quality: "high",
+  render_quality: "auto",
   render_tone_mapping: "auto",
 } as const;
 

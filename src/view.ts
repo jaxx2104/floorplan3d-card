@@ -42,6 +42,7 @@ import { PlanStructure } from "./view/structure.ts";
 import { MowerLayer } from "./view/mower-layer.ts";
 import { MarkerOcclusion } from "./view/occlusion.ts";
 import { StillTrace } from "./view/still.ts";
+import { AutoQualityView } from "./view/auto-quality.ts";
 import type { ObjectLayer } from "./objects/layer.ts";
 import type { Floor, Vec3 } from "./types/layout.ts";
 
@@ -71,6 +72,7 @@ export interface ViewStats {
   stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
   stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
   stillBuilds: number; // path tracer scene builds (render quality 'still', the model or its visible geometry changed)
+  autoSwitches: number; // level changes of render quality 'auto' (view/auto-quality.ts)
   mapUploads?: number;
 }
 
@@ -108,6 +110,8 @@ export class FloorplanView {
   occlusion: MarkerOcclusion;
   /** idle path tracing (render quality 'still') */
   still: StillTrace;
+  /** render quality 'auto': measured frames -> the level in use */
+  auto: AutoQualityView;
   labelRenderer: CSS2DRenderer;
   persp: THREE.PerspectiveCamera;
   ortho: THREE.OrthographicCamera;
@@ -183,6 +187,8 @@ export class FloorplanView {
     this.mower = new MowerLayer(this);
     this.occlusion = new MarkerOcclusion(this);
     this.still = new StillTrace(this);
+    this.auto = new AutoQualityView(this);
+    this.auto.sync(this.look.renderOpt.quality === "auto");
     this.renderer.setPixelRatio(this.look._pixelRatio());
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.localClippingEnabled = true; // model cut-away
@@ -269,6 +275,7 @@ export class FloorplanView {
       stillSteps: 0,
       stillDraws: 0,
       stillBuilds: 0,
+      autoSwitches: 0,
     }; // counters for the headless checks (occDone: full passes finished; shadowLights: per-light map redraws requested)
 
     this.floors = [];
@@ -1087,13 +1094,15 @@ export class FloorplanView {
       look._stepSway();
       cam._stepOrbit();
       if (!this.dirty) {
+        // render quality 'still': trace once idle; 'auto': a level change waits for this
+        this.auto.frame(ts, false, 0);
         this.still.idle(performance.now());
         return;
-      } // render quality 'still': trace once idle
+      }
       this.dirty = false;
       this.still.frameDrawn(performance.now()); // a traced image is replaced by this frame
       this.stats.frames++;
-      const t0 = this.onFrameTime ? performance.now() : 0;
+      const t0 = performance.now();
       cam._updateDepth();
       if (look._env && look._env.flush()) this.stats.envBuilds++; // a due sky environment (never more than one per ENV_THROTTLE_MS)
       sky._placeSkyBodies();
@@ -1106,7 +1115,10 @@ export class FloorplanView {
       if (this.model && look.indirect.step()) this.stats.probeCaptures++; // a room's light probe, after the frame drew its shadow maps
       this.labelRenderer.render(this.scene, this.camera);
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
-      if (this.onFrameTime) this.onFrameTime(performance.now() - t0);
+      this.auto.burn(); // test hook: artificial frame cost
+      const ms = performance.now() - t0;
+      if (this.onFrameTime) this.onFrameTime(ms);
+      this.auto.frame(ts, true, ms);
     };
     this._raf = requestAnimationFrame(loop);
     this.occlusion._scheduleOcclusion(0);

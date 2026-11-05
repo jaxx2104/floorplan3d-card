@@ -25,9 +25,9 @@ import {
 } from "../src/view/env-light.ts";
 
 describe("normRenderOption", () => {
-  it("defaults to the model recipe, high quality, the tier tone mapping", () => {
+  it("defaults to the model recipe, auto quality, the tier tone mapping", () => {
     expect(normRenderOption(undefined)).toEqual({
-      option: { recipe: "model", quality: "high", toneMapping: null },
+      option: { recipe: "model", quality: "auto", toneMapping: null },
       warnings: [],
     });
     expect(normRenderOption({ quality: "standard" }).option.quality).toBe(
@@ -72,7 +72,7 @@ describe("normRenderOption", () => {
     expect(r.option).toEqual(RENDER_OPTION_DEFAULTS);
     expect(r.warnings).toHaveLength(4);
     expect(r.warnings.join("\n")).toMatch(
-      /render.quality: "ultra" is not one of standard, high, still/,
+      /render.quality: "ultra" is not one of auto, standard, high, still/,
     );
     expect(r.warnings.join("\n")).toMatch(/render.tone_mapping: "filmic"/);
     expect(r.warnings.join("\n")).toMatch(/render.recipe/);
@@ -129,6 +129,13 @@ describe("tone mapping and exposure", () => {
       toneMapping: "ACESFilmic",
       exposure: 1.25,
     });
+    // auto: the tier of its level (high until it has one)
+    expect(
+      renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS).toneMapping,
+    ).toBe("AgX");
+    expect(
+      renderTone(RENDER_DEFAULTS, RENDER_OPTION_DEFAULTS, "standard"),
+    ).toEqual({ toneMapping: "ACESFilmic", exposure: 1.25 });
   });
   it("high defaults to AgX; the card tone_mapping wins over the tier", () => {
     expect(

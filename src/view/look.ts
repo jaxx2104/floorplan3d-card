@@ -43,11 +43,14 @@ import {
 import { materialFacts, setSurface, surfaceOf } from "../physical-materials.ts";
 import { frameInterval, isMesh, type Drawable } from "./core.ts";
 import { IndirectLight } from "./indirect.ts";
+import { levelQuality } from "./auto-quality.ts";
 import type { FloorplanView } from "../view.ts";
 import type { ModelManifest } from "./model.ts";
+import type { AutoLevel } from "../auto-quality.ts";
 import type {
   RenderSettings,
   RenderOption,
+  Quality,
   QualityTier,
   DayNight,
   CityLights,
@@ -174,6 +177,8 @@ export class RenderLook {
         option.toneMapping !== prev.toneMapping ||
         JSON.stringify(option.materials || []) !==
           JSON.stringify(prev.materials || []);
+    this.view.auto.sync(option.quality === "auto");
+    this._syncPixelRatio(); // the 'auto' level reduced caps it
     if (!this.view.model || (!recipe && !look)) return;
     if (recipe) {
       this._useRecipe(this.view.model.manifest);
@@ -182,16 +187,48 @@ export class RenderLook {
     this._applyLook();
   }
 
-  // What the quality tier turns on (QUALITY_TIERS).
-  tier(): Readonly<QualityTier> {
-    return QUALITY_TIERS[this.renderOpt.quality];
+  // The quality tier in use: the card's, or under 'auto' the one of its current level (high until it has one).
+  quality(): Quality {
+    const q = this.renderOpt.quality;
+    if (q !== "auto") return q;
+    const level = this.view.auto.level;
+    return level ? levelQuality(level) : "high";
   }
 
-  // Pixel ratio: 1 in test mode, else the device's up to the recipe's pixelRatioMax.
+  // What the quality tier in use turns on (QUALITY_TIERS).
+  tier(): Readonly<QualityTier> {
+    return QUALITY_TIERS[this.quality()];
+  }
+
+  // Pixel ratio: 1 in test mode, else the device's up to the recipe's pixelRatioMax (1 at the 'auto' level reduced).
   _pixelRatio(): number {
+    const cap =
+      this.renderOpt.quality === "auto" && this.view.auto.level === "reduced"
+        ? 1
+        : Infinity;
     return this.view.test
       ? 1
-      : Math.min(window.devicePixelRatio || 1, this.render.pixelRatioMax);
+      : Math.min(window.devicePixelRatio || 1, this.render.pixelRatioMax, cap);
+  }
+
+  // The renderer at _pixelRatio() (the canvas resized with it).
+  _syncPixelRatio(): void {
+    const pr = this._pixelRatio();
+    if (this.view.renderer.getPixelRatio() === pr) return;
+    this.view.renderer.setPixelRatio(pr);
+    if (this.view.size)
+      this.view.cam.resize(this.view.size.w, this.view.size.h);
+    if (this.view.onPixelRatio) this.view.onPixelRatio(pr);
+    this.view.dirty = true;
+  }
+
+  // Render quality 'auto' switched levels (view/auto-quality.ts, the view idle): the tier's look when the tier
+  // changed, the pixel ratio when it did.
+  _applyAutoLevel(from: AutoLevel, to: AutoLevel): void {
+    if (levelQuality(from) !== levelQuality(to) && this.view.model)
+      this._applyLook();
+    this._syncPixelRatio();
+    this.view.dirty = true;
   }
 
   // Lamp shadow maps this device affords: { max, mapSize } (see deviceShadowCap).
@@ -230,13 +267,7 @@ export class RenderLook {
       this.shadowCap(),
     ); // at most 1024 and the device cap
     this.render = render;
-    const pr = this._pixelRatio();
-    if (this.view.renderer.getPixelRatio() !== pr) {
-      this.view.renderer.setPixelRatio(pr);
-      if (this.view.size)
-        this.view.cam.resize(this.view.size.w, this.view.size.h);
-      if (this.view.onPixelRatio) this.view.onPixelRatio(pr);
-    }
+    this._syncPixelRatio();
     const cam = this.view.persp;
     if (cam.fov !== render.camera.fov) {
       cam.fov = render.camera.fov;
@@ -669,7 +700,7 @@ export class RenderLook {
         this._cityWindows();
       } // once per model
       const rd = this.render;
-      const tone = renderTone(rd, this.renderOpt); // the recipe's unless the card or its quality tier sets one
+      const tone = renderTone(rd, this.renderOpt, this.quality()); // the recipe's unless the card or its quality tier sets one
       r.toneMapping = TONE[tone.toneMapping] ?? THREE.ACESFilmicToneMapping;
       r.toneMappingExposure = tone.exposure;
       r.outputColorSpace =

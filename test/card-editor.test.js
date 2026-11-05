@@ -119,12 +119,12 @@ describe("card editor: render option", () => {
   it("splits the string and object forms into the flat fields", () => {
     expect(mod.splitRender(undefined)).toEqual({
       render: "model",
-      render_quality: "high",
+      render_quality: "auto",
       render_tone_mapping: "auto",
     });
     expect(mod.splitRender("default")).toMatchObject({
       render: "default",
-      render_quality: "high",
+      render_quality: "auto",
     });
     expect(mod.splitRender({ quality: "standard" })).toMatchObject({
       render: "model",
@@ -140,7 +140,7 @@ describe("card editor: render option", () => {
   it("joins back to the shortest form and keeps YAML-only keys", () => {
     const d = {
       render: "model",
-      render_quality: "high",
+      render_quality: "auto",
       render_tone_mapping: "auto",
     };
     expect(mod.joinRender(d, undefined)).toBeUndefined();
@@ -189,7 +189,7 @@ describe("card editor: render option", () => {
         .flatMap((x) => x.schema || [x])
         .find((x) => x.name === "render_quality")
         .selector.select.options.map((o) => o.value),
-    ).toEqual(["high", "standard", "still"]);
+    ).toEqual(["auto", "high", "standard", "still"]);
     let got;
     el.addEventListener("config-changed", (e) => {
       got = e.detail.config;
@@ -208,7 +208,7 @@ describe("card editor: render option", () => {
         detail: {
           value: {
             ...form.data,
-            render_quality: "high",
+            render_quality: "auto",
             render_tone_mapping: "auto",
           },
         },

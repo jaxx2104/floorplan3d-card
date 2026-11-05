@@ -574,6 +574,13 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
     }),
   });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
+/** Card option render.quality: a tier, or 'auto' (high, stepping down to standard and back by the measured
+ * frame times; auto-quality.ts). */
+export type QualityOption = Quality | "auto";
+export const QUALITY_OPTIONS: readonly QualityOption[] = Object.freeze([
+  "auto",
+  ...QUALITIES,
+]);
 
 // Card YAML names of the tone mappings (lower case) -> three's names (TONE_MAPPINGS).
 export const TONE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
@@ -592,18 +599,18 @@ const TONE_NAMES = Object.keys(TONE_ALIASES).filter((a) => a !== "acesfilmic");
  * physical material rules (set only when given; they come after the model's). */
 export interface RenderOption {
   recipe: "model" | "default";
-  quality: Quality;
+  quality: QualityOption;
   toneMapping: string | null;
   materials?: MaterialRule[];
 }
 export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({
   recipe: "model",
-  quality: "high",
+  quality: "auto",
   toneMapping: null,
 });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'high' (default) | 'standard' (cheaper, the look before tiers) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'auto' (default: high, adapting to the frame times; auto-quality.ts) | 'high' | 'standard' (cheaper, the look before tiers) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): {
@@ -629,10 +636,11 @@ export function normRenderOption(opt: unknown): {
     if (v === undefined || v === null) continue;
     if (k === "recipe") recipe(v, "render.recipe");
     else if (k === "quality") {
-      if (QUALITIES.includes(v as Quality)) option.quality = v as Quality;
+      if (QUALITY_OPTIONS.includes(v as QualityOption))
+        option.quality = v as QualityOption;
       else
         warnings.push(
-          `render.quality: "${String(v)}" is not one of ${QUALITIES.join(", ")}`,
+          `render.quality: "${String(v)}" is not one of ${QUALITY_OPTIONS.join(", ")}`,
         );
     } else if (k === "tone_mapping") {
       const name =
@@ -732,14 +740,16 @@ export function matchExposure(
 }
 
 // Tone mapping and exposure on screen: the card's tone_mapping, else the tier's, else the recipe's. Another
-// tone mapping than the recipe's gets the exposure that keeps mid grey where the recipe had it.
+// tone mapping than the recipe's gets the exposure that keeps mid grey where the recipe had it. quality: the tier
+// in use ('auto' picks one; without it 'auto' counts as high).
 export function renderTone(
   render: Pick<RenderSettings, "toneMapping" | "exposure">,
   option: RenderOption,
+  quality: Quality = option.quality === "auto" ? "high" : option.quality,
 ): { toneMapping: string; exposure: number } {
   const toneMapping =
     option.toneMapping ??
-    QUALITY_TIERS[option.quality].toneMapping ??
+    QUALITY_TIERS[quality].toneMapping ??
     render.toneMapping;
   return {
     toneMapping,

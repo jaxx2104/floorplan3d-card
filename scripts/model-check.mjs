@@ -3726,7 +3726,7 @@ sections.add(
   },
 );
 
-// 1q. the default render quality is 'high' (no quality in the card YAML); in both tiers a lamp with a real light
+// 1q. the default render quality is 'auto', at 'high' in test mode (no quality in the card YAML); in both tiers a lamp with a real light
 // draws no floor pool decal (the real light lights the floor under it; the pool on top blew it out)
 sections.add(
   "quality-default",
@@ -3748,13 +3748,14 @@ sections.add(
       page.evaluate(`(() => { const c = ${card}, v = c._view, l = c._objects;
     const kitchen = l._slots.get('lamp_kitchen');
     const pools = [...l.parts].filter(([, p]) => p.wash).flatMap(([id, p]) => p.wash.placements.map((pl, i) => ({ id, variant: pl.variant, real: l._slots.has(id), shown: p.wash.meshes[i].visible })));
-    return { quality: v.look.renderOpt.quality, tm: v.renderer.toneMapping, physical: l.physical, env: !!(v.look._env && v.look._env.enabled !== false),
+    return { option: v.look.renderOpt.quality, quality: v.look.quality(), tm: v.renderer.toneMapping, physical: l.physical, env: !!(v.look._env && v.look._env.enabled !== false),
       kitchen: kitchen ? +kitchen.light.intensity.toFixed(2) : null, hemi: +v.hemi.intensity.toFixed(3),
       realPools: pools.filter((x) => x.variant === 'pool' && x.real && x.shown).map((x) => x.id), walls: pools.filter((x) => x.variant !== 'pool' && x.shown).length }; })()`);
     const hi = await look();
     check(
-      "default quality is high: AgX, physical lamps (800 lm kitchen lamp = 15.92), hemisphere x 0.35",
-      hi.quality === "high" &&
+      "default quality is auto at high: AgX, physical lamps (800 lm kitchen lamp = 15.92), hemisphere x 0.35",
+      hi.option === "auto" &&
+        hi.quality === "high" &&
         hi.tm === 6 &&
         hi.physical &&
         hi.kitchen === 15.92 &&

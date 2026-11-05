@@ -12,7 +12,10 @@
 // errors), never while idle or per frame; per-room light probes only in 'high', captured one room a frame per pass,
 // no capture while idle or on forced / camera frames, one pass (at most two) per input change (a sun step that
 // rebuilds the sky, a lamp switched off); frame time (render + bloom + finish, GPU included) in bounds.
-//   bun scripts/perf-check.mjs [--quality-only]
+// Then render quality 'auto' (the default): starts at high; with an artificial frame cost under continuous
+// rendering it steps down to standard, only once the view is idle, once; without the cost it steps back up after
+// the (shortened) wait and stays there.
+//   bun scripts/perf-check.mjs [--quality-only | --auto-only]
 import { openDemo } from "./lib/demo-browser.mjs";
 
 const failures = [];
@@ -26,6 +29,7 @@ const MOVE_S = 30,
   IDLE_S = 16,
   REFRESH_MS = 2000;
 const QUALITY_ONLY = process.argv.includes("--quality-only");
+const AUTO_ONLY = process.argv.includes("--auto-only");
 
 // One demo per tier, the sun fixed: environment builds while idle / after sun steps, and the time of 40
 // forced frames (the view's frame from its start to the label render, after a 1 px readPixels so the GPU work
@@ -445,6 +449,125 @@ async function qualityChecks() {
   await stillChecks();
 }
 
+// Render quality 'auto' (the default, no ?quality): the controller fed by the real render loop. Test mode holds it
+// (no adapting, nothing remembered) until the check turns it on with shorter waits; view.auto.testCostMs adds a busy
+// wait to every rendered frame (a slow GPU / CPU for the controller: the frame interval grows). Software GL never
+// renders the demo at the display's refresh, so the way back up is fed fake samples (ctl.fixedSampleMs: 16 ms).
+async function autoChecks() {
+  const q = await openDemo(
+    { model: "1", view: "3d", cards: "1" },
+    { width: 800, height: 500 },
+  );
+  try {
+    const { page } = q;
+    const ev = (expr) => page.evaluate(expr);
+    await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
+    await ev("window.__demoMowerPaused = true");
+    await sleep(2000);
+    const state = () =>
+      ev(`(() => { const v = ${card}._view, a = v.auto.state();
+      return { ...a, tier: v.look.quality(), bloom: !!v.look._bloom, env: !!v.scene.environment, tm: v.renderer.toneMapping, switches: v.stats.autoSwitches, frames: v.stats.frames }; })()`);
+    const s0 = await state();
+    check(
+      "auto: the default; starts at high (the high tier: bloom, sky environment, AgX)",
+      s0.level === "high" &&
+        s0.tier === "high" &&
+        s0.bloom &&
+        s0.env &&
+        s0.tm === 6 &&
+        s0.switches === 0,
+      JSON.stringify(s0),
+    );
+    // continuous rendering for ms (every animation frame renders, as while orbiting); level sampled at the end
+    const run = (ms) =>
+      ev(`new Promise((done) => { const v = ${card}._view, end = performance.now() + ${ms};
+      const f = () => { v.dirty = true; if (performance.now() < end) requestAnimationFrame(f); else done(v.auto.level); }; requestAnimationFrame(f); })`);
+    const T = {
+      window: 15,
+      settleMs: 500,
+      cooldownMs: 2000,
+      upAfterMs: 5000,
+      probeMs: 3000,
+    };
+    await ev(
+      `(() => { const a = ${card}._view.auto; a.adapt = true; Object.assign(a.ctl.tuning, ${JSON.stringify(T)}); a.ctl.reset(performance.now()); })()`,
+    );
+    await ev(`${card}._view.auto.testCostMs = 70`);
+    const during = await run(6000);
+    const s1 = await state();
+    check(
+      "auto: slow frames under interaction: a step down proposed, not applied while rendering",
+      during === "high" && s1.pending === "standard" && s1.switches === 0,
+      JSON.stringify({ during, ...s1 }),
+    );
+    await sleep(2500); // idle: applied after AUTO_IDLE_MS
+    const s2 = await state();
+    check(
+      "auto: once idle, down to standard (no bloom, no sky environment, the recipe tone mapping)",
+      s2.level === "standard" &&
+        s2.tier === "standard" &&
+        !s2.bloom &&
+        !s2.env &&
+        s2.tm !== 6 &&
+        s2.switches === 1,
+      JSON.stringify(s2),
+    );
+    await run(3000);
+    await sleep(1500); // still slow: no level below standard here (pixel ratio 1)
+    const s3 = await state();
+    check(
+      "auto: stays at the lowest level, no more switches",
+      s3.level === "standard" && s3.switches === 1,
+      JSON.stringify(s3),
+    );
+    await ev(
+      `(() => { const a = ${card}._view.auto; a.testCostMs = 0; a.ctl.fixedSampleMs = 16; })()`,
+    );
+    let up = null;
+    for (let i = 0; i < 6 && !up; i++) {
+      await run(2000);
+      await sleep(1500);
+      const s = await state();
+      if (s.level === "high") up = s;
+    }
+    const s4 = up || (await state());
+    console.log(
+      `     auto: measured median frame with the cost: high ${s1.median === null ? "–" : s1.median.toFixed(1)} ms, standard ${s3.median === null ? "–" : s3.median.toFixed(1)} ms; refresh ${s4.refreshMs.toFixed(1)} ms`,
+    );
+    check(
+      "auto: fast frames again: back up to high after the wait",
+      s4.level === "high" &&
+        s4.tier === "high" &&
+        s4.bloom &&
+        s4.env &&
+        s4.switches === 2,
+      JSON.stringify(s4),
+    );
+    await run(3000);
+    await sleep(1500);
+    const s5 = await state();
+    check(
+      "auto: no oscillation while frames stay fast",
+      s5.level === "high" && s5.switches === 2,
+      JSON.stringify(s5),
+    );
+    const err = await ev(
+      `(() => { const v = ${card}._view; v.dirty = true; return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(v.renderer.getContext().getError())))); })()`,
+    );
+    check(
+      "auto: switches without GL errors or page errors",
+      err === 0 && !q.errors.length,
+      `${err} ${q.errors.slice(0, 3).join(" | ")}`,
+    );
+    const dbg = await ev(
+      `${card}._view.auto.state() && localStorage.getItem('floorplan3d.quality')`,
+    );
+    check("auto: test mode remembers nothing", dbg === null, String(dbg));
+  } finally {
+    await q.close();
+  }
+}
+
 // Render quality 'still': idle progressive path tracing (test mode: a few samples a session).
 async function stillChecks() {
   const q = await openDemo(
@@ -568,8 +691,9 @@ async function stillChecks() {
   }
 }
 
-if (QUALITY_ONLY) {
-  await qualityChecks();
+if (QUALITY_ONLY || AUTO_ONLY) {
+  if (QUALITY_ONLY) await qualityChecks();
+  await autoChecks();
   if (failures.length) {
     console.log(`\n${failures.length} check(s) failed`);
     process.exit(1);
@@ -751,6 +875,7 @@ try {
   await s.close();
 }
 await qualityChecks();
+await autoChecks();
 if (failures.length) {
   console.log(`\n${failures.length} check(s) failed`);
   process.exit(1);

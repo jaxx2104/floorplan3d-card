@@ -1,7 +1,8 @@
 // `debug: true`: a small performance overlay (bottom-left, monospace, theme colours). Updated once a
 // second: FPS, frame ms (avg / max over 1 s), the longest main-thread task of the last 60 s (long task
 // API, else measured frame gaps), the last map refresh's stages, shadow-map updates and renders a minute,
-// and the map refresh interval (doubled by the adaptive throttle).
+// the map refresh interval (doubled by the adaptive throttle) and the render quality in use ('auto': its level,
+// the median frame interval it measured, the display's refresh).
 import { effectiveRefresh } from "./mower-track.ts";
 import type { FloorplanView } from "./view.ts";
 import type { Floorplan3dCard } from "./card-impl.ts";
@@ -83,6 +84,13 @@ export class DebugOverlay {
         : "map: decode – · worker – · apply –",
       `shadows ${fmt(shadowsMin)}/min · renders ${fmt(rendersMin)}/min`,
     ];
+    const look = v.look,
+      auto = v.auto && v.auto.state();
+    if (auto)
+      lines.push(
+        `quality auto: ${auto.level}${auto.pending ? ` -> ${auto.pending} (when idle)` : ""} · median ${fmt(auto.median)} ms (${auto.samples} frames) · refresh ${fmt(auto.refreshMs)} ms${auto.failures ? ` · ${auto.failures} failed up` : ""}`,
+      );
+    else if (look && look.quality) lines.push(`quality ${look.quality()}`);
     if (base)
       lines.push(
         `map refresh ${effectiveRefresh(base, t)} s${t && t.factor > 1 ? " (throttled)" : ""}`,
