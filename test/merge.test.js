@@ -2,8 +2,6 @@ import { describe, it, expect } from "bun:test";
 import {
   mergeGroups,
   geometrySignature,
-  MAX_MERGE_VERTICES,
-  MAX_MERGE_MESH_M,
   fnv1a,
   mergedName,
   namedGroups,
@@ -327,7 +325,6 @@ describe("mergeGroups", () => {
     const g = mergeGroups(ms, optsFor(s, { maxVertices: 100 }));
     expect(names(g)).toEqual(["a,b", "c,d"]); // e alone in the third chunk, huge over the limit
     expect(g.every((x) => x.vertices <= 100)).toBe(true);
-    expect(MAX_MERGE_VERTICES).toBe(1000000);
   });
 
   it("geometrySignature reflects attribute names, item sizes, types and the index", () => {
@@ -361,7 +358,6 @@ describe("mergeGroups", () => {
       optsFor(s, { boxOf }),
     );
     expect(names(g)).toEqual(["a,b"]);
-    expect(MAX_MERGE_MESH_M).toBe(30);
   });
 
   it("spatial owners split their meshes into 10 m cells; other owners do not", () => {

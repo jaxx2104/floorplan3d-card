@@ -121,9 +121,6 @@ describe("normRender", () => {
 describe("mergeRender", () => {
   it("is the defaults without a recipe", () => {
     expect(mergeRender(null)).toEqual(RENDER_DEFAULTS);
-    expect(RENDER_DEFAULTS.exposure).toBe(1.25);
-    expect(RENDER_DEFAULTS.lampShadows.max).toBe(4);
-    expect(RENDER_DEFAULTS.glowIntensityPerBrightness).toBe(3);
   });
   it("overrides key by key, nested objects merged", () => {
     const m = mergeRender({

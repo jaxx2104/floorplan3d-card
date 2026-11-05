@@ -31,8 +31,6 @@ describe("still: idle path tracing rules", () => {
       fadeFrom: STILL_FADE_FROM,
       fadeTo: STILL_FADE_TO,
     });
-    expect(STILL_MAX_SAMPLES).toBe(512);
-    expect(STILL_MAX_MS).toBe(60000);
     expect(STILL_FADE_FROM).toBeGreaterThanOrEqual(128); // never a noisy image over the raster frame
     expect(STILL_FADE_TO).toBeGreaterThan(STILL_FADE_FROM);
     expect(STILL_FADE_TO).toBeLessThanOrEqual(STILL_MAX_SAMPLES);

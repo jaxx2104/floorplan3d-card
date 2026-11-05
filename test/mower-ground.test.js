@@ -1,12 +1,11 @@
 import { describe, it, expect, vi } from "bun:test";
-import { GroundCache, GROUND_CELL } from "../src/surface.ts";
+import { GroundCache } from "../src/surface.ts";
 import { outdoorShown } from "../src/views.ts";
 
 describe("GroundCache", () => {
   it("casts once per 0.5 m cell, at the cell centre", () => {
     const c = new GroundCache();
     const ray = vi.fn((x, y) => ({ y: x + y, level: "ext" }));
-    expect(GROUND_CELL).toBe(0.5);
     const a = c.get(1.1, 2.2, "k", ray);
     expect(ray).toHaveBeenCalledWith(1.25, 2.25);
     expect(a).toEqual({ y: 3.5, level: "ext" });

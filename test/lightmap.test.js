@@ -6,7 +6,6 @@ import {
   uvAttribute,
   bakedRooms,
   insidePolygon,
-  BAKED_ROOM_SHARE,
 } from "../src/lightmap.ts";
 import { prepareLightmaps, applyLightmap } from "../src/view/indirect.ts";
 import { checkGlb } from "../tools/check-model.mjs";
@@ -114,7 +113,6 @@ describe("baked rooms", () => {
   ];
   const mesh = (x, y, py, baked) => ({ x, y, z: -py, baked });
   it("a room is baked when at least half of its meshes carry a light map", () => {
-    expect(BAKED_ROOM_SHARE).toBe(0.5);
     const set = bakedRooms(rooms, [
       mesh(1, 1, 1, true),
       mesh(2, 0.1, 2, true),

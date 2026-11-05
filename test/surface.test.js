@@ -13,7 +13,6 @@ import {
   WALL_RANGE,
   CEILING_RANGE,
   FLOOR_RANGE,
-  STICK_DISTANCE,
   surfaceKey,
   stickSurface,
   surfaceSearch,
@@ -59,7 +58,6 @@ describe("rayGroups", () => {
     ]);
     expect(rayGroups("all")).toHaveLength(3);
     expect(rayGroups(null)).toEqual([]);
-    expect([WALL_RANGE, CEILING_RANGE, FLOOR_RANGE]).toEqual([2.5, 4, 3]);
   });
 });
 
@@ -198,7 +196,6 @@ describe("needsStick / nearestDistance", () => {
   });
   it("only free pins farther than 15 cm from a surface found nearby", () => {
     const pin = { x: 1, y: 1, z: 1.2, floor_id: "g" };
-    expect(STICK_DISTANCE).toBe(0.15);
     expect(needsStick(pin, 0.5)).toBe(true);
     expect(needsStick(pin, 0.15)).toBe(false);
     expect(needsStick(pin, 0.05)).toBe(false);

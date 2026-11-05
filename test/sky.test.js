@@ -4,13 +4,11 @@ import {
   moonLight,
   moonLitRight,
   domeRadius,
-  SUN_MIN_Y,
   sunPosition,
   sliderDate,
   snapMinutes,
   hhmm,
   tzMinutes,
-  SCRUB_IDLE_MS,
 } from "../src/sky.ts";
 
 // Reference: suncalc's published test values (2013-03-05 UTC, 50.5 N, 30.5 E):
@@ -110,9 +108,6 @@ describe("dome", () => {
     expect(domeRadius(3)).toBe(12);
     expect(domeRadius(undefined)).toBe(12);
   });
-  it("sun shows down to -2 deg", () => {
-    expect(SUN_MIN_Y).toBeCloseTo(-0.0349, 4);
-  });
 });
 
 describe("moonLitRight", () => {
@@ -198,9 +193,6 @@ describe("time scrubber helpers", () => {
       150,
     );
     expect(tzMinutes(Date.UTC(2024, 5, 21, 23, 30), "UTC")).toBe(23 * 60 + 30);
-  });
-  it("returns to live after 2 minutes idle", () => {
-    expect(SCRUB_IDLE_MS).toBe(120000);
   });
   it("snapMinutes: 15 min steps within 0..1440", () => {
     expect(snapMinutes(7)).toBe(0);

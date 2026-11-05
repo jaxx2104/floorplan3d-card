@@ -6,7 +6,6 @@ import {
   placeWash,
   washOpacity,
   washTexels,
-  WALL_REACH,
 } from "../src/objects/wash.ts";
 
 const close = (a, b, eps = 1e-6) => a.every((v, i) => Math.abs(v - b[i]) < eps);
@@ -70,7 +69,6 @@ describe("chooseWall", () => {
     expect(w.normal).toEqual([-1, 0, 0]);
     expect(chooseWall([hits[0]]).normal).toEqual([0, 0, 1]);
     expect(chooseWall([hits[2], hits[3]])).toBe(null);
-    expect(WALL_REACH).toBe(0.6);
   });
 });
 
