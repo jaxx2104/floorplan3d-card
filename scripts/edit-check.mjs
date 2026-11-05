@@ -3,7 +3,7 @@
 // Writes screenshots/edit-*.png and exits non-zero on any failed step or page error.
 import fs from "node:fs";
 import path from "node:path";
-import { openDemo, root, brandRequests } from "./lib/demo-browser.mjs";
+import { openDemo, root, brandRequests, idle } from "./lib/demo-browser.mjs";
 import { planToPixel } from "../src/mower-image.ts";
 
 const shots = path.join(root, "screenshots");
@@ -13,7 +13,16 @@ const { page, errors, close } = await openDemo(
   { width: 1500, height: 680 },
   { brands: true },
 );
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); // only where real time is the input under test
+// expr true in the page (waited for, then idle) -> true; false after 15 s (the next check reports what is missing)
+const untilTrue = (expr, label) =>
+  page.waitForFunction(expr, { timeout: 15000 }).then(
+    () => idle(page).then(() => true),
+    () => {
+      console.log(`     (timed out waiting for ${label})`);
+      return false;
+    },
+  );
 const failures = [];
 const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? " – " + detail : ""}`);
@@ -33,7 +42,7 @@ const panelClick = async (text) => {
     if (b) b.click();
     return !!b;
   }, text);
-  await sleep(150);
+  await idle(page);
   return ok;
 };
 const rowButton = async (name, text) => {
@@ -59,7 +68,7 @@ const rowButton = async (name, text) => {
     name,
     text,
   );
-  await sleep(200);
+  await idle(page);
   return ok;
 };
 // client px of a plan point on the active floor
@@ -76,14 +85,14 @@ const at = (x, y, z = 0) =>
 const click = async (x, y) => {
   const [cx, cy] = await at(x, y);
   await page.mouse.click(cx, cy);
-  await sleep(120);
+  await idle(page);
 };
 const drag = async (from, to) => {
   await page.mouse.move(from[0], from[1]);
   await page.mouse.down();
   await page.mouse.move(to[0], to[1], { steps: 8 });
   await page.mouse.up();
-  await sleep(250);
+  await idle(page);
 };
 
 // |dot centre - projected 3D point| in px for a marker that shows a value line (worst over all such markers)
@@ -172,7 +181,7 @@ try {
     (await editChunks()) === 1 &&
       (await ev(`!!${card}._edit && ${card}._editing === true`)),
   );
-  await sleep(300);
+  await idle(page);
   const st = await stems();
   check(
     "edit mode: one stem per shown marker",
@@ -210,7 +219,7 @@ try {
     JSON.stringify((await labelTexts()).slice(0, 3)),
   );
   await setLabels("name");
-  await sleep(300);
+  await idle(page);
   let lt = await labelTexts();
   check(
     "room labels: name only, stored in the layout",
@@ -220,10 +229,10 @@ try {
     JSON.stringify(lt.slice(0, 3)),
   );
   await setLabels("none");
-  await sleep(300);
+  await idle(page);
   check("room labels: none", (await labelTexts()).length === 0);
   await setLabels("size");
-  await sleep(300);
+  await idle(page);
   lt = await labelTexts();
   check(
     "room labels: back to name and size (key removed)",
@@ -236,7 +245,7 @@ try {
   await ev(
     `(() => { const v = ${card}._view; v.ortho.zoom = 0.75; v.ortho.updateProjectionMatrix(); v.dirty = true; })()`,
   );
-  await sleep(200);
+  await idle(page);
   check("switched to top view", (await ev(`${card}._mode`)) === "top");
   await click(-4.02, 5.03);
   await click(0.08, 5.06); // within 25 cm of the bedroom corner (0, 5): snaps onto it
@@ -245,7 +254,7 @@ try {
   await click(-3.98, 8.97);
   await page.screenshot({ path: path.join(shots, "edit-drawing.png") });
   await click(-4.0, 5.02); // first point closes the room
-  await sleep(200);
+  await idle(page);
   let l = await layout();
   const garage = l.rooms.find((r) => r.area_id === "garage");
   check(
@@ -272,7 +281,7 @@ try {
     "room selected after drawing",
     (await ev(`${card}._edit.selectedRoom`)) === garage?.id,
   );
-  await sleep(800);
+  await idle(page);
   check(
     "layout saved through storage",
     JSON.stringify((await saved())?.rooms) === JSON.stringify(l.rooms),
@@ -317,7 +326,7 @@ try {
   await ev(
     `(() => { const i = ${card}.shadowRoot.querySelector("[name=room-outdoor]"); i.checked = true; i.dispatchEvent(new Event("change", { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "outdoor toggle",
     (await layout()).rooms.find((r) => r.area_id === "garage").outdoor === true,
@@ -357,7 +366,7 @@ try {
   await ev(
     `(() => { const i = ${card}.shadowRoot.querySelector("[name=marker-z]"); i.value = "0.4"; i.dispatchEvent(new Event("change", { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "height input updates pin",
     (await layout()).pins["device:kettle_plug"].z === 0.4,
@@ -405,7 +414,10 @@ try {
     `${card}.shadowRoot.querySelector("[name=import]")`,
   );
   await input.uploadFile(tmp);
-  await sleep(400);
+  await untilTrue(
+    `!!${card}.shadowRoot.querySelector(".panel .msg")`,
+    "the import message",
+  );
   l = await layout();
   check(
     "import replaces layout",
@@ -424,7 +436,10 @@ try {
     `${card}.shadowRoot.querySelector("[name=import]")`,
   );
   await input2.uploadFile(tmp);
-  await sleep(400);
+  await untilTrue(
+    `!!${card}.shadowRoot.querySelector(".panel .msg.error")`,
+    "the import error",
+  );
   check(
     "bad import rejected",
     (await layout()).rooms[0].id === "x" &&
@@ -441,7 +456,7 @@ try {
   await rowButton("Hall", "Draw");
   await click(5.5, 0.5);
   await page.keyboard.press("Escape");
-  await sleep(100);
+  await idle(page);
   check(
     "Esc cancels drawing",
     (await ev(`${card}._edit.drawing`)) === null &&
@@ -453,7 +468,10 @@ try {
     `${card}._edit.commit(${card}._edit.layout.mower ? ${card}._edit.layout : { ...${card}._layout, mower: window.__demoMower })`,
   );
   await panelClick("Mower");
-  await sleep(1200);
+  await untilTrue(
+    `/Reading/.test(${card}.shadowRoot.querySelector(".mower-live")?.textContent || "")`,
+    "the live reading",
+  );
   const live = await ev(
     `${card}.shadowRoot.querySelector(".mower-live").textContent`,
   );
@@ -563,7 +581,7 @@ try {
   await ev(
     `(() => { const s = ${card}.shadowRoot.querySelector("[name=ov-rotation]"); s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "overlay slider updates live",
     (await layout()).mower.overlay.rotation === 30 &&
@@ -590,7 +608,7 @@ try {
   );
   await page.keyboard.type("37.26");
   await page.keyboard.press("Enter");
-  await sleep(200);
+  await idle(page);
   let sl = await ev(
     `({ w: ${card}._layout.mower.overlay.width, range: ${card}.shadowRoot.querySelector("[name=ov-width]").value, num: ${num("ov-width")}.value, plane: ${card}._view.mapPlane.scale.x })`,
   );
@@ -602,7 +620,7 @@ try {
   await ev(
     `(() => { const n = ${num("ov-width")}; n.value = '999'; n.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "typed value clamped to max",
     (await layout()).mower.overlay.width === 200 &&
@@ -611,7 +629,7 @@ try {
   await ev(
     `(() => { const n = ${num("ov-width")}; n.value = ''; n.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "invalid value reverts to the slider",
     (await layout()).mower.overlay.width === 200 &&
@@ -622,7 +640,7 @@ try {
   );
   await page.keyboard.type("12,5");
   await page.keyboard.press("Enter");
-  await sleep(200);
+  await idle(page);
   check(
     "a decimal comma is accepted",
     (await layout()).mower.overlay.width === 12.5 &&
@@ -631,12 +649,15 @@ try {
   );
   await ev(`${num("ov-rotation")}.focus()`);
   await page.keyboard.press("ArrowUp");
-  await sleep(100);
+  await sleep(100); // real time is the input: well inside the 400 ms debounce
   check(
     "arrow key: not saved before 400 ms",
     (await layout()).mower.overlay.rotation === 30,
   );
-  await sleep(500);
+  await untilTrue(
+    `${card}._layout.mower.overlay.rotation === 30.5`,
+    "the debounced arrow-key step",
+  );
   check(
     "arrow key steps the value (and the slider)",
     (await layout()).mower.overlay.rotation === 30.5 &&
@@ -649,7 +670,7 @@ try {
   await ev(
     `(() => { const n = ${num("ov-width")}; n.value = '${w0}'; n.dispatchEvent(new Event('change', { bubbles: true })); n.blur(); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check("width back", (await layout()).mower.overlay.width === w0);
   await panelClick("Move with mouse");
   const ov0 = (await layout()).mower.overlay;
@@ -668,7 +689,7 @@ try {
   await ev(`${card}._edit.commit({ ...${card}._edit.layout, mower: { ...${card}._edit.layout.mower, source: 'image', calibration: [],
     overlay: { entity: 'image.sunseeker_live_map', x: 16.5, y: 1.5, rotation: 0, width: 9, opacity: 0.55, refresh: 10 } } })`);
   await ev(`${card}._edit.render()`);
-  await sleep(300);
+  await idle(page);
   // where the fake mower is: its gps reading through the demo calibration (garden centre, north up)
   const mowerAt = () =>
     ev(`(() => { const a = ${card}.hass.states['device_tracker.sunseeker_position'].attributes;
@@ -701,7 +722,7 @@ try {
     (await panelClick("Pick mower colour")) && (await pickerOpen()),
   );
   await page.keyboard.press("Escape");
-  await sleep(150);
+  await idle(page);
   check(
     "Esc closes the picker",
     !(await ev(
@@ -717,7 +738,7 @@ try {
     const cp = await ev(`${card}._edit.picker.clientOf(${px}, ${py})`);
     await page.mouse.move(cp[0], cp[1]);
     await page.mouse.click(cp[0], cp[1]);
-    await sleep(250);
+    await idle(page);
   };
   await pickPx(pix.px, pix.py);
   await page
@@ -741,7 +762,7 @@ try {
   await ev(
     `(() => { const c = ${card}.shadowRoot.querySelector('.fp-picker [data-pk=matches]'); c.click(); })()`,
   );
-  await sleep(200);
+  await idle(page);
   const mc = await ev(`${card}._edit.picker.matchCount`);
   check(
     "Show matches highlights the dot only",
@@ -752,7 +773,7 @@ try {
   await ev(
     `${card}.shadowRoot.querySelector('.fp-picker [data-pk=done]').click()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "Done closes the picker",
     !(await ev(`!!${card}.shadowRoot.querySelector('.fp-picker')`)),
@@ -766,7 +787,7 @@ try {
     JSON.stringify({ want: q, live: await ev(`${card}._mowerLive`) }),
   );
   await ev("window.__demoMowerPaused = false");
-  await sleep(2500);
+  await sleep(2500); // real time is the input: the demo mower drives for 2.5 s
   await ev("window.__demoMowerPaused = true");
   await sleep(600); // the last tick lands
   const q2 = await mowerAt();
@@ -828,7 +849,7 @@ try {
   await ev(
     `${card}.shadowRoot.querySelector('.panel [name=color-del][data-kind=bg][data-i="1"]').click()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "× removes a colour",
     ((await layout()).mower.overlay.bg_colors || []).length === 1,
@@ -836,7 +857,7 @@ try {
 
   // setup checklist: all required rows done collapses to "Setup complete"; a row scrolls to and flashes its control
   await ev(`${card}._edit.render()`);
-  await sleep(200);
+  await idle(page);
   const setup =
     await ev(`(() => { const d = ${card}.shadowRoot.querySelector('details.mower-setup');
     return d && { complete: d.classList.contains('complete'), open: d.open, summary: d.querySelector('summary').textContent.trim(),
@@ -853,7 +874,7 @@ try {
   );
   await ev(`(() => { const d = ${card}.shadowRoot.querySelector('details.mower-setup'); d.open = true;
     [...d.querySelectorAll('.setup-row')].find((b) => b.textContent.includes('Mowed colour')).click(); })()`);
-  await sleep(100);
+  await idle(page);
   check(
     "setup row flashes its control",
     await ev(
@@ -863,7 +884,7 @@ try {
   await ev(
     `(() => { const i = ${card}.shadowRoot.querySelector('[name=mower-ok-values]'); i.value = 'Rain delay, wait'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   );
-  await sleep(150);
+  await idle(page);
   check(
     "OK values stored",
     JSON.stringify((await layout()).mower.ok_values) ===
@@ -874,7 +895,7 @@ try {
     `${card}._edit.commit({ ...${card}._edit.layout, mower: { ...${card}._edit.layout.mower, image: {} } })`,
   );
   await ev(`${card}._edit.render()`);
-  await sleep(200);
+  await idle(page);
   const setup2 =
     await ev(`(() => { const d = ${card}.shadowRoot.querySelector('details.mower-setup');
     return { open: d.open, complete: d.classList.contains('complete'), colour: d.querySelector('[data-target*="img-pick"]').className }; })()`);
@@ -894,7 +915,7 @@ try {
     `${card}._edit.commit({ ...window.__demoLayout, mower: ${card}._edit.layout.mower })`,
   );
   await panelClick("Devices");
-  await sleep(300);
+  await idle(page);
   const badgeState = () =>
     ev(`(() => { const c = ${card}, s = c.shadowRoot, faces = [...c._faces.keys()].map((id) => c._markerView(id));
     const mv = (id) => c._markerView(id) || {};
@@ -922,7 +943,7 @@ try {
     await ev(
       `(() => { const c = ${card}.shadowRoot.querySelector('[name=badge][data-key=${key}]'); c.click(); })()`,
     );
-    await sleep(300);
+    await idle(page);
   };
   await toggle("integration");
   await page
@@ -944,7 +965,7 @@ try {
   );
   const reqs = brandRequests.length;
   await ev(`${card}._refreshStates()`);
-  await sleep(100);
+  await idle(page);
   check(
     "badges: no repeated logo requests",
     brandRequests.length === reqs,
@@ -969,7 +990,7 @@ try {
   await ev(
     `(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`,
   );
-  await sleep(200);
+  await idle(page);
   check(
     "panel hidden after Done",
     await ev(
@@ -1003,7 +1024,7 @@ try {
   await p.evaluate(
     `(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`,
   );
-  await sleep(400);
+  await idle(p);
   const box =
     await p.evaluate(`(() => { const s = ${card}.shadowRoot; const r = (q) => s.querySelector(q).getBoundingClientRect();
     return { card: r('ha-card').width, stage: [r('.stage').width, r('.stage').height], panel: r('.panel').width, panelTop: r('.panel').top, stageBottom: r('.stage').bottom }; })()`);

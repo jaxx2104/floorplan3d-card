@@ -184,6 +184,22 @@ export async function waitForDemo(page) {
   );
 }
 
+// Settled: after at least two animation frames, the first card has nothing left to do: no camera tween, no
+// frame due, no card update, surface search or tap decision pending, no edit-panel render queued, no layout
+// save waiting on its debounce. -> true, false after timeout ms (the checks then report it).
+export const idle = (page, timeout = 10000) =>
+  page.evaluate(`new Promise((done) => {
+  const t0 = performance.now();
+  let n = 0;
+  const tick = () => {
+    const c = document.querySelector("floorplan3d-card-impl"), v = c && c._view, e = c && c._edit, s = c && c._store;
+    const ok = ++n > 2 && (!v || (!v._tween && !v.dirty && !c._pending && !c._surfJob && !(c._taps && c._taps.pending.size)
+      && !(e && e._renderQueued) && !(s && s._pending)));
+    if (ok || performance.now() - t0 > ${timeout}) done(ok); else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})`);
+
 // Opens the demo and waits for markers. Returns { page, errors, close, browser, base }.
 // opts.brands: answer integration logo requests locally (interceptBrands); opts.test: false = real look.
 export async function openDemo(
