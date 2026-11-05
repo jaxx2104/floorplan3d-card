@@ -11,17 +11,10 @@ import {
   imageScale,
   fitOverlay,
 } from "../src/mower-image.ts";
+import { image as fill, rect } from "./helpers/pixels.js";
 
 // synthetic RGBA image filled with one colour
-function image(w, h, bg = [30, 80, 30]) {
-  const a = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) a.set([...bg, 255], i * 4);
-  return a;
-}
-function rect(a, w, x0, y0, rw, rh, c) {
-  for (let y = y0; y < y0 + rh; y++)
-    for (let x = x0; x < x0 + rw; x++) a.set([...c, 255], (y * w + x) * 4);
-}
+const image = (w, h, c = [30, 80, 30]) => fill(w, h, c);
 const RED = [255, 40, 30];
 
 describe("pixelToPlan / planToPixel", () => {

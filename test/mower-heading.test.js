@@ -8,14 +8,11 @@ import {
   matchTemplate,
   grayOf,
 } from "../src/mower-heading.ts";
+import { image as fill } from "./helpers/pixels.js";
 
 const BG = [40, 90, 40],
   RED = [230, 40, 40];
-function image(w, h, c = BG) {
-  const a = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) a.set([...c, 255], i * 4);
-  return a;
-}
+const image = (w, h, c = BG) => fill(w, h, c);
 // fill pixels whose centre is inside(lx, ly) in the icon frame (front = +lx), turned to heading `deg`
 function draw(a, w, h, cx, cy, deg, inside, color = RED) {
   const r = (deg * Math.PI) / 180,

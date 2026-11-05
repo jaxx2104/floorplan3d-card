@@ -13,20 +13,13 @@ import {
 } from "../src/mower-image.ts";
 import { sunVector } from "../src/objects/logic.ts";
 import { pointInPolygon } from "../src/placement.ts";
+import { image as fill, rect, setPixel } from "./helpers/pixels.js";
 
 const BG = [30, 70, 35],
   MOWED = [120, 190, 110],
   NOMOW = [140, 140, 140],
   RED = [255, 40, 30];
-function image(w, h, c = BG) {
-  const a = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) a.set([...c, 255], i * 4);
-  return a;
-}
-function rect(a, w, x0, y0, rw, rh, c) {
-  for (let y = y0; y < y0 + rh; y++)
-    for (let x = x0; x < x0 + rw; x++) a.set([...c, 255], (y * w + x) * 4);
-}
+const image = (w, h, c = BG) => fill(w, h, c);
 const alpha = (d, w, x, y) => d[(y * w + x) * 4 + 3];
 const px = (d, w, x, y) =>
   Array.from(d.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
@@ -40,8 +33,7 @@ function stripes(w, h, deg, period = 12) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const t = (x + 0.5) * nx + (h - y - 0.5) * ny;
-      if (Math.floor(t / period) % 2 === 0)
-        a.set([...MOWED, 255], (y * w + x) * 4);
+      if (Math.floor(t / period) % 2 === 0) setPixel(a, w, x, y, MOWED);
     }
   }
   return a;

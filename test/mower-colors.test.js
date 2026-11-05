@@ -8,20 +8,13 @@ import {
   removeColorPatch,
   MAX_COLORS,
 } from "../src/mower-image.ts";
+import { image as fill, rect } from "./helpers/pixels.js";
 
 const BG1 = [30, 70, 35],
   BG2 = [60, 110, 50],
   RED1 = [255, 40, 30],
   RED2 = [200, 20, 60];
-function image(w, h, c) {
-  const a = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) a.set([...c, 255], i * 4);
-  return a;
-}
-function rect(a, w, x0, y0, rw, rh, c) {
-  for (let y = y0; y < y0 + rh; y++)
-    for (let x = x0; x < x0 + rw; x++) a.set([...c, 255], (y * w + x) * 4);
-}
+const image = fill;
 
 describe("colour lists", () => {
   it("reads the list (the v1 single colour is migrated into it on load)", () => {

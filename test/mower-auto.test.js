@@ -19,6 +19,7 @@ import {
   grayOf,
   angleDiff,
 } from "../src/mower-heading.ts";
+import { image, rect, setPixel } from "./helpers/pixels.js";
 
 const BGC = [28, 28, 30],
   LAWN = [60, 125, 58],
@@ -28,7 +29,9 @@ const BGC = [28, 28, 30],
   DOCK = [176, 176, 176];
 const W = 160,
   H = 200;
+let staticBase = null;
 function staticMap() {
+  if (staticBase) return staticBase.slice();
   const a = new Uint8ClampedArray(W * H * 4);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
@@ -37,8 +40,9 @@ function staticMap() {
       if ((x === 10 || x === 149 || y === 10 || y === 189) && c === LAWN)
         c = LINE;
       if (Math.hypot(x + 0.5 - 50, y + 0.5 - 150) < 12) c = NOMOW;
-      a.set([...c, 255], (y * W + x) * 4);
+      setPixel(a, W, x, y, c);
     }
+  staticBase = a.slice();
   return a;
 }
 const striped = (x, y) =>
@@ -84,10 +88,8 @@ function paste(dst, pic, t, cx, cy, deg, s) {
 function liveMap(pic, t, cx, cy, deg, s) {
   const a = staticMap();
   for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++)
-      if (striped(x, y)) a.set([...MOWED, 255], (y * W + x) * 4);
-  for (let y = 165; y < 180; y++)
-    for (let x = 120; x < 140; x++) a.set([...DOCK, 255], (y * W + x) * 4);
+    for (let x = 0; x < W; x++) if (striped(x, y)) setPixel(a, W, x, y, MOWED);
+  rect(a, W, 120, 165, 20, 15, DOCK);
   paste(a, pic, t, cx, cy, deg, s);
   return a;
 }
@@ -178,12 +180,8 @@ describe("auto mode: the mower beats the dock", () => {
   for (const ang of [90, 30, 200, 300])
     for (const sz of [1, 0.7]) {
       it(`icon at ${ang}° (size ${sz}) chosen over the dock, heading within 5°`, () => {
-        const stat = new Uint8ClampedArray(S * S * 4),
-          live = new Uint8ClampedArray(S * S * 4);
-        for (let i = 0; i < S * S; i++) {
-          stat.set([40, 140, 50, 255], i * 4);
-          live.set([40, 140, 50, 255], i * 4);
-        }
+        const stat = image(S, S, [40, 140, 50]),
+          live = stat.slice();
         const rr = ((ang - 90) * Math.PI) / 180,
           c = Math.cos(rr),
           s = Math.sin(rr);
@@ -200,9 +198,7 @@ describe("auto mode: the mower beats the dock", () => {
               live.set([g, g, g, 255], ((250 + y) * S + 250 + x) * 4);
             }
           }
-        for (let y = 100; y < 114; y++)
-          for (let x = 100; x < 114; x++)
-            live.set([150, 150, 150, 255], (y * S + x) * 4);
+        rect(live, S, 100, 100, 14, 14, [150, 150, 150]);
         const r = compareMaps(stat, live, S, S);
         const pick = pickMower(
           r.blobs,
