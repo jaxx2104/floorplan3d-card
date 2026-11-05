@@ -67,7 +67,6 @@ export interface ViewStats {
   bloomPasses: number; // frames with a selective bloom pass (render quality 'high', an emissive surface in view)
   contactBuilds: number; // contact shadow rebuilds (render quality 'high', the shadow casters changed)
   probeCaptures: number; // room light probe captures (render quality 'high', one room a frame while a pass runs)
-  materialSwaps: number; // model materials upgraded to physical or restored (render quality 'high', look changes)
   stillSessions: number; // idle path tracing sessions started (render quality 'still')
   stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
   stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
@@ -270,7 +269,6 @@ export class FloorplanView {
       bloomPasses: 0,
       contactBuilds: 0,
       probeCaptures: 0,
-      materialSwaps: 0,
       stillSessions: 0,
       stillSteps: 0,
       stillDraws: 0,

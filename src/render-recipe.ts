@@ -59,7 +59,7 @@ export interface RenderRecipe {
   day?: Partial<SkySetting>;
   night?: Partial<SkySetting>;
   glowIntensityPerBrightness?: number;
-  /** Physical material rules (quality high, material-class.ts): fp.render.materials, in order. */
+  /** Physical material rules (material-class.ts, applied at load): fp.render.materials, in order. */
   materials?: MaterialRule[];
 }
 
@@ -523,8 +523,6 @@ export interface QualityTier {
   sunShadowRadius: number;
   /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
   contactShadows: boolean;
-  /** Glass, floors and fabric as physical materials: thin glass, clear-coated floors, fabric sheen (material-class.ts). */
-  physicalMaterials: boolean;
   /** Per-room light probes: each room's captured light (sun through windows, lamps, sky) as its ambient fill (light-probes.ts). */
   lightProbes: boolean;
   /** Lightmaps baked into the model (extras fp_lightmap on a second UV set) as the ambient light of their surfaces (lightmap.ts). */
@@ -542,7 +540,6 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       bloom: false,
       sunShadowRadius: 1.5,
       contactShadows: false,
-      physicalMaterials: false,
       lightProbes: false,
       bakedLightmaps: false,
       pathTrace: false,
@@ -555,7 +552,6 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       bloom: true,
       sunShadowRadius: 3,
       contactShadows: true,
-      physicalMaterials: true,
       lightProbes: true,
       bakedLightmaps: true,
       pathTrace: false,
@@ -569,7 +565,6 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       bloom: true,
       sunShadowRadius: 3,
       contactShadows: true,
-      physicalMaterials: true,
       lightProbes: true,
       bakedLightmaps: true,
       pathTrace: true,
@@ -598,7 +593,7 @@ export const TONE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 const TONE_NAMES = Object.keys(TONE_ALIASES).filter((a) => a !== "acesfilmic");
 
 /** Card option render, normalised: which recipe, the quality tier, the tone mapping (null: tier / recipe), the
- * physical material rules (set only when given; they come after the model's). */
+ * physical material rules (set only when given; they come after the model's and apply at the next model load). */
 export interface RenderOption {
   recipe: "model" | "default";
   quality: QualityOption;

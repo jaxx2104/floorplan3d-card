@@ -1,9 +1,9 @@
-// Physical materials (render quality 'high', QualityTier.physicalMaterials): which model materials are glass,
-// floors or fabric. Pure: the facts are gathered from the scene once per model load (view/look.ts), the
-// classes decided here, so the heuristics and the explicit rules are unit tested without three.js.
+// Physical materials: which model materials are glass, floors or fabric. Pure: the facts are read from the
+// glTF JSON (material-facts.ts) and the classes decided here while GLTFLoader builds the materials (the plugin
+// in physical-materials.ts), so the heuristics and the explicit rules are unit tested without three.js.
 //
-// Precedence per material: a material the file already made physical (glTF KHR_materials_*) and model
-// objects (the card drives their glow) are never touched; then the explicit rules (the material's extras
+// Precedence per material: a material the file already made physical (glTF KHR_materials_*) or unlit and
+// model objects (the card drives their glow) are never touched; then the explicit rules (the material's extras
 // fp_surface, the model's fp.render.materials, the card's render.materials: the later wins); then the name
 // heuristics (the material's name, else every mesh that uses it must agree), floor surfaces the card knows
 // and see-through untextured materials (thin glass).
@@ -71,7 +71,7 @@ export interface MeshFacts {
 /** A model material as the heuristics see it. */
 export interface MaterialFacts {
   name: string;
-  /** Already a MeshPhysicalMaterial from the file (KHR_materials_*): left as the file says. */
+  /** Physical (KHR_materials_*) or unlit in the file: left as the file says. */
   physical: boolean;
   /** The material's extras fp_surface (glTF material extras), if any. */
   extras?: unknown;

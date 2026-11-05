@@ -7,20 +7,24 @@ import {
   ruleMatches,
 } from "../src/material-class.ts";
 import {
-  setSurface,
   surfaceOf,
-  materialFacts,
   surfaceCounts,
+  surfaceParams,
+  surfacePlugin,
   SURFACE_LOOK,
   GLASS_FRESNEL,
 } from "../src/physical-materials.ts";
+import {
+  gltfMaterialFacts,
+  materialExtensions,
+} from "../src/material-facts.ts";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   patchCloudShadow,
   makeCloudUniforms,
   tierKey,
 } from "../src/cloud-shadow.ts";
 import { normRender, normRenderOption } from "../src/render-recipe.ts";
-import { buildManifest, threeAdapter } from "../src/manifest.ts";
 
 // a mesh use as the heuristics see it
 const use = (o = {}) => ({
@@ -148,7 +152,7 @@ describe("material classes: heuristics", () => {
       null,
     );
   });
-  it("KHR_materials_* (already physical) and model objects are never touched, not even by rules", () => {
+  it("KHR_materials_* / unlit (as the file says) and model objects are never touched, not even by rules", () => {
     const rules = [{ sel: "all", surface: "glass" }];
     expect(
       classifyMaterial(facts({ name: "Glass", physical: true }), rules),
@@ -283,175 +287,307 @@ describe("material classes: explicit rules", () => {
   });
 });
 
-describe("physical upgrade in place", () => {
-  it("becomes a MeshPhysicalMaterial, same object, and back to the same standard material", () => {
-    const m = new THREE.MeshStandardMaterial({
-      color: 0x6f86a6,
-      roughness: 0.9,
-      name: "fabric",
+// --- glTF documents: the facts read the JSON only (accessor min / max, no buffers) ---
+const box = (min, max) => ({
+  min,
+  max,
+  count: 3,
+  type: "VEC3",
+  componentType: 5126,
+});
+const level0 = {
+  kind: "level",
+  id: "level0",
+  role: "storey",
+  elevation: 0,
+  height: 2.7,
+};
+const living = {
+  kind: "room",
+  id: "living",
+  outline: [
+    [0, 0],
+    [4, 0],
+    [4, 3],
+    [0, 3],
+  ],
+};
+function houseDoc() {
+  return {
+    asset: { version: "2.0" },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [
+      { name: "level0", extras: { fp: level0 }, children: [1, 2] },
+      { name: "living", extras: { fp: living }, children: [3, 4, 6] },
+      { name: "wall", mesh: 1, translation: [0, 1.35, 0] },
+      { name: "slab", mesh: 0, translation: [0, -0.1, 0] },
+      { name: "Sofa", children: [5] },
+      { name: "Cube.001", mesh: 2 },
+      {
+        name: "lamp",
+        extras: { fp: { kind: "object", id: "lamp", type: "light" } },
+        children: [7],
+      },
+      { name: "shade", mesh: 3 },
+    ],
+    meshes: [0, 1, 2, 3].map((i) => ({
+      primitives: [{ attributes: { POSITION: i }, material: i }],
+    })),
+    accessors: [
+      box([-2, -0.1, -1.5], [2, 0.1, 1.5]),
+      box([-2, -1.35, -0.075], [2, 1.35, 0.075]),
+      box([-0.5, 0, -0.25], [0.5, 0.2, 0.25]),
+      box([-0.1, -0.1, -0.1], [0.1, 0.1, 0.1]),
+    ],
+    materials: [
+      {},
+      {},
+      {},
+      {
+        name: "glass",
+        alphaMode: "BLEND",
+        pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 0.4] },
+      },
+    ],
+  };
+}
+
+describe("material facts from the glTF JSON", () => {
+  it("rooms, floor surfaces, objects, groups, as the classes see them", () => {
+    const { materials: f } = gltfMaterialFacts(houseDoc());
+    expect(f[0].uses[0]).toMatchObject({
+      name: "slab",
+      floorTop: true,
+      indoor: true,
+      object: false,
     });
-    m.userData.keep = 1;
-    let disposed = 0;
-    m.addEventListener("dispose", () => disposed++);
-    const keysBefore = Object.keys(m).sort();
-    expect(setSurface(m, "fabric")).toBe(true);
-    expect(m).toBeInstanceOf(THREE.MeshPhysicalMaterial);
-    expect(m.isMeshPhysicalMaterial).toBe(true);
-    expect(m.type).toBe("MeshPhysicalMaterial");
-    expect(m.defines).toEqual({ STANDARD: "", PHYSICAL: "" });
-    expect(m.sheen).toBe(SURFACE_LOOK.fabric.sheen);
-    expect(m.sheenColor.r).toBeCloseTo(SURFACE_LOOK.fabric.sheenColor);
-    expect(m.reflectivity).toBeCloseTo(
-      new THREE.MeshPhysicalMaterial().reflectivity,
-    );
-    expect(surfaceOf(m)).toBe("fabric");
-    expect(disposed).toBe(1); // renderer state dropped: another shader
-    expect(setSurface(m, "fabric")).toBe(false); // nothing to do
-    const v = m.version;
-    expect(setSurface(m, null)).toBe(true);
-    expect(m.version).toBeGreaterThan(v);
-    expect(m).not.toBeInstanceOf(THREE.MeshPhysicalMaterial);
-    expect(m.isMeshPhysicalMaterial).toBe(undefined);
-    expect(m.type).toBe("MeshStandardMaterial");
-    expect(m.defines).toEqual({ STANDARD: "" });
-    expect(Object.keys(m).sort()).toEqual(keysBefore);
-    expect(m.roughness).toBe(0.9);
-    expect(m.userData).toEqual({ keep: 1 });
-    expect(m.clone()).toBeInstanceOf(THREE.MeshStandardMaterial);
-  });
-  it("glass: smooth dielectric with the fresnel variant, its roughness / metalness restored", () => {
-    const m = new THREE.MeshStandardMaterial({
-      roughness: 0.3,
-      metalness: 0.2,
-      transparent: true,
-      opacity: 0.35,
-    });
-    setSurface(m, "glass");
-    expect(m.roughness).toBe(SURFACE_LOOK.glass.roughness);
-    expect(m.metalness).toBe(0);
-    expect(m.transmission).toBe(0); // thin glass: no transmission pass
-    expect(m.opacity).toBe(0.35);
-    expect(m.userData.fpGlass).toBe(true);
-    setSurface(m, "floor"); // class change: restored, then upgraded again
-    expect(m.roughness).toBe(0.3);
-    expect(m.clearcoat).toBe(SURFACE_LOOK.floor.clearcoat);
-    expect(m.userData.fpGlass).toBe(undefined);
-    setSurface(m, null);
-    expect([m.roughness, m.metalness]).toEqual([0.3, 0.2]);
-  });
-  it("leaves file-physical and non-standard materials alone", () => {
-    const p = new THREE.MeshPhysicalMaterial({ transmission: 1 });
-    expect(setSurface(p, "glass")).toBe(false);
-    expect(p.transmission).toBe(1);
-    expect(setSurface(new THREE.MeshBasicMaterial(), "glass")).toBe(false);
-  });
-  it("thin glass is its own program variant of the cloud patch; standard keys are unchanged", () => {
-    const m = new THREE.MeshStandardMaterial({
+    expect(f[1].uses[0]).toMatchObject({ floorTop: false, indoor: true });
+    expect(f[2].uses[0].groups).toEqual(["Sofa"]);
+    expect(f[3].uses[0].object).toBe(true);
+    expect(f[3]).toMatchObject({
+      name: "glass",
       transparent: true,
       opacity: 0.4,
     });
-    patchCloudShadow(m, makeCloudUniforms());
-    const std = m.customProgramCacheKey();
-    expect(tierKey(m)).toBe("");
-    setSurface(m, "glass");
-    expect(tierKey(m)).toBe("g");
-    expect(m.customProgramCacheKey()).toBe(std + "g");
+    expect(f[0].uses[0].chain.map((n) => n.path)).toEqual([
+      "level0/living/slab",
+      "level0/living",
+      "level0",
+    ]);
+    expect(classifyMaterial(f[0])).toBe("floor");
+    expect(classifyMaterial(f[1])).toBe(null);
+    expect(classifyMaterial(f[2])).toBe("fabric");
+    expect(classifyMaterial(f[3])).toBe(null); // the card drives objects
+    expect(
+      classifyMaterial(f[1], [{ sel: "level:level0", surface: "fabric" }]),
+    ).toBe("fabric");
+  });
+  it("node transforms place the boxes; a level without elevation is measured", () => {
+    const d = houseDoc();
+    d.nodes[0].extras.fp = { ...level0, elevation: undefined };
+    d.nodes[0].translation = [0, 3, 0]; // the slab top at 3: the measured storey floor
+    expect(gltfMaterialFacts(d).materials[0].uses[0].floorTop).toBe(true);
+    d.nodes[3].translation = [0, 0.5, 0]; // a shelf 0.6 m over the level's lowest point
+    d.nodes[2].translation = [0, 1.35, 0];
+    const f = gltfMaterialFacts(d).materials[0].uses[0];
+    expect(f.floorTop).toBe(false);
+  });
+  it("multi-primitive meshes, shared and unused materials, KHR and unlit materials", () => {
+    const d = houseDoc();
+    d.meshes[2] = {
+      name: "SofaMesh",
+      primitives: [
+        { attributes: { POSITION: 2 }, material: 2 },
+        { attributes: { POSITION: 2 }, material: 1 },
+      ],
+    };
+    d.nodes[5].name = "Couch";
+    d.materials.push(
+      {
+        name: "Glass",
+        extensions: { KHR_materials_transmission: { transmissionFactor: 1 } },
+      },
+      { name: "Glass", extensions: { KHR_materials_unlit: {} } },
+      {
+        name: "Glow",
+        extensions: {
+          KHR_materials_emissive_strength: { emissiveStrength: 5 },
+        },
+        emissiveFactor: [1, 1, 1],
+      },
+    );
+    const { materials: f } = gltfMaterialFacts(d);
+    expect(f[2].uses[0]).toMatchObject({
+      name: "SofaMesh",
+      groups: ["Couch", "Sofa"],
+    });
+    expect(f[1].uses).toHaveLength(2); // the wall and the second primitive
+    expect(classifyMaterial(f[1])).toBe(null); // they disagree
+    expect(f[4]).toMatchObject({ physical: true, uses: [] });
+    expect(f[5].physical).toBe(true);
+    expect(f[6]).toMatchObject({ physical: false, emissive: true });
+    expect(materialExtensions(d)).toEqual({
+      KHR_materials_transmission: 1,
+      KHR_materials_unlit: 1,
+      KHR_materials_emissive_strength: 1,
+    });
+  });
+});
+
+describe("physical materials at load (GLTFLoader plugin)", () => {
+  it("surfaceParams: the class's look on the loader's parameters", () => {
+    const g = { roughness: 0.3, metalness: 0.2, userData: { keep: 1 } };
+    surfaceParams("glass", g);
+    expect(g).toMatchObject({
+      roughness: SURFACE_LOOK.glass.roughness,
+      metalness: 0,
+      ior: 1.5,
+      specularIntensity: 1,
+      userData: { keep: 1, fpSurface: "glass", fpGlass: true },
+    });
+    const f = { roughness: 0.6 };
+    surfaceParams("floor", f);
+    expect(f).toMatchObject({
+      roughness: 0.6,
+      clearcoat: 0.4,
+      clearcoatRoughness: 0.2,
+    });
+    expect(f.userData).toEqual({ fpSurface: "floor" });
+    const c = {};
+    surfaceParams("fabric", c);
+    expect(c.sheen).toBe(1);
+    expect(c.sheenColor.r).toBeCloseTo(SURFACE_LOOK.fabric.sheenColor);
+    const m = new THREE.MeshPhysicalMaterial(c);
+    expect(m.sheenColor.r).toBeCloseTo(SURFACE_LOOK.fabric.sheenColor);
+    expect(surfaceOf(m)).toBe("fabric");
+  });
+
+  // one triangle in a GLB (the buffer in its BIN chunk, nothing fetched): GLTFLoader builds real materials
+  const tri = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]).buffer);
+  const glb = (json) => {
+    const pad = (b, c) =>
+      Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4, c)]);
+    const j = pad(Buffer.from(JSON.stringify(json)), 0x20),
+      bin = pad(tri, 0);
+    const chunk = (type, data) => {
+      const h = Buffer.alloc(8);
+      h.writeUInt32LE(data.length, 0);
+      h.writeUInt32LE(type, 4);
+      return Buffer.concat([h, data]);
+    };
+    const body = Buffer.concat([chunk(0x4e4f534a, j), chunk(0x004e4942, bin)]);
+    const head = Buffer.alloc(12);
+    head.write("glTF", 0, "ascii");
+    head.writeUInt32LE(2, 4);
+    head.writeUInt32LE(12 + body.length, 8);
+    const all = Buffer.concat([head, body]);
+    return all.buffer.slice(all.byteOffset, all.byteOffset + all.length);
+  };
+  function loadable(materials, rootExtras) {
+    return {
+      asset: { version: "2.0" },
+      extensionsUsed: ["KHR_materials_transmission"],
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [
+        {
+          name: "house",
+          extras: rootExtras,
+          children: materials.map((_, i) => i + 1),
+        },
+        ...materials.map((_, i) => ({ name: `part${i}`, mesh: i })),
+      ],
+      meshes: materials.map((_, i) => ({
+        primitives: [{ attributes: { POSITION: 0 }, material: i }],
+      })),
+      accessors: [{ ...box([0, 0, 0], [1, 0, 1]), bufferView: 0 }],
+      bufferViews: [{ buffer: 0, byteLength: 36 }],
+      buffers: [{ byteLength: 36 }],
+      materials,
+    };
+  }
+  const MATS = [
+    {
+      name: "Window glass",
+      alphaMode: "BLEND",
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.8, 0.9, 1, 0.3],
+        roughnessFactor: 0.5,
+        metallicFactor: 0,
+      },
+    },
+    { name: "Boards", extras: { fp_surface: "floor" } },
+    {
+      name: "Glass",
+      extensions: { KHR_materials_transmission: { transmissionFactor: 1 } },
+    },
+    { name: "Sofa fabric" },
+    { name: "Wall" },
+  ];
+  const load = async (opts, rootExtras) => {
+    const loader = new GLTFLoader().register(surfacePlugin(opts));
+    const gltf = await loader.parseAsync(glb(loadable(MATS, rootExtras)), "");
+    const out = {};
+    gltf.scene.traverse((o) => {
+      if (o.isMesh) out[o.material.name] = o.material;
+    });
+    return { out, root: gltf.scene };
+  };
+
+  it("glass, floors and fabric are made physical once, KHR materials stay the file's", async () => {
+    const { out, root } = await load();
+    const glass = out["Window glass"];
+    expect(glass).toBeInstanceOf(THREE.MeshPhysicalMaterial);
+    expect(glass.roughness).toBe(SURFACE_LOOK.glass.roughness);
+    expect(glass.opacity).toBeCloseTo(0.3);
+    expect(glass.transparent).toBe(true);
+    expect(glass.transmission).toBe(0); // thin glass: no transmission pass
+    expect(glass.userData).toMatchObject({ fpSurface: "glass", fpGlass: true });
+    expect(out.Boards.clearcoat).toBe(SURFACE_LOOK.floor.clearcoat);
+    expect(out.Boards.userData.fp_surface).toBe("floor"); // the file's extras stay
+    expect(out["Sofa fabric"].sheen).toBe(SURFACE_LOOK.fabric.sheen);
+    expect(out.Glass).toBeInstanceOf(THREE.MeshPhysicalMaterial);
+    expect(out.Glass.transmission).toBe(1);
+    expect(surfaceOf(out.Glass)).toBe(null);
+    expect(out.Wall.type).toBe("MeshStandardMaterial");
+    expect(surfaceCounts(root)).toEqual({ glass: 1, floor: 1, fabric: 1 });
+    expect(glass.clone()).toBeInstanceOf(THREE.MeshPhysicalMaterial);
+  });
+  it("the model's fp.render.materials, render: default and the card's rules", async () => {
+    const extras = {
+      fp: { render: { materials: { "material:Wall": "glass" } } },
+    };
+    expect(surfaceOf((await load({}, extras)).out.Wall)).toBe("glass");
+    expect(
+      surfaceOf((await load({ modelRules: false }, extras)).out.Wall),
+    ).toBe(null);
+    const card = [{ sel: "material:Wall", surface: "fabric" }];
+    expect(surfaceOf((await load({ rules: card }, extras)).out.Wall)).toBe(
+      "fabric",
+    );
+    const none = [{ sel: "material:Window*", surface: "none" }];
+    expect((await load({ rules: none })).out["Window glass"].type).toBe(
+      "MeshStandardMaterial",
+    );
+  });
+  it("thin glass is its own program variant of the cloud patch", async () => {
+    const { out } = await load();
+    const std = out.Wall,
+      glass = out["Window glass"];
+    patchCloudShadow(std, makeCloudUniforms());
+    patchCloudShadow(glass, makeCloudUniforms());
+    expect(tierKey(std)).toBe("");
+    expect(tierKey(glass)).toBe("g");
     const sh = {
       uniforms: {},
       vertexShader: THREE.ShaderLib.physical.vertexShader,
       fragmentShader: THREE.ShaderLib.physical.fragmentShader,
     };
-    m.onBeforeCompile(sh, null);
+    glass.onBeforeCompile(sh, null);
     expect(sh.fragmentShader).toContain(GLASS_FRESNEL.trim().split("\n")[0]);
     expect(sh.fragmentShader.indexOf("fpC")).toBeLessThan(
       sh.fragmentShader.indexOf("#include <opaque_fragment>"),
     );
-    setSurface(m, null);
-    expect(m.customProgramCacheKey()).toBe(std);
-  });
-});
-
-describe("material facts from a model", () => {
-  it("rooms, floor surfaces, objects, groups, shared materials", () => {
-    const root = new THREE.Group();
-    const level = new THREE.Group();
-    level.name = "level0";
-    level.userData.fp = {
-      kind: "level",
-      id: "level0",
-      role: "storey",
-      elevation: 0,
-      height: 2.7,
-    };
-    root.add(level);
-    const room = new THREE.Group();
-    room.name = "living";
-    room.userData.fp = {
-      kind: "room",
-      id: "living",
-      outline: [
-        [0, 0],
-        [4, 0],
-        [4, 3],
-        [0, 3],
-      ],
-    };
-    level.add(room);
-    const slabMat = new THREE.MeshStandardMaterial(),
-      wallMat = new THREE.MeshStandardMaterial(),
-      fabricMat = new THREE.MeshStandardMaterial();
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 3), slabMat);
-    slab.name = "slab";
-    slab.position.y = -0.1;
-    room.add(slab);
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(4, 2.7, 0.15), wallMat);
-    wall.position.y = 1.35;
-    level.add(wall);
-    const sofa = new THREE.Group();
-    sofa.name = "Sofa";
-    const cushion = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 0.2, 0.5),
-      fabricMat,
-    );
-    cushion.name = "Cube.001";
-    sofa.add(cushion);
-    room.add(sofa);
-    const lamp = new THREE.Group();
-    lamp.name = "lamp";
-    lamp.userData.fp = { kind: "object", id: "lamp", type: "light" };
-    const shade = new THREE.Mesh(
-      new THREE.SphereGeometry(0.1),
-      new THREE.MeshStandardMaterial({
-        name: "glass",
-        transparent: true,
-        opacity: 0.4,
-      }),
-    );
-    lamp.add(shade);
-    room.add(lamp);
-    const manifest = buildManifest(threeAdapter(root));
-    const f = materialFacts(root, manifest);
-    expect(f.get(slabMat).uses[0]).toMatchObject({
-      floorTop: true,
-      indoor: true,
-      object: false,
-    });
-    expect(f.get(wallMat).uses[0]).toMatchObject({
-      floorTop: false,
-      indoor: true,
-    });
-    expect(f.get(fabricMat).uses[0].groups).toEqual(["Sofa"]);
-    expect(f.get(shade.material).uses[0].object).toBe(true);
-    expect(classifyMaterial(f.get(slabMat))).toBe("floor");
-    expect(classifyMaterial(f.get(wallMat))).toBe(null);
-    expect(classifyMaterial(f.get(fabricMat))).toBe("fabric");
-    expect(classifyMaterial(f.get(shade.material))).toBe(null); // the card drives objects
-    expect(
-      classifyMaterial(f.get(wallMat), [
-        { sel: "level:level0", surface: "fabric" },
-      ]),
-    ).toBe("fabric");
-    for (const [m, x] of f) setSurface(m, classifyMaterial(x));
-    expect(surfaceCounts(root)).toEqual({ glass: 0, floor: 1, fabric: 1 });
   });
 });

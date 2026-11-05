@@ -269,6 +269,42 @@ describe("checkGlb", () => {
     expect(r.warnings.join("\n")).toMatch(/texture "grass" is 4096 × 1024/);
   });
 
+  it("reports the material classes and the KHR material extensions", () => {
+    const r = checkGlb(
+      glb({
+        asset: { version: "2.0" },
+        scene: 0,
+        scenes: [{ nodes: [0, 1, 2] }],
+        nodes: [
+          { name: "pane", mesh: 0 },
+          { name: "sofa", mesh: 1 },
+          { name: "vase", mesh: 2 },
+        ],
+        meshes: [0, 1, 2].map((i) => ({
+          primitives: [{ attributes: { POSITION: 0 }, material: i }],
+        })),
+        accessors: [bigPlane.accessors[0]],
+        materials: [
+          { name: "Window glass" },
+          { name: "Velvet", extras: { fp_surface: "fabric" } },
+          {
+            name: "Glass",
+            extensions: {
+              KHR_materials_transmission: {},
+              KHR_materials_ior: {},
+            },
+          },
+        ],
+      }),
+    );
+    expect(r.materials).toEqual({
+      count: 3,
+      classes: { glass: 1, floor: 0, fabric: 1 },
+      fromFile: 1,
+      extensions: { KHR_materials_transmission: 1, KHR_materials_ior: 1 },
+    });
+  });
+
   it("rejects a file that is not a GLB", () => {
     expect(checkGlb(Buffer.from("hello world, not a model"))).toMatchObject({
       ok: false,

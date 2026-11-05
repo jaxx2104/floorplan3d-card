@@ -34,12 +34,6 @@ import { SelectiveBloom } from "../bloom.ts";
 import { ContactShadows, type ContactFloor } from "../contact-shadow.ts";
 import { setTierVariant } from "../cloud-shadow.ts";
 import { measuredElevations } from "../bindings.ts";
-import {
-  classifyMaterial,
-  type MaterialFacts,
-  type MaterialRule,
-} from "../material-class.ts";
-import { materialFacts, setSurface, surfaceOf } from "../physical-materials.ts";
 import { frameInterval, isMesh, type Drawable } from "./core.ts";
 import { IndirectLight } from "./indirect.ts";
 import { levelQuality } from "./auto-quality.ts";
@@ -93,10 +87,6 @@ export class RenderLook {
   _env: EnvLight | null;
   _bloom: SelectiveBloom | null;
   _contact: ContactShadows | null;
-  _surfFacts: {
-    model: unknown;
-    facts: Map<THREE.Material, MaterialFacts>;
-  } | null;
   /** per-room light probes and baked lightmaps (quality high) */
   indirect: IndirectLight;
   renderFrom: { keys: number } | null;
@@ -132,7 +122,6 @@ export class RenderLook {
     this._env = null; // EnvLight while the tier lights the model from the sky (made on first use)
     this._bloom = null; // SelectiveBloom while the tier blooms emissive surfaces (made on first use)
     this._contact = null; // ContactShadows while the tier grounds things on the floors (made on first use)
-    this._surfFacts = null; // { model, facts }: the loaded model's material facts (physical materials, gathered once)
     this.indirect = new IndirectLight(view); // light probes and lightmaps while the tier asks for them
     this.renderFrom = null; // { keys } while the loaded model's recipe is in use
     this.background = backgroundColors(null); // card option background: { day, night } hex
@@ -159,8 +148,9 @@ export class RenderLook {
   }
 
   // Card option render: 'model' | 'default' (the recipe: the model's fp.render or none), or { recipe, quality,
-  // tone_mapping } (normRenderOption). A recipe change applies at the next model load, with a model loaded
-  // now too (the lamp pool size follows at the next load); quality / tone mapping apply now.
+  // tone_mapping, materials } (normRenderOption). A recipe change applies at the next model load, with a model
+  // loaded now too (the lamp pool size follows at the next load); quality / tone mapping apply now; the material
+  // rules (physical materials, made by the loader) at the next model load.
   setRenderOption(opt: unknown): void {
     const { option, warnings } = normRenderOption(opt);
     const w = warnings.join("; ");
@@ -173,9 +163,7 @@ export class RenderLook {
     const recipe = option.recipe !== prev.recipe,
       look =
         option.quality !== prev.quality ||
-        option.toneMapping !== prev.toneMapping ||
-        JSON.stringify(option.materials || []) !==
-          JSON.stringify(prev.materials || []);
+        option.toneMapping !== prev.toneMapping;
     this.view.auto.sync(option.quality === "auto");
     this._syncPixelRatio(); // the 'auto' level reduced caps it
     if (!this.view.model || (!recipe && !look)) return;
@@ -371,9 +359,9 @@ export class RenderLook {
     this._skyEnv();
   }
 
-  // The tier's selective bloom, physical lamp light, contact shadows and physical materials: on
+  // The tier's selective bloom, physical lamp light and contact shadows: on
   // with a model when the tier asks for them. A change of the lamp model re-evaluates the lamps (the card's object
-  // update); the shadow variants and material upgrades recompile the model materials that changed (the callers flag
+  // update); the shadow variants recompile the model materials that changed (the callers flag
   // every material anyway).
   _syncTierLook(): void {
     const t = this.tier(),
@@ -405,51 +393,12 @@ export class RenderLook {
         ))
           if (m) setTierVariant(m, variant);
       });
-      this._syncSurfaces(t.physicalMaterials);
     }
-    this.indirect.sync(); // after the upgrades: a probe applies to the physical materials too
+    this.indirect.sync();
     this.view.still.sync(); // the path tracer (quality still) freed in the other tiers and without a model
     const layer = this.view.objectLayer;
     if (layer && layer.setPhysical(t.physicalLights))
       this.view._objectsInvalid();
-  }
-
-  // Physical materials (quality high): glass, floors and fabric upgraded in place (physical-materials.ts), or all
-  // restored. The facts are gathered at the model's first look, before its static meshes are merged; the classes
-  // follow the rules: the model's fp.render.materials (unless render: default), then the card's render.materials.
-  // Runs on model load and look changes (tier, rules), never per frame. -> materials changed.
-  _syncSurfaces(on: boolean): number {
-    const model = this.view.model!; // callers checked view.model
-    if (!this._surfFacts || this._surfFacts.model !== model)
-      this._surfFacts = {
-        model,
-        facts: materialFacts(model.root, model.manifest),
-      };
-    const facts = this._surfFacts.facts;
-    const rules: MaterialRule[] = [
-      ...((this.renderOption !== "default" &&
-        model.manifest.render &&
-        model.manifest.render.materials) ||
-        []),
-      ...(this.renderOpt.materials || []),
-    ];
-    let n = 0;
-    const seen = new Set<THREE.Material>();
-    model.root.traverse((o) => {
-      if (!isMesh(o)) return;
-      for (const m of ([] as (THREE.Material | undefined)[]).concat(
-        o.material,
-      )) {
-        if (!m || seen.has(m)) continue;
-        seen.add(m);
-        const f = facts.get(m);
-        // a material made later (a clone of an upgraded one) keeps its class in high and is restored otherwise
-        const want = !on ? null : f ? classifyMaterial(f, rules) : surfaceOf(m);
-        if (setSurface(m, want)) n++;
-      }
-    });
-    this.view.stats.materialSwaps += n;
-    return n;
   }
 
   _skyEnv(): void {

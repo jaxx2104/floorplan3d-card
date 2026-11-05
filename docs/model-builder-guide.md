@@ -183,10 +183,17 @@ house.userData.fp = { render: {
   ratio above 2 or 4 CPU cores or fewer, else 6 with maps of at most 1024 px. The light pool is built once when the model loads (shadow lamps + 4 more point
   lights + 4 spots), so it never changes at runtime.
 
-### Physical materials (`render: { quality: high }`)
+### Physical materials
 
-With the card's `quality: high` (the default) the card turns three kinds of plain `MeshStandardMaterial` into
-`MeshPhysicalMaterial`, once when the model loads (and back when the quality changes):
+The most direct way to author a material is standard glTF: the `KHR_materials_*` extensions
+(`KHR_materials_transmission`, `_clearcoat`, `_sheen`, `_ior`, `_specular`, `_volume`, `_iridescence`,
+`_anisotropy`, `_dispersion`, `_diffuse_roughness`, `EXT_materials_bump`) and `KHR_materials_unlit`.
+Blender's glTF exporter writes them from the Principled BSDF (Transmission, Coat, Sheen, IOR,
+Specular). three's GLTFLoader builds those as the file says and the card never changes them.
+
+For plain metallic-roughness materials the card adds the physical look itself: while the model
+loads, three kinds of them are built as `MeshPhysicalMaterial` instead of `MeshStandardMaterial`
+(a GLTFLoader plugin; once per load, in every quality tier, never swapped afterwards):
 
 | class    | look                                                                                                                                                 | found by                                                                                                                                                                                                                                                                                                        |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -198,10 +205,14 @@ With the card's `quality: high` (the default) the card turns three kinds of plai
   `fiberglass` no `glass`; `_`, digits, spaces and `.` separate words.
 - The material's own name decides first. Without a hint there, every mesh that uses the material
   must point to the same class (a material shared by a floor and a wall stays as it is).
-- Materials the file already makes physical (any `KHR_materials_*` extension: transmission,
-  clearcoat, sheen, ior, specular …) are left exactly as the file says, also by the rules below.
-  A real `KHR_materials_transmission` glass keeps three's transmission (an extra render pass while
-  it is in view); the card's own glass is the cheap thin-glass look on purpose.
+- Materials the file already makes physical (any of the extensions above) or unlit are left exactly
+  as the file says, also by the rules below. `KHR_materials_emissive_strength` and
+  `KHR_texture_transform` alone do not count: such a material can still get a class. A real
+  `KHR_materials_transmission` glass keeps three's transmission (an extra render pass while it is
+  in view); the card's own glass is the cheap thin-glass look on purpose.
+- The classes are read from the file's JSON (names, `fp` tags, accessor bounds), before the scene
+  exists; `bun tools/check-model.mjs house.glb` prints how many materials get each class and which
+  material extensions the file uses.
 - Model objects (`kind: object`) keep their materials: the card drives their glow.
 
 Explicit rules opt a material in or out. On the material itself, its glTF `extras`:
@@ -220,8 +231,9 @@ house.userData.fp = { render: { materials: {
 
 `none` keeps a material plain even when its name says otherwise. A material is one object for
 every mesh that uses it, so a rule that picks one of its meshes changes all of them. The card
-option `render.materials` takes the same object and comes after the model's (README). Invalid
-selectors or classes are skipped with a warning (`bun run check-model` lists them).
+option `render.materials` takes the same object and comes after the model's (README); a change
+of it applies when the model loads next (reload the dashboard). Invalid selectors or classes are
+skipped with a warning (`bun run check-model` lists them).
 
 ### Indirect light: room probes and baked lightmaps (`render: { quality: high }`)
 

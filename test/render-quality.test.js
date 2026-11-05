@@ -91,7 +91,6 @@ describe("normRenderOption", () => {
       bloom: false,
       sunShadowRadius: 1.5,
       contactShadows: false,
-      physicalMaterials: false,
       lightProbes: false,
       bakedLightmaps: false,
       pathTrace: false,
@@ -105,7 +104,6 @@ describe("normRenderOption", () => {
     expect(normRenderOption({ quality: "still" }).option.quality).toBe("still");
     expect(QUALITY_TIERS.high.lightProbes).toBe(true);
     expect(QUALITY_TIERS.high.bakedLightmaps).toBe(true);
-    expect(QUALITY_TIERS.high.physicalMaterials).toBe(true);
     expect(QUALITY_TIERS.high.contactShadows).toBe(true);
     expect(QUALITY_TIERS.high.physicalLights).toBe(true);
     expect(QUALITY_TIERS.high.bloom).toBe(true);

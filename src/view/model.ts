@@ -28,6 +28,7 @@ import {
 import { mergeGroups, namedGroups, mergedName } from "../merge.ts";
 import { mergeRender } from "../render-recipe.ts";
 import { patchCloudShadow } from "../cloud-shadow.ts";
+import { surfacePlugin } from "../physical-materials.ts";
 import {
   castsShadow,
   shadowInfo,
@@ -641,7 +642,15 @@ export class ModelLayer {
         place();
         resolve(null);
       };
-      const loader = new GLTFLoader();
+      // glass, floors and fabric become physical materials as the loader builds them (physical-materials.ts): the
+      // model's fp.render.materials (unless render: default), then the card's render.materials
+      const look = this.view.look;
+      const loader = new GLTFLoader().register(
+        surfacePlugin({
+          rules: look.renderOpt.materials || [],
+          modelRules: look.renderOption !== "default",
+        }),
+      );
       if (opts.data === undefined && opts.url)
         loader.load(opts.url, onLoad, undefined, fail);
       else {

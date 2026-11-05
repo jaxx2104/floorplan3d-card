@@ -212,7 +212,6 @@ export class StillTrace {
       geometryKey: [
         v.model ? v.model.id : "",
         v._modelSig(),
-        v.stats.materialSwaps,
         v._modelVisibility
           ? [...v._modelVisibility.masks.keys()].map((n) => n.id).join(",")
           : "",

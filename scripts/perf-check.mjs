@@ -1,5 +1,5 @@
 // Headless checks of the render loop's work, by counters (frames, shadow requests, environment / contact builds,
-// probe captures, bloom passes, material swaps, shader programs, path tracer sessions / steps, auto switches),
+// probe captures, bloom passes, model material ids, shader programs, path tracer sessions / steps, auto switches),
 // state flags and condition waits; no frame-time budget blocks. Section groups (scripts/lib/sections.mjs):
 // - mower-map: a 1600 x 1600 live map (camera) with a moving mower, then refreshes where nothing changed: no
 //   shadow-map update from the mower, renders per unchanged refresh <= per moving one, the debug overlay.
@@ -8,7 +8,7 @@
 //   tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
 //   environment rebuild only for a sun step over ENV_ANGLE_DEG, bloom only with an emissive surface in view,
 //   contact shadows rebuilt only when the casters change, probes recaptured once (at most twice) per input
-//   change, physical materials upgraded at load and on a tier change only.
+//   change, physical materials made by the loader in both tiers and never replaced (idle, tier change).
 // - still: render quality 'still' (idle progressive path tracing).
 // - auto: render quality 'auto' (the default): steps down under an artificial frame cost once the view is idle,
 //   back up with fast frames after the (shortened) wait, no oscillation.
@@ -79,7 +79,7 @@ const glError = (page) =>
 const viewStats = (page) =>
   page.evaluate(`(() => { const v = ${card}._view, s = v.stats, p = v.look.indirect.probes, b = v.look._bloom;
   return { frames: s.frames, env: s.envBuilds, bloom: s.bloomPasses, skipped: b ? b.stats.skipped : 0, contact: s.contactBuilds, shadow: s.shadow, lights: s.shadowLights,
-    swaps: s.materialSwaps, caps: s.probeCaptures, passes: p ? p.stats.passes : 0, rooms: p && p.setup ? p.setup.rooms.length - p.setup.skip.size : 0,
+    mats: (() => { let n = 0; const seen = new Set(); v.model && v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) if (!seen.has(m)) { seen.add(m); n += m.id; } }); return n; })(), caps: s.probeCaptures, passes: p ? p.stats.passes : 0, rooms: p && p.setup ? p.setup.rooms.length - p.setup.skip.size : 0,
     probeOn: p ? p.uniforms.fpProbe.value.z : 0, programs: v.renderer.info.programs.length }; })()`);
 const diff = (a, b) =>
   Object.fromEntries(Object.keys(b).map((k) => [k, b[k] - a[k]]));
@@ -197,21 +197,21 @@ async function qualityRun(page, quality) {
   const s8 = await viewStats(page);
   const storey = diff(s7, s8);
   const surf = await surfaces(page);
-  // a tier change and back: every upgraded material restored, then upgraded again; frames without GL errors
+  // a tier change and back: the same material objects and classes (the sum of their ids unchanged); no GL errors
   let roundTrip = null;
   if (quality === "high") {
-    const r0 = (await viewStats(page)).swaps;
+    const r0 = (await viewStats(page)).mats;
     await page.evaluate(
       `${card}._view.setRenderOption({ quality: 'standard' })`,
     );
     const errStd = await glError(page),
-      down = (await viewStats(page)).swaps - r0,
+      sameStd = (await viewStats(page)).mats === r0,
       surfStd = await surfaces(page);
     await page.evaluate(`${card}._view.setRenderOption({ quality: 'high' })`);
     const errHigh = await glError(page),
-      up = (await viewStats(page)).swaps - r0 - down,
+      sameHigh = (await viewStats(page)).mats === r0,
       surfHigh = await surfaces(page);
-    roundTrip = { down, up, surfStd, surfHigh, errStd, errHigh };
+    roundTrip = { sameStd, sameHigh, surfStd, surfHigh, errStd, errHigh };
   }
   const still = await page
     .evaluate(
@@ -236,7 +236,7 @@ async function qualityRun(page, quality) {
     roundTrip,
     still,
     final: s8, // totals since the load began
-    steady: s8.swaps - load.swaps, // idle, sun steps, forced and camera frames, lamp, look, storey change
+    steady: s8.mats - load.mats, // material objects replaced since the load: idle, sun steps, forced and camera frames, lamp, look, storey change
   };
   console.log(
     `     ${quality}: load ${JSON.stringify(load)}; idle ${JSON.stringify(idle)}; small sun step ${JSON.stringify(small)}; large ${JSON.stringify(big)}`,
@@ -283,7 +283,19 @@ function commonChecks(name, r) {
   );
 }
 
-const upgraded = (x) => x.glass + x.floor + x.fabric;
+// physical materials (the loader's plugin): glass, floor and fabric in every tier, never replaced afterwards
+function materialChecks(quality, r) {
+  check(
+    `${quality}: glass, floor and fabric materials physical from the load`,
+    r.surf.glass > 0 && r.surf.floor > 0 && r.surf.fabric > 0,
+    JSON.stringify(r.surf),
+  );
+  check(
+    `${quality}: the same material objects while idle, per frame, on a lamp, look or storey change`,
+    r.steady === 0,
+    String(r.steady),
+  );
+}
 
 sections.add(
   "standard",
@@ -318,11 +330,7 @@ sections.add(
         builds: F.contact,
       }),
     );
-    check(
-      "standard: no physical material upgrade",
-      upgraded(r.surf) === 0 && F.swaps === 0,
-      JSON.stringify({ surf: r.surf, swaps: F.swaps }),
-    );
+    materialChecks("standard", r);
     check(
       "standard: no light probes",
       F.passes === 0 && F.caps === 0 && !F.probeOn,
@@ -392,27 +400,14 @@ sections.add(
         r.storey.contact === 1,
       `${r.idle.contact}, ${r.forcedAll.contact}, ${r.storey.contact}`,
     );
-    check(
-      "high: glass, floor and fabric materials upgraded once at load",
-      r.surf.glass > 0 &&
-        r.surf.floor > 0 &&
-        r.surf.fabric > 0 &&
-        r.load.swaps === upgraded(r.surf),
-      JSON.stringify({ surf: r.surf, load: r.load.swaps }),
-    );
-    check(
-      "high: no material upgrade while idle, per frame or on a storey change",
-      r.steady === 0,
-      String(r.steady),
-    );
+    materialChecks("high", r);
     const rt = r.roundTrip;
     check(
-      "high -> standard -> high: restored and upgraded again, no GL error",
+      "high -> standard -> high: the same materials and classes, no GL error",
       !!rt &&
-        rt.down === upgraded(r.surf) &&
-        rt.up === rt.down &&
-        upgraded(rt.surfStd) === 0 &&
-        rt.surfStd.physical === r.surf.physical - upgraded(r.surf) &&
+        rt.sameStd &&
+        rt.sameHigh &&
+        JSON.stringify(rt.surfStd) === JSON.stringify(r.surf) &&
         JSON.stringify(rt.surfHigh) === JSON.stringify(r.surf) &&
         rt.errStd === 0 &&
         rt.errHigh === 0,

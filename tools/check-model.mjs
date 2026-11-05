@@ -12,6 +12,11 @@ import {
   lightmapTexCoord,
   LIGHTMAP_MAX_PX,
 } from "../src/lightmap.ts";
+import {
+  gltfMaterialFacts,
+  materialExtensions,
+} from "../src/material-facts.ts";
+import { classifyMaterial } from "../src/material-class.ts";
 
 const MAX_MESH_M = 60;
 const MAX_TEXTURE_PX = 2048;
@@ -314,11 +319,33 @@ export function checkGlb(buffer) {
     errors.push(`invalid model data: ${e.message}`);
   }
 
+  // physical materials: what the card makes of each material at load (render.materials of the card aside),
+  // and the KHR / EXT material extensions the file uses (GLTFLoader builds those as the file says)
+  let materials = null;
+  try {
+    const facts = gltfMaterialFacts(json).materials;
+    const rules = (m.render && m.render.materials) || [];
+    const classes = { glass: 0, floor: 0, fabric: 0 };
+    for (const f of facts) {
+      const c = classifyMaterial(f, rules);
+      if (c) classes[c]++;
+    }
+    materials = {
+      count: facts.length,
+      classes,
+      fromFile: facts.filter((f) => f.physical).length,
+      extensions: materialExtensions(json),
+    };
+  } catch (e) {
+    warnings.push(`material classes: ${e.message}`);
+  }
+
   return {
     ok: errors.length === 0,
     errors,
     warnings,
     summary: summarize(m),
+    materials,
     render: m.render ? { keys: m.renderKeys, recipe: m.render } : null,
     lightmaps,
     levels: m.levels.map((l) => ({
@@ -383,6 +410,15 @@ function main(argv) {
       console.log(
         `  render recipe: ${r.render.keys} key(s) (${Object.keys(r.render.recipe).join(", ")})`,
       );
+    if (r.materials) {
+      const c = r.materials.classes,
+        ext = Object.entries(r.materials.extensions)
+          .map(([e, n]) => `${e} x${n}`)
+          .join(", ");
+      console.log(
+        `  materials: ${r.materials.count} (made physical at load: ${c.glass} glass, ${c.floor} floor, ${c.fabric} fabric; ${r.materials.fromFile} physical or unlit in the file${ext ? `; extensions: ${ext}` : ""})`,
+      );
+    }
     for (const l of r.lightmaps || [])
       console.log(
         `  lightmap on material ${l.material} (${l.type}, texture ${l.texture}, TEXCOORD_${l.texCoord}${l.size ? `, ${l.size[0]} × ${l.size[1]} px` : ""})`,
