@@ -1,13 +1,22 @@
 // The finish over the frame: the look of a photo of a miniature.
 // - bokeh: the rooms stay sharp from any camera, the surroundings blur with their distance from the rooms' box
-//   (the facade below, the neighbours, the site, the sky), and with tilt also with their distance on screen
-//   from a narrow band through the rooms, like a tilt-shift lens. The circle of confusion comes from the depth
-//   pre-pass (depth-pass.js): world position per pixel, distance to the box. The canvas is gathered over a
+//   (the facade below, the neighbours, the site, the sky). The circle of confusion comes from the depth
+//   pre-pass (depth-pass.ts): world position per pixel, distance to the box. The canvas is gathered over a
 //   disc (bright points weigh more: bokeh highlights at night); sharp pixels do not spread into blurred ones.
-// - grade: saturation, an S-curve contrast and a vignette, as in the photos of models.
-// After the frame render the canvas is copied and drawn back finished. Labels (CSS) stay as they are.
+//   Our own shader: three's BokehPass focuses on one distance from the camera, not on a box.
+// - tilt: three's Horizontal / VerticalTiltShiftShader, the blur growing with the distance on screen from a
+//   line through the rooms' middle, like a tilt-shift lens.
+// - grade: three's HueSaturationShader, BrightnessContrastShader and VignetteShader, as in photos of models.
+// After the frame render the canvas is copied and drawn back through those ShaderPasses (on display values,
+// as the canvas holds them; the last pass draws onto the canvas). Labels (CSS) stay as they are.
 import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { HueSaturationShader } from "three/addons/shaders/HueSaturationShader.js";
+import { BrightnessContrastShader } from "three/addons/shaders/BrightnessContrastShader.js";
+import { VignetteShader } from "three/addons/shaders/VignetteShader.js";
+import { HorizontalTiltShiftShader } from "three/addons/shaders/HorizontalTiltShiftShader.js";
+import { VerticalTiltShiftShader } from "three/addons/shaders/VerticalTiltShiftShader.js";
 import type { DepthPrepass } from "./depth-pass.ts";
 import { isPerspective, type ViewCamera } from "./view/core.ts";
 
@@ -30,11 +39,8 @@ export const GRADE_DEFAULTS = Object.freeze({
 });
 const GRADE_RANGE = { saturation: [0, 2], contrast: [0, 1], vignette: [0, 1] };
 export const BOKEH_SAMPLES = 48;
-// share of the screen height over which the tilt blur grows to full outside the focus band, and the band's
-// half height around the rooms' centre on screen (narrow like a tilt-shift lens: the rooms themselves stay
-// sharp anyway, only what is outside them blurs)
-export const TILT_FALLOFF = 0.3;
-export const TILT_BAND = 0.1;
+// share of the screen from the focus line (the rooms' middle on screen) at which the tilt blur is full
+export const TILT_FULL = 0.4;
 
 export interface BokehSettings {
   strength: number;
@@ -80,14 +86,14 @@ function norm<T extends object>(
 }
 
 // Card option bokeh: true | { strength (px blur radius at most), start (m from the rooms: still sharp),
-// range (m further: full blur), tilt (0..1: tilt-shift blur above and below the rooms on screen) }
+// range (m further: full blur), tilt (0..1: tilt-shift blur above and below the rooms' middle on screen) }
 // -> settings, or null (off).
 export function normBokeh(opt: unknown): BokehSettings | null {
   const out = norm<BokehSettings>(opt, BOKEH_DEFAULTS, BOKEH_RANGE);
   return out && out.strength > 0 ? out : null;
 }
 
-// Card option grade: true | { saturation (1 = as rendered), contrast (0..1 of an S-curve), vignette (0..1) }
+// Card option grade: true | { saturation (1 = as rendered), contrast (0..1), vignette (0..1) }
 // -> settings, or null (off).
 export const normGrade = (opt: unknown): GradeSettings | null =>
   norm<GradeSettings>(opt, GRADE_DEFAULTS, GRADE_RANGE);
@@ -103,22 +109,35 @@ export const cocAt = (
   { start, range }: { start: number; range: number },
 ): number => smooth((dist - start) / range);
 
-// Tilt-shift blur share 0..1 at screen height y (0..1) for the rooms' band [y0, y1]; must match the shader.
-export const tiltAt = (
-  y: number,
-  y0: number,
-  y1: number,
+// Tilt-shift: the shaders' blur step (share of the screen per share of the screen from the focus line) for a
+// tilt (0..1) of the bokeh radius (px) at TILT_FULL from the line, on a side of sizePx. 4: their outermost tap.
+export const tiltStep = (
+  radiusPx: number,
   tilt: number,
-): number => tilt * smooth(Math.max(y0 - y, y - y1) / TILT_FALLOFF);
+  sizePx: number,
+): number => (tilt * radiusPx) / (4 * TILT_FULL * sizePx);
 
-// Focus band (0..1, bottom up) on screen: TILT_BAND around the middle of the box's band, inside it.
-export function focusBand(
-  band: [number, number] | null,
-): [number, number] | null {
-  if (!band) return null;
-  const mid = (band[0] + band[1]) / 2,
-    half = Math.min(TILT_BAND, (band[1] - band[0]) / 2);
-  return [mid - half, mid + half];
+// Focus line (0..1, bottom up) of the tilt-shift: the middle of the rooms' band on screen, null without one.
+export const focusLine = (band: [number, number] | null): number | null =>
+  band ? (band[0] + band[1]) / 2 : null;
+
+// The addon shaders' uniforms for the grade settings:
+// - saturation (1 = as rendered) -> HueSaturationShader saturation (-1: grey, 0: as is, s > 0: 1 / (1 - s) x)
+// - contrast (0..1) -> BrightnessContrastShader contrast: a straight line through mid grey, slope 1 .. 2
+// - vignette (0..1) -> VignetteShader towards black, the corners (|uv - 0.5|^2 = 0.5) vignette x darker
+export function gradeUniforms(g: GradeSettings): {
+  saturation: number;
+  contrast: number;
+  offset: number;
+  darkness: number;
+} {
+  const k = g.saturation;
+  return {
+    saturation: k >= 1 ? 1.001 - 1 / k : k - 1,
+    contrast: 0.5 * g.contrast,
+    offset: Math.sqrt(2 * g.vignette),
+    darkness: 1,
+  };
 }
 
 // Screen band (0..1, bottom up) of a world box seen by a camera: [y0, y1], or null when it is behind it.
@@ -150,13 +169,12 @@ const VERT = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
-// circle of confusion (0..1) per depth pixel; must match cocAt / tiltAt
+// circle of confusion (0..1) per depth pixel; must match cocAt
 const COC_FRAG = /* glsl */ `
 uniform sampler2D tDepth;
 uniform mat4 invProj, camWorld;
 uniform vec3 boxMin, boxMax;
-uniform float start, range, tilt;
-uniform vec2 band;
+uniform float start, range;
 varying vec2 vUv;
 void main() {
   float d = texture2D(tDepth, vUv).x;
@@ -165,25 +183,34 @@ void main() {
     vec4 v = invProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
     vec3 w = (camWorld * vec4(v.xyz / v.w, 1.0)).xyz;
     float dist = length(max(max(boxMin - w, w - boxMax), 0.0));
-    float t = tilt * smoothstep(0.0, 1.0, max(band.x - vUv.y, vUv.y - band.y) / ${TILT_FALLOFF.toFixed(2)});
-    // the rooms stay sharp; the tilt blur fades in over the first metre outside them
-    coc = max(smoothstep(0.0, 1.0, (dist - start) / range), t * smoothstep(start, start + 1.0, dist));
+    coc = smoothstep(0.0, 1.0, (dist - start) / range);
   }
   gl_FragColor = vec4(coc, 0.0, 0.0, 1.0);
 }`;
 
-const FINISH_FRAG = /* glsl */ `
-uniform sampler2D tColor, tCoc;
+// the disc gather, as a ShaderPass shader (tDiffuse: the frame)
+const BokehShader = {
+  name: "FloorplanBokehShader",
+  uniforms: {
+    tDiffuse: { value: null },
+    tCoc: { value: null },
+    texel: { value: new THREE.Vector2() },
+    maxR: { value: 0 },
+  },
+  vertexShader: VERT,
+  fragmentShader: /* glsl */ `
+uniform sampler2D tDiffuse, tCoc;
 uniform vec2 texel;
-uniform float maxR, saturation, contrast, vignette, aspect;
+uniform float maxR;
 varying vec2 vUv;
 #define N ${BOKEH_SAMPLES}
 float weight(vec3 c) { float l = dot(c, vec3(0.299, 0.587, 0.114)); return 1.0 + 4.0 * l * l * l * l; }
-vec3 bokeh(vec3 base) {
-  float r = maxR > 0.0 ? texture2D(tCoc, vUv).r * maxR : 0.0;
-  if (r < 0.5) return base;
-  float w0 = weight(base);
-  vec3 sum = base * w0;
+void main() {
+  vec4 base = texture2D(tDiffuse, vUv);
+  float r = texture2D(tCoc, vUv).r * maxR;
+  if (r < 0.5) { gl_FragColor = base; return; }
+  float w0 = weight(base.rgb);
+  vec3 sum = base.rgb * w0;
   float wsum = w0;
   for (int i = 0; i < N; i++) {
     float a = (float(i) + 0.5) / float(N);
@@ -191,23 +218,21 @@ vec3 bokeh(vec3 base) {
     vec2 uv = vUv + vec2(cos(ang), sin(ang)) * rad * texel;
     // a sample counts when its own blur reaches this far: the sharp rooms do not bleed outwards
     float w = smoothstep(rad - 1.0, rad + 1.0, texture2D(tCoc, uv).r * maxR);
-    vec3 c = texture2D(tColor, uv).rgb;
+    vec3 c = texture2D(tDiffuse, uv).rgb;
     w *= weight(c);
     sum += c * w;
     wsum += w;
   }
-  return sum / wsum;
-}
-void main() {
-  vec4 base = texture2D(tColor, vUv);
-  vec3 c = bokeh(base.rgb);
-  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = clamp(mix(vec3(l), c, saturation), 0.0, 1.0);
-  c = mix(c, c * c * (3.0 - 2.0 * c), contrast);
-  vec2 q = (vUv - 0.5) * vec2(aspect, 1.0);
-  c *= 1.0 - vignette * smoothstep(0.35, 1.0, length(q) * 1.25);
-  gl_FragColor = vec4(c, base.a);
-}`;
+  gl_FragColor = vec4(sum / wsum, base.a);
+}`,
+};
+
+const target = (): THREE.WebGLRenderTarget =>
+  new THREE.WebGLRenderTarget(1, 1, {
+    depthBuffer: false,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+  });
 
 export class ScreenFinish {
   renderer: THREE.WebGLRenderer;
@@ -216,19 +241,24 @@ export class ScreenFinish {
   cocTarget: THREE.WebGLRenderTarget;
   color: THREE.FramebufferTexture | null;
   coc: THREE.ShaderMaterial;
-  finish: THREE.ShaderMaterial;
   fsQuad: FullScreenQuad;
+  bokeh: ShaderPass;
+  tiltH: ShaderPass;
+  tiltV: ShaderPass;
+  hueSaturation: ShaderPass;
+  brightnessContrast: ShaderPass;
+  vignette: ShaderPass;
+  /** ping-pong targets between the passes, at the drawing buffer size */
+  buffers: [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget];
+  /** the tilt-shift focus line (0..1 up the screen) of the last prepare(); null: no tilt this frame */
+  _line: number | null;
 
   // settings: { bokeh: normBokeh() | null, grade: normGrade() | null }
   constructor(renderer: THREE.WebGLRenderer, settings: FinishSettings) {
     this.renderer = renderer;
     this.settings = settings;
     this.box = new THREE.Box3();
-    this.cocTarget = new THREE.WebGLRenderTarget(1, 1, {
-      depthBuffer: false,
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-    });
+    this.cocTarget = target();
     this.color = null; // FramebufferTexture at the drawing buffer size
     this.coc = new THREE.ShaderMaterial({
       vertexShader: VERT,
@@ -243,28 +273,22 @@ export class ScreenFinish {
         boxMax: { value: new THREE.Vector3() },
         start: { value: 0 },
         range: { value: 1 },
-        tilt: { value: 0 },
-        band: { value: new THREE.Vector2(0, 1) },
       },
     });
-    this.finish = new THREE.ShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: FINISH_FRAG,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-      uniforms: {
-        tColor: { value: null },
-        tCoc: { value: this.cocTarget.texture },
-        texel: { value: new THREE.Vector2() },
-        maxR: { value: 0 },
-        saturation: { value: 1 },
-        contrast: { value: 0 },
-        vignette: { value: 0 },
-        aspect: { value: 1 },
-      },
-    });
-    this.fsQuad = new FullScreenQuad(this.coc); // its material is set before every render
+    this.fsQuad = new FullScreenQuad(this.coc);
+    this.bokeh = new ShaderPass(BokehShader);
+    this.bokeh.uniforms.tCoc.value = this.cocTarget.texture;
+    this.tiltH = new ShaderPass(HorizontalTiltShiftShader);
+    this.tiltV = new ShaderPass(VerticalTiltShiftShader);
+    this.hueSaturation = new ShaderPass(HueSaturationShader);
+    this.brightnessContrast = new ShaderPass(BrightnessContrastShader);
+    this.vignette = new ShaderPass(VignetteShader);
+    for (const p of this._all()) {
+      p.material.depthTest = false; // over the canvas and its depth buffer
+      p.material.depthWrite = false;
+    }
+    this.buffers = [target(), target()];
+    this._line = null;
   }
 
   get needsDepth(): boolean {
@@ -277,7 +301,7 @@ export class ScreenFinish {
     else this.box.makeEmpty();
   }
 
-  // Circle of confusion from the depth pre-pass, before the frame render (bokeh only).
+  // Circle of confusion from the depth pre-pass and the tilt-shift line, before the frame render (bokeh only).
   prepare(depth: DepthPrepass, camera: ViewCamera): void {
     const b = this.settings.bokeh;
     if (!b) return;
@@ -300,18 +324,29 @@ export class ScreenFinish {
     }
     u.start.value = b.start;
     u.range.value = b.range;
-    const band = focusBand(screenBand(this.box, camera));
-    u.tilt.value = band ? b.tilt : 0;
-    if (band) u.band.value.set(band[0], band[1]);
+    this._line = b.tilt > 0 ? focusLine(screenBand(this.box, camera)) : null;
     const prev = r.getRenderTarget();
-    this.fsQuad.material = this.coc;
     r.setRenderTarget(this.cocTarget);
     this.fsQuad.render(r);
     r.setRenderTarget(prev);
   }
 
+  // The passes of this frame, in order.
+  passes(): ShaderPass[] {
+    const { bokeh, grade } = this.settings,
+      out: ShaderPass[] = [];
+    if (bokeh) out.push(this.bokeh);
+    if (bokeh && this._line !== null) out.push(this.tiltH, this.tiltV);
+    if (grade && grade.saturation !== 1) out.push(this.hueSaturation);
+    if (grade && grade.contrast > 0) out.push(this.brightnessContrast);
+    if (grade && grade.vignette > 0) out.push(this.vignette);
+    return out;
+  }
+
   // After the frame render (canvas): copy it, draw it back finished.
-  apply() {
+  apply(): void {
+    const passes = this.passes();
+    if (!passes.length) return;
     const r = this.renderer,
       size = r.getDrawingBufferSize(new THREE.Vector2()),
       { bokeh, grade } = this.settings;
@@ -323,30 +358,60 @@ export class ScreenFinish {
       if (this.color) this.color.dispose();
       this.color = new THREE.FramebufferTexture(size.x, size.y);
     }
+    for (const t of this.buffers)
+      if (t.width !== size.x || t.height !== size.y) t.setSize(size.x, size.y);
+    if (bokeh) {
+      const radius = bokeh.strength * r.getPixelRatio();
+      this.bokeh.uniforms.texel.value.set(1 / size.x, 1 / size.y);
+      this.bokeh.uniforms.maxR.value = radius;
+      if (this._line !== null) {
+        this.tiltH.uniforms.h.value = tiltStep(radius, bokeh.tilt, size.x);
+        this.tiltH.uniforms.r.value = this._line;
+        this.tiltV.uniforms.v.value = tiltStep(radius, bokeh.tilt, size.y);
+        this.tiltV.uniforms.r.value = this._line;
+      }
+    }
+    if (grade) {
+      const g = gradeUniforms(grade);
+      this.hueSaturation.uniforms.saturation.value = g.saturation;
+      this.brightnessContrast.uniforms.contrast.value = g.contrast;
+      this.vignette.uniforms.offset.value = g.offset;
+      this.vignette.uniforms.darkness.value = g.darkness;
+    }
     const prev = r.getRenderTarget(),
       prevAutoClear = r.autoClear;
     r.setRenderTarget(null);
     r.copyFramebufferToTexture(this.color);
-    const u = this.finish.uniforms;
-    u.tColor.value = this.color;
-    u.texel.value.set(1 / size.x, 1 / size.y);
-    u.aspect.value = size.x / size.y;
-    u.maxR.value = bokeh ? bokeh.strength * r.getPixelRatio() : 0;
-    u.saturation.value = grade ? grade.saturation : 1;
-    u.contrast.value = grade ? grade.contrast : 0;
-    u.vignette.value = grade ? grade.vignette : 0;
     r.autoClear = false;
-    this.fsQuad.material = this.finish;
-    this.fsQuad.render(r);
+    // ShaderPass reads readBuffer.texture: the copy of the canvas first, then the ping-pong targets
+    let read = { texture: this.color } as unknown as THREE.WebGLRenderTarget;
+    passes.forEach((p, i) => {
+      const write = this.buffers[i % 2];
+      p.renderToScreen = i === passes.length - 1;
+      p.render(r, write, read, 0, false);
+      read = write;
+    });
     r.autoClear = prevAutoClear;
     r.setRenderTarget(prev);
   }
 
-  dispose() {
+  _all(): ShaderPass[] {
+    return [
+      this.bokeh,
+      this.tiltH,
+      this.tiltV,
+      this.hueSaturation,
+      this.brightnessContrast,
+      this.vignette,
+    ];
+  }
+
+  dispose(): void {
     this.coc.dispose();
-    this.finish.dispose();
     this.fsQuad.dispose();
+    for (const p of this._all()) p.dispose();
     this.cocTarget.dispose();
+    for (const t of this.buffers) t.dispose();
     if (this.color) this.color.dispose();
   }
 }

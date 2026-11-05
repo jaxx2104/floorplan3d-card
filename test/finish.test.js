@@ -4,13 +4,13 @@ import {
   normBokeh,
   normGrade,
   cocAt,
-  tiltAt,
+  tiltStep,
+  gradeUniforms,
   screenBand,
-  focusBand,
-  TILT_BAND,
+  focusLine,
   BOKEH_DEFAULTS,
   GRADE_DEFAULTS,
-  TILT_FALLOFF,
+  TILT_FULL,
 } from "../src/finish.ts";
 
 describe("normBokeh", () => {
@@ -54,12 +54,32 @@ describe("normGrade", () => {
   });
 });
 
-describe("tiltAt", () => {
-  it("none inside the band, full a falloff beyond it, scaled by tilt", () => {
-    expect(tiltAt(0.5, 0.3, 0.7, 1)).toBe(0);
-    expect(tiltAt(0.7 + TILT_FALLOFF, 0.3, 0.7, 1)).toBe(1);
-    expect(tiltAt(0.3 - TILT_FALLOFF / 2, 0.3, 0.7, 1)).toBeCloseTo(0.5);
-    expect(tiltAt(0, 0.3, 0.7, 0.5)).toBeCloseTo(0.5);
+describe("tiltStep", () => {
+  it("the tilt shaders' outermost tap (4 steps) at TILT_FULL from the line: tilt x the bokeh radius", () => {
+    const h = tiltStep(10, 0.5, 1000);
+    expect(4 * h * TILT_FULL * 1000).toBeCloseTo(5);
+    expect(tiltStep(10, 0, 1000)).toBe(0);
+  });
+});
+
+describe("gradeUniforms", () => {
+  it("saturation 1, contrast 0, vignette 0: the shaders change nothing", () => {
+    const g = gradeUniforms({ saturation: 1, contrast: 0, vignette: 0 });
+    expect(g.saturation).toBeCloseTo(0, 2);
+    expect(g.contrast).toBe(0);
+    expect(g.offset).toBe(0);
+  });
+  it("saturation k: HueSaturationShader scales the chroma by k", () => {
+    const factor = (s) => (s > 0 ? 1 / (1.001 - s) : 1 + s); // the shader's mix towards / away from grey
+    for (const k of [0, 0.5, 1.15, 2])
+      expect(
+        factor(gradeUniforms({ ...GRADE_DEFAULTS, saturation: k }).saturation),
+      ).toBeCloseTo(k, 2);
+  });
+  it("contrast 1: slope 2 through mid grey; vignette v: the corners v darker", () => {
+    const g = gradeUniforms({ saturation: 1, contrast: 1, vignette: 0.25 });
+    expect(1 / (1 - g.contrast)).toBeCloseTo(2);
+    expect(0.5 * g.offset * g.offset * g.darkness).toBeCloseTo(0.25);
   });
 });
 
@@ -88,14 +108,9 @@ describe("screenBand", () => {
   });
 });
 
-describe("focusBand", () => {
-  it("a narrow band around the middle of the rooms, never wider than they are", () => {
-    const [a, b] = focusBand([0.2, 0.8]);
-    expect(a).toBeCloseTo(0.5 - TILT_BAND);
-    expect(b).toBeCloseTo(0.5 + TILT_BAND);
-    const [c, d] = focusBand([0.45, 0.55]);
-    expect(c).toBeCloseTo(0.45);
-    expect(d).toBeCloseTo(0.55);
-    expect(focusBand(null)).toBe(null);
+describe("focusLine", () => {
+  it("the middle of the rooms' band, null without one", () => {
+    expect(focusLine([0.2, 0.8])).toBeCloseTo(0.5);
+    expect(focusLine(null)).toBe(null);
   });
 });
