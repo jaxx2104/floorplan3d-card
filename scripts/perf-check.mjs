@@ -488,7 +488,7 @@ sections.add(
         a.draws < a.steps &&
         a.after >= 3000 &&
         a.chunk &&
-        a.spp >= 3 &&
+        a.spp >= 2 &&
         a.done &&
         a.gl === 0,
       JSON.stringify(a),

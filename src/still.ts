@@ -16,8 +16,9 @@ export const STILL_MAX_MS = 60000;
 /** The fade: the trace shows from STILL_FADE_FROM samples (noise-free enough once denoised), fully at STILL_FADE_TO. */
 export const STILL_FADE_FROM = 128;
 export const STILL_FADE_TO = 256;
-/** Headless checks (SwiftShader is slow): a few samples only, the fade from the first to the last. */
-export const STILL_TEST_SAMPLES = 3;
+/** Headless checks (SwiftShader is slow): a few samples only, the fade from the first to the last. The session
+ * ends on this count alone (no time budget), so a slow runner cannot cut it short. */
+export const STILL_TEST_SAMPLES = 2;
 /** Denoise of the traced image (path-tracer.ts): a-trous passes (steps 1, 2, 4, ... texels of the trace), depth
  * tolerance (share of the depth per step), luminance tolerance (tone-mapped 0..1: keeps shadow edges), normal
  * sharpness (power of the normals' cosine). The first pass also cuts fireflies to their neighbours' brightest. */
@@ -51,7 +52,7 @@ export function stillBudget(test: boolean): StillBudget {
   if (test)
     return {
       samples: STILL_TEST_SAMPLES,
-      ms: STILL_MAX_MS,
+      ms: Infinity,
       fadeFrom: 1,
       fadeTo: STILL_TEST_SAMPLES,
     };

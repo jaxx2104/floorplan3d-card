@@ -38,6 +38,7 @@ describe("still: idle path tracing rules", () => {
     expect(t.samples).toBe(STILL_TEST_SAMPLES);
     expect(t.samples).toBeLessThanOrEqual(4);
     expect(t.fadeTo).toBe(t.samples); // fully faded in at the last test sample
+    expect(t.ms).toBe(Infinity); // ends on the sample count only: a slow runner cannot end it by time
   });
   it("starts only in the still tier, with a model, on screen, outside edit mode, unclipped, after the idle time", () => {
     expect(stillHold(base)).toBe(null);
@@ -71,8 +72,8 @@ describe("still: idle path tracing rules", () => {
     const t = stillBudget(true);
     expect(stillFade(0.75, t)).toBe(0);
     expect(stillFade(1, t)).toBe(0);
-    expect(stillFade(2, t)).toBeCloseTo(0.5);
-    expect(stillFade(3, t)).toBe(1);
+    expect(stillFade(1.5, t)).toBeCloseTo(0.5);
+    expect(stillFade(t.samples, t)).toBe(1);
     // a degenerate fade shows at once from its start
     expect(stillFade(5, { samples: 10, ms: 1, fadeFrom: 5, fadeTo: 5 })).toBe(
       1,
