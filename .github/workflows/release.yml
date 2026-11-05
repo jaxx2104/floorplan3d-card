@@ -41,8 +41,9 @@ jobs:
         run: |
           bun pm pkg set version="$V"
           bun -e "const f='custom_components/floorplan3d/manifest.json',fs=require('fs'),m=JSON.parse(fs.readFileSync(f));m.version=process.env.V;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
-          sed -i "s/^const VERSION = '.*';/const VERSION = '$V';/" src/floorplan3d-card.ts
-          grep -q "const VERSION = '$V';" src/floorplan3d-card.ts
+          # either quote style (bun fmt writes double quotes)
+          sed -i -E "s/^const VERSION = [\"'][^\"']*[\"'];/const VERSION = \"$V\";/" src/floorplan3d-card.ts
+          grep -q "const VERSION = \"$V\";" src/floorplan3d-card.ts
       - run: bun run build
         if: steps.version.outputs.version
       # the card is an entry plus the chunks/ it imports on demand: both archives carry all of them
