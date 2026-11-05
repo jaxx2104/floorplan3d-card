@@ -19,7 +19,7 @@
 //     DenoiseMaterial is colour-only: the noise of a sun sampled once in a dozen lights is stronger than any edge
 //     it could keep, so it either blurs nothing or everything.)
 // What it cannot express is left out: the hemisphere light (the sky environment lights instead), shader patches
-// (cloud shadows, contact shadows, PCSS, city windows, sway, probes and baked lightmaps: the trace computes the
+// (cloud shadows, contact shadows, city windows, sway, probes and baked lightmaps: the trace computes the
 // indirect light itself), clipping (the view does not trace while a cut-away or section clips), and the post
 // passes (ambient occlusion, bloom, bokeh / grade): they stay in the raster frame below while the trace fades in.
 import * as THREE from "three";

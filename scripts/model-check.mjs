@@ -1217,7 +1217,7 @@ sections.add(
     const sky = () =>
       page.evaluate(`(() => { const v = ${card}._view, U = v._cloudU;
     return { shadows: v.weather.shown, strength: U.fpCloudStrength.value, cover: U.fpCloudCover.value, roomShade: U.fpRoomShade.value, offset: U.fpCloudOffset.value.toArray(),
-      sun: v.sun.intensity, hemi: v.hemi.intensity, shadow: v.sun.shadow.intensity, radius: v.sun.shadow.radius, soft: v.look.tier().softShadows,
+      sun: v.sun.intensity, hemi: v.hemi.intensity, shadow: v.sun.shadow.intensity, radius: v.sun.shadow.radius, tierRadius: v.look.tier().sunShadowRadius,
       disc: v.skySprites.sun ? v.skySprites.sun.material.opacity : null, programs: v.renderer.info.programs.length, frames: v.stats.cloudFrames }; })()`);
     await wx(0, "sunny");
     const clear = await sky();
@@ -1256,8 +1256,8 @@ sections.add(
       over.cover === 0 &&
         Math.abs(over.roomShade - 0.25) < 0.001 &&
         Math.abs(over.shadow - 0.35) < 0.001 &&
-        // PCSS tiers keep the cloud radius; plain PCF widens it (SUN_PCF_RADIUS in src/view/look.ts)
-        over.radius === 4 * (over.soft ? 1 : 1.5),
+        // the tier's PCF spread (QualityTier.sunShadowRadius) x the cloud factor
+        over.radius === 4 * over.tierRadius,
       JSON.stringify(over),
     );
     await wx(null, "cloudy");

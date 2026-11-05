@@ -353,9 +353,7 @@ describe("probe shader variant", () => {
     const m = new THREE.MeshStandardMaterial();
     patchCloudShadow(m, makeCloudUniforms());
     const key = m.customProgramCacheKey();
-    expect(
-      setTierVariant(m, { pcss: false, contact: false, probe: false }),
-    ).toBe(false);
+    expect(setTierVariant(m, { contact: false, probe: false })).toBe(false);
     expect(m.customProgramCacheKey()).toBe(key);
     expect(compile(m).fragmentShader).not.toContain("fpProbe");
   });
@@ -364,9 +362,7 @@ describe("probe shader variant", () => {
       U = makeCloudUniforms();
     patchCloudShadow(m, U);
     const key = m.customProgramCacheKey();
-    expect(
-      setTierVariant(m, { pcss: false, contact: false, probe: true }),
-    ).toBe(true);
+    expect(setTierVariant(m, { contact: false, probe: true })).toBe(true);
     expect(tierKey(m)).toBe("l");
     expect(m.customProgramCacheKey()).toBe(`${key}l`);
     const fs = compile(m).fragmentShader;
@@ -380,17 +376,13 @@ describe("probe shader variant", () => {
       "iblIrradiance = mix( iblIrradiance, fpE, fpProbe.z );",
     );
     expect(compile(m).uniforms.fpProbeMap).toBe(U.fpProbeMap);
-    expect(
-      setTierVariant(m, { pcss: false, contact: false, probe: false }),
-    ).toBe(true);
+    expect(setTierVariant(m, { contact: false, probe: false })).toBe(true);
     expect(m.customProgramCacheKey()).toBe(key);
   });
   it("Lambert / Phong materials (no sky environment) get no probe", () => {
     const m = new THREE.MeshLambertMaterial();
     patchCloudShadow(m, makeCloudUniforms());
-    expect(
-      setTierVariant(m, { pcss: false, contact: false, probe: true }),
-    ).toBe(false);
+    expect(setTierVariant(m, { contact: false, probe: true })).toBe(false);
     expect(tierKey(m)).toBe("");
   });
 });

@@ -518,8 +518,9 @@ export interface QualityTier {
   physicalLights: boolean;
   /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts). */
   bloom: boolean;
-  /** Sun shadow penumbra that widens with the blocker distance (PCSS, soft-shadow.ts). */
-  softShadows: boolean;
+  /** Spread of the sun shadow's PCF taps in shadow-map texels at clear sky (three's PCFShadowMap, shadow.radius; clouds
+   * widen it, weather.ts cloudLight). A uniform: a tier change redraws nothing and recompiles no shader. */
+  sunShadowRadius: number;
   /** Soft dark grounding where things meet the floors, baked per storey when the casters change (contact-shadow.ts). */
   contactShadows: boolean;
   /** Glass, floors and fabric as physical materials: thin glass, clear-coated floors, fabric sheen (material-class.ts). */
@@ -539,7 +540,7 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       hemiScale: 1,
       physicalLights: false,
       bloom: false,
-      softShadows: false,
+      sunShadowRadius: 1.5,
       contactShadows: false,
       physicalMaterials: false,
       lightProbes: false,
@@ -552,7 +553,7 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       hemiScale: 0,
       physicalLights: true,
       bloom: true,
-      softShadows: true,
+      sunShadowRadius: 3,
       contactShadows: true,
       physicalMaterials: true,
       lightProbes: true,
@@ -566,7 +567,7 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       hemiScale: 0,
       physicalLights: true,
       bloom: true,
-      softShadows: true,
+      sunShadowRadius: 3,
       contactShadows: true,
       physicalMaterials: true,
       lightProbes: true,

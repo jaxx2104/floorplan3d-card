@@ -4,7 +4,7 @@
 // - mower-map: a 1600 x 1600 live map (camera) with a moving mower, then refreshes where nothing changed: no
 //   shadow-map update from the mower, renders per unchanged refresh <= per moving one, the debug overlay.
 // - quality-standard, quality-high: render quality 'high' (sky environment light, physical lamps, selective bloom,
-//   soft sun shadows, contact shadows, physical materials, per-room light probes) against 'standard': what each
+//   contact shadows, physical materials, per-room light probes) against 'standard': what each
 //   tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
 //   environment rebuild only for a sun step over ENV_ANGLE_DEG, bloom only with an emissive surface in view,
 //   contact shadows rebuilt only when the casters change, probes recaptured once (at most twice) per input
@@ -140,10 +140,10 @@ async function qualityRun(page, quality) {
   const s2 = await viewStats(page);
   const big = diff(s1, s2);
   const env =
-    await page.evaluate(`(() => { const v = ${card}._view; let pcss = 0, contact = 0;
-    v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (m.userData.fpPcss) pcss++; if (m.userData.fpContact) contact++; } });
+    await page.evaluate(`(() => { const v = ${card}._view; let contact = 0;
+    v.model.root.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) { if (m.userData.fpContact) contact++; } });
     return { env: !!v.scene.environment, tm: v.renderer.toneMapping, bloom: !!v.look._bloom, physical: !!(v.objectLayer && v.objectLayer.physical),
-      pcss, contact, contactTiles: v.look._contact ? v.look._contact.tiles : 0 }; })()`);
+      shadowType: v.renderer.shadowMap.type, contact, contactTiles: v.look._contact ? v.look._contact.tiles : 0 }; })()`);
   // forced frames with lamps in view, then with the camera turned away (no emissive surface in view)
   await forced(page, 12);
   const s3 = await viewStats(page);
@@ -307,12 +307,16 @@ sections.add(
       JSON.stringify({ bloom: r.bloom, passes: F.bloom, physical: r.physical }),
     );
     check(
-      "standard: no soft-shadow or contact-shadow variant, no contact build",
-      r.pcss === 0 &&
+      "standard: three's PCF sun shadows, no contact-shadow variant, no contact build",
+      r.shadowType === 1 &&
         r.contact === 0 &&
         r.contactTiles === 0 &&
         F.contact === 0,
-      JSON.stringify({ pcss: r.pcss, contact: r.contact, builds: F.contact }),
+      JSON.stringify({
+        shadowType: r.shadowType,
+        contact: r.contact,
+        builds: F.contact,
+      }),
     );
     check(
       "standard: no physical material upgrade",
@@ -373,10 +377,10 @@ sections.add(
       `${r.away.bloom} passes, ${r.away.skipped} skipped in ${r.away.frames} frames`,
     );
     check(
-      "high: PCSS and contact variants on the model materials, contact tiles built",
-      r.pcss > 0 && r.contact > 0 && r.contactTiles > 0,
+      "high: the same PCF shadow map as standard (no map-type switch), contact variants, contact tiles built",
+      r.shadowType === 1 && r.contact > 0 && r.contactTiles > 0,
       JSON.stringify({
-        pcss: r.pcss,
+        shadowType: r.shadowType,
         contact: r.contact,
         tiles: r.contactTiles,
       }),
@@ -1009,9 +1013,9 @@ for (const quality of ["standard", "high"])
         `     one build: environment ${envMs?.toFixed(1)} ms, probe capture ${probeMs?.toFixed(1)} ms, contact shadows ${contactMs?.toFixed(1)} ms`,
       );
       const std = frameTimes.standard;
-      // the budget of the whole tier (env, bloom, PCSS, contact shadows, physical materials, room probes)
+      // the budget of the whole tier (env, bloom, contact shadows, physical materials, room probes)
       check(
-        "bench: high (bloom, PCSS, contact, physical materials, probes included): frame time <= 2.5 x standard + 8 ms",
+        "bench: high (bloom, contact, physical materials, probes included): frame time <= 2.5 x standard + 8 ms",
         !!std && r.avg <= 2.5 * std.avg + 8,
         `${r.avg.toFixed(1)} vs ${std ? std.avg.toFixed(1) : "–"} ms`,
       );

@@ -4,7 +4,6 @@
 // never inside the rooms (a mask of the room footprints, from the floor up), where the sun gets the
 // average dimming instead. Uniforms only after the one-time material patch.
 import * as THREE from "three";
-import { PCSS_HEAD, pcssLightLoop } from "./soft-shadow.ts";
 import {
   CONTACT_HEAD,
   CONTACT_BODY,
@@ -85,7 +84,7 @@ export function roomMaskFrame(
   };
 }
 
-// Uniforms shared by every patched material (the soft-shadow and contact-shadow ones too).
+// Uniforms shared by every patched material (the contact-shadow ones too).
 export interface CloudUniforms extends ContactUniforms, ProbeUniforms {
   [name: string]: THREE.IUniform;
   fpCloudMap: THREE.IUniform<THREE.Texture | null>;
@@ -105,7 +104,6 @@ export interface CloudUniforms extends ContactUniforms, ProbeUniforms {
   fpTime: THREE.IUniform<number>;
   fpSway: THREE.IUniform<number>;
   fpWindDir: THREE.IUniform<THREE.Vector2>;
-  fpPcss: THREE.IUniform<THREE.Vector4>;
 }
 
 export function makeCloudUniforms(): CloudUniforms {
@@ -131,8 +129,6 @@ export function makeCloudUniforms(): CloudUniforms {
     fpTime: { value: 0 },
     fpSway: { value: 0 },
     fpWindDir: { value: new THREE.Vector2(...CLOUD_WIND) },
-    // soft sun shadows (quality high, soft-shadow.ts): depth range, map span (m), light tan, on
-    fpPcss: { value: new THREE.Vector4(1, 1, 0, 0) },
     ...makeContactUniforms(), // contact shadows (quality high, contact-shadow.ts)
     ...makeProbeUniforms(), // per-room light probes (quality high, light-probes.ts)
   };
@@ -294,29 +290,22 @@ export const shadable = (
 
 // Program cache key part of the quality tier's shader variants: '' in standard (its programs untouched).
 export const tierKey = (mat: THREE.Material): string =>
-  `${mat.userData.fpPcss ? "p" : ""}${mat.userData.fpContact ? "c" : ""}${mat.userData.fpGlass ? "g" : ""}${mat.userData.fpProbe ? "l" : ""}`;
+  `${mat.userData.fpContact ? "c" : ""}${mat.userData.fpGlass ? "g" : ""}${mat.userData.fpProbe ? "l" : ""}`;
 
-// Quality tier shader variants of a patched material: soft sun shadows, contact shadows, room light probes (lit
+// Quality tier shader variants of a patched material: contact shadows, room light probes (lit
 // standard / physical materials only). -> true when they changed (the material then recompiles).
 export function setTierVariant(
   mat: THREE.Material,
-  {
-    pcss,
-    contact,
-    probe = false,
-  }: { pcss: boolean; contact: boolean; probe?: boolean },
+  { contact, probe = false }: { contact: boolean; probe?: boolean },
 ): boolean {
   const pr =
     probe &&
     !!(mat as Partial<THREE.MeshStandardMaterial>).isMeshStandardMaterial;
   if (
     !mat.userData.fpCloud ||
-    (!!mat.userData.fpPcss === pcss &&
-      !!mat.userData.fpContact === contact &&
-      !!mat.userData.fpProbe === pr)
+    (!!mat.userData.fpContact === contact && !!mat.userData.fpProbe === pr)
   )
     return false;
-  mat.userData.fpPcss = pcss;
   mat.userData.fpContact = contact;
   if (pr) mat.userData.fpProbe = true;
   else delete mat.userData.fpProbe;
@@ -350,7 +339,7 @@ export function patchCloudShadow(
         "#include <project_vertex>",
         `#include <project_vertex>${VERT_BODY}`,
       );
-    let begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
+    const begin = shadeDirectional(THREE.ShaderChunk.lights_fragment_begin);
     if (!begin) return; // three changed its light loop: no cloud shadows rather than a broken shader
     const city = mat.userData.fpCityLit,
       head =
@@ -360,15 +349,7 @@ export function patchCloudShadow(
             ? "#define FP_GLOW\n"
             : "";
     let fs = sh.fragmentShader;
-    // quality high: soft sun shadows (PCSS), contact shadows, thin glass; standard compiles none of them (and keeps its cache key)
-    const pcss = mat.userData.fpPcss ? pcssLightLoop(begin) : null;
-    if (pcss) {
-      begin = pcss;
-      fs = fs.replace(
-        "#include <shadowmap_pars_fragment>",
-        `#include <shadowmap_pars_fragment>${PCSS_HEAD}`,
-      );
-    }
+    // quality high: contact shadows, thin glass; standard compiles none of them (and keeps its cache key)
     if (mat.userData.fpContact)
       fs = fs.replace(
         "#include <aomap_fragment>",

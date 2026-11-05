@@ -89,7 +89,7 @@ describe("normRenderOption", () => {
       hemiScale: 1,
       physicalLights: false,
       bloom: false,
-      softShadows: false,
+      sunShadowRadius: 1.5,
       contactShadows: false,
       physicalMaterials: false,
       lightProbes: false,
@@ -106,13 +106,26 @@ describe("normRenderOption", () => {
     expect(QUALITY_TIERS.high.lightProbes).toBe(true);
     expect(QUALITY_TIERS.high.bakedLightmaps).toBe(true);
     expect(QUALITY_TIERS.high.physicalMaterials).toBe(true);
-    expect(QUALITY_TIERS.high.softShadows).toBe(true);
     expect(QUALITY_TIERS.high.contactShadows).toBe(true);
     expect(QUALITY_TIERS.high.physicalLights).toBe(true);
     expect(QUALITY_TIERS.high.bloom).toBe(true);
     expect(QUALITY_TIERS.high.toneMapping).toBe("AgX");
     expect(QUALITY_TIERS.high.envLight).toBe(true);
     expect(QUALITY_TIERS.high.hemiScale).toBe(0); // the sky environment (and indoors the probes) is the fill
+  });
+  it("sun shadow: every tier on three's PCF map, the tiers differ by the tap spread only", () => {
+    for (const q of QUALITIES) {
+      const r = QUALITY_TIERS[q].sunShadowRadius;
+      expect(Number.isFinite(r) && r >= 1).toBe(true);
+      expect(QUALITY_TIERS[q]).not.toHaveProperty("softShadows"); // no map type switch (no PCSS / Basic maps)
+    }
+    expect(QUALITY_TIERS.standard.sunShadowRadius).toBe(1.5); // about r169's PCFSoftShadowMap
+    expect(QUALITY_TIERS.high.sunShadowRadius).toBeGreaterThan(
+      QUALITY_TIERS.standard.sunShadowRadius,
+    );
+    expect(QUALITY_TIERS.still.sunShadowRadius).toBe(
+      QUALITY_TIERS.high.sunShadowRadius,
+    );
   });
 });
 
