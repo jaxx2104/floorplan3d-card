@@ -514,7 +514,7 @@ export interface QualityTier {
   /** Hemisphere light factor: 1 without envLight; 0 with it (the sky's environment light is the fill, and indoors the
    * room probes: a hemisphere light on top lit every surface a second time, unoccluded, closed rooms included). */
   hemiScale: number;
-  /** Lamps in physical units: blackbody colour from color_temp_kelvin, candela from lumens (photometry.ts). */
+  /** Lamps in physical units: HA's colour (a 2700 K blackbody without one), candela from the model lamp or lumens (photometry.ts). */
   physicalLights: boolean;
   /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts). */
   bloom: boolean;

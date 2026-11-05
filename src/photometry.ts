@@ -1,6 +1,7 @@
-// Physical lamp light (render quality 'high', QualityTier.physicalLights): colour from the light's colour
-// temperature on the Planckian (blackbody) locus, intensity in candela (three r169's unit for point and spot
-// lights) from a luminous flux scaled by HA brightness. Pure functions, unit-tested.
+// Physical lamp light (render quality 'high', QualityTier.physicalLights): the colour HA reports (rgb_color,
+// which HA also fills in colour temperature mode), a blackbody 2700 K bulb for a lamp that reports no colour at
+// all; intensity in candela (three's unit for point and spot lights) from the model lamp (KHR_lights_punctual)
+// or a luminous flux, scaled by HA brightness. Pure functions, unit-tested.
 import type { HassEntity } from "./types/ha.ts";
 
 type Rgb = readonly number[];
@@ -69,28 +70,23 @@ export function kelvinSrgb(kelvin: number): Rgb {
   return kelvinRgb(kelvin).map((c) => Math.round(clamp(encode(c), 0, 1) * 255));
 }
 
-const RGB_MODES = new Set(["hs", "rgb", "rgbw", "rgbww", "xy"]);
-
 /**
- * A lamp's colour for physical light, sRGB 0..255: its colour temperature on the blackbody locus when it
- * reports one (color_mode color_temp, or a colour temperature and no colour), its colour when it reports a
- * colour (rgb_color, else hs_color), else a warm white bulb (DEFAULT_KELVIN). rgb: the colour the standard
- * tier would use for rgb_color / hs_color (logic.ts lightColor), so both tiers agree on coloured light.
+ * A lamp's colour for physical light, sRGB 0..255: what HA reports (rgb: logic.ts lightColor, the standard
+ * tier's colour: rgb_color, which HA computes in colour temperature mode too, else hs_color, else HA's own
+ * conversion of color_temp_kelvin), so both tiers agree; a lamp that reports none of them is a warm white bulb
+ * on the blackbody locus (DEFAULT_KELVIN).
  */
 export function physicalColor(
   s: Pick<HassEntity, "attributes"> | null | undefined,
   rgb: (s: Pick<HassEntity, "attributes"> | null | undefined) => Rgb,
 ): Rgb {
   const a: HassEntity["attributes"] = (s && s.attributes) || {};
-  const k = Number(a.color_temp_kelvin),
-    mode = typeof a.color_mode === "string" ? a.color_mode : null;
-  const hasColour = Array.isArray(a.rgb_color) || Array.isArray(a.hs_color);
   if (
-    k > 0 &&
-    (mode === "color_temp" || (!hasColour && !(mode && RGB_MODES.has(mode))))
+    Array.isArray(a.rgb_color) ||
+    Array.isArray(a.hs_color) ||
+    Number(a.color_temp_kelvin) > 0
   )
-    return kelvinSrgb(k);
-  if (hasColour) return rgb(s);
+    return rgb(s);
   return kelvinSrgb(DEFAULT_KELVIN);
 }
 
@@ -107,13 +103,18 @@ export function lumensToCandela(
   return beam === "spot" ? lm / Math.PI : lm / (4 * Math.PI);
 }
 
-/** Pool light intensity (scene units) of a lamp at HA brightness level 0..1; lumens null: DEFAULT_LUMENS. */
+/** Pool light intensity (scene units) of a lamp at HA brightness level 0..1: the model lamp's candela
+ * (KHR_lights_punctual) when it has one, else from lumens (null: DEFAULT_LUMENS); times LAMP_EXPOSURE. */
 export const lampIntensity = (
   lumens: number | null | undefined,
   level: number,
   beam: "point" | "spot",
-): number =>
-  lumensToCandela(
-    (lumens ?? DEFAULT_LUMENS[beam]) * clamp(Number(level) || 0, 0, 1),
-    beam,
-  ) * LAMP_EXPOSURE;
+  candela: number | null = null,
+): number => {
+  const k = clamp(Number(level) || 0, 0, 1);
+  const cd =
+    candela !== null && Number.isFinite(candela) && candela >= 0
+      ? candela
+      : lumensToCandela(lumens ?? DEFAULT_LUMENS[beam], beam);
+  return cd * k * LAMP_EXPOSURE;
+};

@@ -29,6 +29,7 @@ import { mergeGroups, namedGroups, mergedName } from "../merge.ts";
 import { mergeRender } from "../render-recipe.ts";
 import { patchCloudShadow } from "../cloud-shadow.ts";
 import { surfacePlugin } from "../physical-materials.ts";
+import { lampPlugin } from "../objects/model-lamps.ts";
 import {
   castsShadow,
   shadowInfo,
@@ -643,14 +644,17 @@ export class ModelLayer {
         resolve(null);
       };
       // glass, floors and fabric become physical materials as the loader builds them (physical-materials.ts): the
-      // model's fp.render.materials (unless render: default), then the card's render.materials
+      // model's fp.render.materials (unless render: default), then the card's render.materials; KHR_lights_punctual
+      // lamps become plain nodes the light objects read (objects/model-lamps.ts), never lights of their own
       const look = this.view.look;
-      const loader = new GLTFLoader().register(
-        surfacePlugin({
-          rules: look.renderOpt.materials || [],
-          modelRules: look.renderOption !== "default",
-        }),
-      );
+      const loader = new GLTFLoader()
+        .register(
+          surfacePlugin({
+            rules: look.renderOpt.materials || [],
+            modelRules: look.renderOption !== "default",
+          }),
+        )
+        .register(lampPlugin());
       if (opts.data === undefined && opts.url)
         loader.load(opts.url, onLoad, undefined, fail);
       else {

@@ -152,7 +152,7 @@ export class ObjectLayer {
   _labelSig?: string | null;
   badTargets?: Map<string, BadTarget>;
   washCfg?: WashConfig | null;
-  /** Physical lamp light (render quality 'high', setPhysical): blackbody colour, candela from lumens. */
+  /** Physical lamp light (render quality 'high', setPhysical): HA's colour, candela from the model lamp or lumens. */
   physical = false;
 
   constructor(view: ObjectLayerHost) {
@@ -327,7 +327,8 @@ export class ObjectLayer {
         target: h.target,
         distance: h.distance,
         up: h.up || aimsUp(p.obj),
-        targetOk: !!(p.obj.hints && p.obj.hints.target_ok === true),
+        targetOk:
+          !!(p.obj.hints && p.obj.hints.target_ok === true) || !!p.part.lampAim,
       });
     }
     this.badTargets = badTargets(spots);
@@ -951,6 +952,7 @@ export class ObjectLayer {
             h.lumens,
             r.level,
             slot.light instanceof THREE.SpotLight ? "spot" : "point",
+            h.candela,
           )
         : r.level * h.max) * slot.factor;
   }

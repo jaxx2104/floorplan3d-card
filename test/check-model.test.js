@@ -305,6 +305,40 @@ describe("checkGlb", () => {
     });
   });
 
+  it("reports KHR_lights_punctual lamps of light objects, warns about stray ones", () => {
+    const r = checkGlb(
+      glb({
+        asset: { version: "2.0" },
+        extensions: {
+          KHR_lights_punctual: {
+            lights: [
+              { type: "point", intensity: 60 },
+              { type: "spot" },
+              { type: "directional" },
+            ],
+          },
+        },
+        scene: 0,
+        scenes: [{ nodes: [0, 2, 3] }],
+        nodes: [
+          {
+            name: "lamp",
+            extras: fp({ kind: "object", id: "lamp", type: "light" }),
+            children: [1],
+          },
+          { name: "bulb", extensions: { KHR_lights_punctual: { light: 0 } } },
+          { name: "stray", extensions: { KHR_lights_punctual: { light: 1 } } },
+          { name: "sun", extensions: { KHR_lights_punctual: { light: 2 } } },
+        ],
+      }),
+    );
+    expect(r.lamps).toEqual({
+      bound: [{ object: "lamp", node: "bulb", type: "point", candela: 60 }],
+      unbound: ["stray"],
+    });
+    expect(r.warnings.join()).toMatch(/do nothing: stray/);
+  });
+
   it("rejects a file that is not a GLB", () => {
     expect(checkGlb(Buffer.from("hello world, not a model"))).toMatchObject({
       ok: false,

@@ -340,12 +340,52 @@ export function checkGlb(buffer) {
     warnings.push(`material classes: ${e.message}`);
   }
 
+  // KHR_lights_punctual lamps: a point / spot lamp inside a light object is that object's real light (its place,
+  // aim, cone, range and candela); anywhere else it does nothing
+  const lamps = { bound: [], unbound: [] };
+  try {
+    const defs =
+      (json.extensions &&
+        json.extensions.KHR_lights_punctual &&
+        json.extensions.KHR_lights_punctual.lights) ||
+      [];
+    const taken = new Set();
+    (json.nodes || []).forEach((n, i) => {
+      const ref = n.extensions && n.extensions.KHR_lights_punctual;
+      const def = ref && defs[ref.light];
+      if (!def || def.type === "directional") return;
+      const owner = m.ownerOf(i);
+      const name = n.name || `node ${i}`;
+      if (
+        owner &&
+        owner.kind === "object" &&
+        (owner.type === "light" || owner.type === "light_strip") &&
+        !taken.has(owner.id)
+      ) {
+        taken.add(owner.id);
+        lamps.bound.push({
+          object: owner.id,
+          node: name,
+          type: def.type,
+          candela: def.intensity ?? 1,
+        });
+      } else lamps.unbound.push(name);
+    });
+    if (lamps.unbound.length)
+      warnings.push(
+        `KHR_lights_punctual lamp(s) outside a light object (or a second one in it) do nothing: ${lamps.unbound.join(", ")}`,
+      );
+  } catch (e) {
+    warnings.push(`lamps: ${e.message}`);
+  }
+
   return {
     ok: errors.length === 0,
     errors,
     warnings,
     summary: summarize(m),
     materials,
+    lamps,
     render: m.render ? { keys: m.renderKeys, recipe: m.render } : null,
     lightmaps,
     levels: m.levels.map((l) => ({
@@ -419,6 +459,10 @@ function main(argv) {
         `  materials: ${r.materials.count} (made physical at load: ${c.glass} glass, ${c.floor} floor, ${c.fabric} fabric; ${r.materials.fromFile} physical or unlit in the file${ext ? `; extensions: ${ext}` : ""})`,
       );
     }
+    for (const l of (r.lamps && r.lamps.bound) || [])
+      console.log(
+        `  lamp of ${l.object}: ${l.type} ${l.candela} cd (KHR_lights_punctual node ${l.node})`,
+      );
     for (const l of r.lightmaps || [])
       console.log(
         `  lightmap on material ${l.material} (${l.type}, texture ${l.texture}, TEXCOORD_${l.texCoord}${l.size ? `, ${l.size[0]} × ${l.size[1]} px` : ""})`,

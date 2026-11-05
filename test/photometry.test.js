@@ -13,6 +13,8 @@ import {
 } from "../src/photometry.ts";
 import { lightColor } from "../src/objects/logic.ts";
 import { ObjectLayer } from "../src/objects/layer.ts";
+import { replaceLights } from "../src/objects/model-lamps.ts";
+import { hintDefaults } from "../src/objects/types.ts";
 import { emissiveLevel, blooms, BLOOM_MIN_EMISSIVE } from "../src/bloom.ts";
 
 describe("kelvin -> rgb (Planckian locus)", () => {
@@ -65,15 +67,17 @@ describe("kelvin -> rgb (Planckian locus)", () => {
 
 describe("physicalColor", () => {
   const col = (attributes) => physicalColor({ attributes }, lightColor);
-  it("colour temperature mode: the blackbody colour, even with HA's derived rgb_color", () => {
+  it("colour temperature mode: HA's rgb_color, else HA's conversion of the kelvin (both tiers agree)", () => {
     expect(
       col({
         color_mode: "color_temp",
         color_temp_kelvin: 3000,
         rgb_color: [255, 177, 110],
       }),
-    ).toEqual(kelvinSrgb(3000));
-    expect(col({ color_temp_kelvin: 4000 })).toEqual(kelvinSrgb(4000)); // no mode, no colour
+    ).toEqual([255, 177, 110]);
+    const k = { color_mode: "color_temp", color_temp_kelvin: 4000 }; // no rgb_color (a mock, an old integration)
+    expect(col(k)).toEqual(lightColor({ attributes: k }));
+    expect(col(k)).not.toEqual(kelvinSrgb(4000));
   });
   it("colour modes keep the reported colour", () => {
     expect(
@@ -121,6 +125,18 @@ describe("lumens -> candela", () => {
       lampIntensity(800, 1, "point"),
     ); // level clamped
     expect(lampIntensity(800, 0, "point")).toBe(0);
+  });
+  it("the model lamp's candela (KHR_lights_punctual) comes before lumens", () => {
+    expect(lampIntensity(800, 1, "point", 40)).toBeCloseTo(40 * LAMP_EXPOSURE);
+    expect(lampIntensity(null, 0.5, "spot", 40)).toBeCloseTo(
+      20 * LAMP_EXPOSURE,
+    );
+    expect(lampIntensity(800, 1, "point", null)).toBeCloseTo(
+      lampIntensity(800, 1, "point"),
+    );
+    expect(lampIntensity(800, 1, "point", NaN)).toBeCloseTo(
+      lampIntensity(800, 1, "point"),
+    ); // invalid: the flux
   });
 });
 
@@ -181,7 +197,7 @@ describe("ObjectLayer physical lamps", () => {
   };
   const lamp = (layer) => layer.pool.points.find((l) => l.intensity > 0);
 
-  it("standard: hints.max and decay as modelled; physical: candela, inverse square, blackbody colour", () => {
+  it("standard: hints.max and decay as modelled; physical: candela, inverse square, HA's colour", () => {
     const layer = new ObjectLayer(fakeView());
     layer.setModel(model({ max: 20, distance: 8, decay: 1.5 }));
     layer.setBindings(bind, {});
@@ -194,13 +210,13 @@ describe("ObjectLayer physical lamps", () => {
     layer.update(states, ctx);
     expect(lamp(layer).intensity).toBeCloseTo(lampIntensity(null, 1, "point"));
     expect(lamp(layer).decay).toBe(2);
-    const k = kelvinSrgb(2700);
+    // colour temperature mode: HA's rgb_color in both tiers
     expect(lamp(layer).color.getHex()).toBe(
       new THREE.Color()
-        .setRGB(k[0] / 255, k[1] / 255, k[2] / 255, THREE.SRGBColorSpace)
+        .setRGB(255 / 255, 166 / 255, 87 / 255, THREE.SRGBColorSpace)
         .getHex(),
     );
-    expect(lamp(layer).color.equals(std)).toBe(false);
+    expect(lamp(layer).color.equals(std)).toBe(true);
     layer.setPhysical(false);
     layer.update(states, ctx);
     expect(lamp(layer).intensity).toBeCloseTo(20);
@@ -213,6 +229,56 @@ describe("ObjectLayer physical lamps", () => {
     layer.setPhysical(true);
     layer.update(states, ctx);
     expect(lamp(layer).intensity).toBeCloseTo(lampIntensity(1600, 1, "point"));
+  });
+  it("a model lamp (KHR_lights_punctual): its place, aim, cone and candela; lumens only as the fallback", () => {
+    const m = model({ lumens: 1600 });
+    const node = m.manifest.objects[0].node;
+    const spot = new THREE.SpotLight(
+      0xffffff,
+      120,
+      6,
+      THREE.MathUtils.degToRad(30),
+      0.25,
+    );
+    spot.position.set(0.5, -0.2, 0);
+    spot.rotation.x = -Math.PI / 2; // -Z (the glTF light axis) down
+    spot.name = "bulb";
+    node.add(spot);
+    expect(replaceLights(m.root)).toBe(1);
+    expect(spot.parent).toBe(null);
+    const marker = node.children.find((c) => c.name === "bulb");
+    expect(marker.isLight).toBe(undefined);
+    expect(marker.userData.fpLamp).toEqual({
+      beam: "spot",
+      candela: 120,
+      range: 6,
+      angle: expect.closeTo(30, 6),
+      penumbra: 0.25,
+    });
+    const layer = new ObjectLayer(fakeView());
+    layer.setModel(m);
+    layer.setBindings(bind, {});
+    layer.setPhysical(true);
+    layer.update(states, ctx);
+    const l = layer.pool.spots.find((x) => x.intensity > 0);
+    expect(l).toBeTruthy();
+    expect(l.intensity).toBeCloseTo(120 * LAMP_EXPOSURE);
+    expect(l.angle).toBeCloseTo(THREE.MathUtils.degToRad(30));
+    expect(l.penumbra).toBeCloseTo(0.25);
+    expect(l.distance).toBe(6);
+    expect(l.position.toArray().map((v) => +v.toFixed(3) + 0)).toEqual([
+      1.5, 1.8, 0,
+    ]);
+    expect(l.target.position.toArray().map((v) => +v.toFixed(3) + 0)).toEqual([
+      1.5, 0.8, 0,
+    ]);
+    // hints still win where given
+    const h = hintDefaults(
+      { beam: "point", distance: 2 },
+      marker.userData.fpLamp,
+    );
+    expect(h).toMatchObject({ beam: "point", distance: 2, candela: 120 });
+    expect(hintDefaults({}, null).candela).toBe(null);
   });
 });
 

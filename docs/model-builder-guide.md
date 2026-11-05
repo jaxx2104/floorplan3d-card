@@ -92,8 +92,9 @@ Rules:
    the rooms. Tag ceiling meshes with `layer: ceiling`. Because the ceiling is the lowest
    geometry of the storey above, always fill that storey's `elevation`: without it the card
    measures the level from its lowest point and reads the ceiling's underside.
-9. No lights, cameras, helpers, grids or text in the export. Lamps are objects (below), not
-   three.js lights.
+9. No cameras, helpers, grids or text in the export. Lamps are objects (below); a lamp may carry
+   its light as a glTF `KHR_lights_punctual` light inside the object (see Lamps in the file),
+   other lights are ignored.
 10. **One floor mesh per room.** Each room's floor slab is its own mesh inside its room group.
     Merge geometry per room or per layer, never across rooms or storeys: the card picks rooms
     by their floor and hides parts per room, level and layer.
@@ -365,18 +366,37 @@ Later types (`door`, `gate`, `fan`, `vacuum`, …) can be tagged already; they b
 
 ### Light hints
 
-| key          | meaning                                                                                                                       | default         |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| `beam`       | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light)                      | `point`         |
-| `max`        | light intensity at full brightness (real light = brightness / 255 × `max`)                                                    | 5               |
-| `distance`   | metres the light reaches (0 = no limit)                                                                                       | 0               |
-| `decay`      | fall-off (2 = physical)                                                                                                       | 2               |
-| `angle`      | spot cone, degrees (5–80)                                                                                                     | 24              |
-| `penumbra`   | spot edge softness 0–1                                                                                                        | 0.6             |
-| `target`     | `[x, y, z]` model point a spot aims at                                                                                        | straight down   |
-| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters                                                                  | true            |
-| `offset`     | `[x, y, z]` metres added to the light position (model axes)                                                                   | none            |
-| `lumens`     | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) | 800 (spots 300) |
+| key          | meaning                                                                                                                                                                         | default         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `beam`       | `point`, `spot`, `down`, `up` or `updown` (alias `both`: washes the wall above and below; a point light)                                                                        | `point`         |
+| `max`        | light intensity at full brightness (real light = brightness / 255 × `max`)                                                                                                      | 5               |
+| `distance`   | metres the light reaches (0 = no limit)                                                                                                                                         | 0               |
+| `decay`      | fall-off (2 = physical)                                                                                                                                                         | 2               |
+| `angle`      | spot cone, degrees (5–80)                                                                                                                                                       | 24              |
+| `penumbra`   | spot edge softness 0–1                                                                                                                                                          | 0.6             |
+| `target`     | `[x, y, z]` model point a spot aims at                                                                                                                                          | straight down   |
+| `castShadow` | `false` keeps the lamp out of the (at most 4) shadow casters                                                                                                                    | true            |
+| `offset`     | `[x, y, z]` metres added to the light position (model axes)                                                                                                                     | none            |
+| `lumens`     | luminous flux at full brightness, used by the card's `render.quality: high` (physical lamps: candela = lm / 4π, spots lm / π) when the object has no `KHR_lights_punctual` lamp | 800 (spots 300) |
+
+#### Lamps in the file (`KHR_lights_punctual`)
+
+A light object can carry its lamp as a standard glTF punctual light (Blender: a Point or Spot
+light parented to the lamp object, exported with Punctual Lights on and Lighting Mode Standard, so
+the intensity is written in candela). The card does not add the file's lights to the scene (they
+would be on all the time and bound to nothing); the first point or spot light inside a
+`type: light` / `light_strip` object (not inside a nested object) becomes that object's lamp:
+
+- its position is where the card's real light goes (before the glow mesh centre and `anchor`);
+- a spot aims along the light's -Z axis (the glTF convention), unless `hints.target` is set;
+- type, cone (`outerConeAngle` -> `angle`, `innerConeAngle` -> `penumbra`) and `range` (->
+  `distance`) are the defaults of the hints, which still win where they are given;
+- with `render.quality: high` its intensity (candela) at full brightness is the lamp's, scaled by
+  the HA brightness and the card's exposure; `hints.lumens` is only the fallback for objects
+  without such a light. The colour stays the HA light's.
+
+Directional lights and lamps outside light objects are ignored; `bun tools/check-model.mjs`
+lists the lamps it found and warns about stray ones.
 
 The card owns a fixed pool of 12 real lights (8 point, 4 spot) and gives them to the lit fixtures in
 view, largest `max` first; the rest glow without a light. At most 4 point fixtures without a group
@@ -425,7 +445,8 @@ don't flicker (z-fighting).
 - [ ] Every lamp, the charging station, mower, gate, garage door, blinds … tagged as objects with
       stable ids, glow mesh named where it matters, moving parts as separate nodes with `hinge`.
 - [ ] No mesh larger than the plot inside a storey; no world ground plane in storeys.
-- [ ] No lights / cameras / helpers in the export. Under ~20 MB, textures ≤ 2048 px.
+- [ ] No cameras / helpers in the export; lights only as `KHR_lights_punctual` lamps inside light
+      objects. Under ~20 MB, textures ≤ 2048 px.
 - [ ] Baked lightmaps (optional): `fp_lightmap` on the material, the lightmap on TEXCOORD_1 of
       every mesh that uses it, its image not packed with roughness / metallic.
 - [ ] `bun tools/check-model.mjs house.glb` reports OK (run it in the floorplan3d-card repository).

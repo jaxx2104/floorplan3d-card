@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { lightColor, lightLevel } from "./logic.ts";
 import { physicalColor } from "../photometry.ts";
+import { findLamp, lampOf, type ModelLamp } from "./model-lamps.ts";
 import type { ChainState } from "./logic.ts";
 import type { HassEntity } from "../types/ha.ts";
 import type { ObjectUi } from "../types/layout.ts";
@@ -35,7 +36,7 @@ export interface UpdateCtx {
   states: States;
   entity: string | null;
   mowerEntity?: string | null;
-  /** Physical lamp light (render quality 'high'): lamps take their blackbody colour (photometry.ts). */
+  /** Physical lamp light (render quality 'high'): photometry.ts physicalColor. */
   physical?: boolean;
   [key: string]: unknown;
 }
@@ -70,6 +71,8 @@ export interface Hints {
   offset: number[] | null;
   /** Luminous flux (lm) at full brightness for physical light (render quality 'high'); null: DEFAULT_LUMENS. */
   lumens: number | null;
+  /** Luminous intensity (cd) at full brightness of the model's own lamp (KHR_lights_punctual); before lumens. */
+  candela: number | null;
 }
 
 /** State every type's part carries (the layer reads these). */
@@ -89,6 +92,10 @@ export interface BasePart {
   moving?: THREE.Object3D | null;
   /** Spot aim point (model root frame), set by the layer. */
   aim?: THREE.Vector3;
+  /** The model's lamp node (KHR_lights_punctual, model-lamps.ts): the light's place and aim. */
+  lamp?: THREE.Object3D | null;
+  /** hints.target is the model lamp's own aim (trusted like hints.target_ok). */
+  lampAim?: boolean;
 }
 interface LightPart extends BasePart {
   level: number;
@@ -142,24 +149,48 @@ const vec3 = (a: unknown): number[] | null =>
   Array.isArray(a) && a.length === 3 && a.every(fin) ? a.slice() : null;
 
 // Invalid hints fall back to defaults; a down beam is a point light, an up beam a spot aimed up (up: true).
-export function hintDefaults(hints: unknown): Hints {
+// A model lamp (KHR_lights_punctual) gives the defaults of what the hints leave out: beam, cone, range, candela.
+export function hintDefaults(
+  hints: unknown,
+  lamp: ModelLamp | null = null,
+): Hints {
   const h = (hints && typeof hints === "object" ? hints : {}) as Record<
     string,
     unknown
   >;
+  const spot =
+    h.beam === "spot" ||
+    h.beam === "up" ||
+    (h.beam === undefined && !!lamp && lamp.beam === "spot");
+  const angle = fin(h.angle)
+    ? h.angle
+    : lamp && fin(lamp.angle)
+      ? lamp.angle
+      : 24;
+  const penumbra =
+    fin(h.penumbra) && h.penumbra >= 0 && h.penumbra <= 1
+      ? h.penumbra
+      : lamp && fin(lamp.penumbra)
+        ? Math.min(1, Math.max(0, lamp.penumbra))
+        : 0.6;
   return {
-    beam: h.beam === "spot" || h.beam === "up" ? "spot" : "point",
+    beam: spot ? "spot" : "point",
     up: h.beam === "up",
     max: fin(h.max) && h.max >= 0 ? h.max : 5,
-    distance: fin(h.distance) && h.distance >= 0 ? h.distance : 0,
+    distance:
+      fin(h.distance) && h.distance >= 0
+        ? h.distance
+        : lamp && lamp.range > 0
+          ? lamp.range
+          : 0,
     decay: fin(h.decay) && h.decay >= 0 ? h.decay : 2,
-    angle: fin(h.angle) ? Math.min(80, Math.max(5, h.angle)) : 24,
-    penumbra:
-      fin(h.penumbra) && h.penumbra >= 0 && h.penumbra <= 1 ? h.penumbra : 0.6,
+    angle: Math.min(80, Math.max(5, angle)),
+    penumbra,
     target: vec3(h.target),
     castShadow: typeof h.castShadow === "boolean" ? h.castShadow : true,
     offset: vec3(h.offset),
     lumens: fin(h.lumens) && h.lumens >= 0 ? h.lumens : null,
+    candela: lamp && fin(lamp.candela) ? lamp.candela : null,
   };
 }
 
@@ -218,19 +249,21 @@ type GlowMaterial = THREE.Material & {
 const matsOf = (mesh: THREE.Mesh): GlowMaterial[] =>
   Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 
-// The anchor in the model root's frame: glow centre, else fp anchor (node frame), else node box centre; + hints.offset.
-// Only the node's ancestors and subtree are brought up to date (not the whole model).
+// The anchor in the model root's frame: the model lamp's place, else glow centre, else fp anchor (node frame), else
+// node box centre; + hints.offset. Only the node's ancestors and subtree are brought up to date (not the whole model).
 function anchorOf(
   obj: ModelObject,
   glow: THREE.Mesh | null,
   root: THREE.Object3D,
   offset: readonly number[] | null,
+  lamp: THREE.Object3D | null = null,
 ): THREE.Vector3 {
   if (obj.node) obj.node.updateWorldMatrix(true, true);
   else root.updateWorldMatrix(true, false);
   const p = new THREE.Vector3();
   const box = new THREE.Box3();
-  if (glow && !box.setFromObject(glow).isEmpty()) box.getCenter(p);
+  if (lamp) lamp.getWorldPosition(p);
+  else if (glow && !box.setFromObject(glow).isEmpty()) box.getCenter(p);
   // callers only reach here with a node (obj.node ? anchorOf(...) : ...)
   else if (Array.isArray(obj.anchor))
     obj.node!.localToWorld(
@@ -286,7 +319,8 @@ function prepareLight(
   { root, view }: PrepareCtx,
   pool: boolean,
 ): LightPart {
-  const hints = hintDefaults(obj.hints);
+  const lamp = obj.node ? findLamp(obj.node) : null;
+  const hints = hintDefaults(obj.hints, lampOf(lamp));
   const glow = obj.node ? findGlow(obj.node, obj.glow || "glow") : null;
   // glow emissive per brightness: the render recipe's glowIntensityPerBrightness (default 3)
   const gi =
@@ -302,11 +336,23 @@ function prepareLight(
     color: null,
     anchor: new THREE.Vector3(),
     glowK: k,
+    lamp,
   };
   claimGlow(part, glow);
   part.anchor = obj.node
-    ? anchorOf(obj, glow, root, hints.offset)
+    ? anchorOf(obj, glow, root, hints.offset, lamp)
     : new THREE.Vector3();
+  // a model spot aims where the file points it (its -Z axis), 1 m out, unless hints.target says otherwise
+  if (lamp && hints.beam === "spot" && !hints.target) {
+    const pos = lamp.getWorldPosition(new THREE.Vector3());
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(
+      lamp.getWorldQuaternion(new THREE.Quaternion()),
+    );
+    const tip = root.worldToLocal(pos.clone().add(dir)),
+      base = root.worldToLocal(pos);
+    hints.target = part.anchor.clone().add(tip.sub(base)).toArray();
+    part.lampAim = true;
+  }
   return part;
 }
 
@@ -832,6 +878,7 @@ export function reanchor(part: BasePart, root: THREE.Object3D): void {
     part.glow,
     root,
     part.hints ? part.hints.offset : null,
+    part.lamp || null,
   );
   if (part.label && part.root) relayout(part);
 }

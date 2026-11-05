@@ -26,6 +26,7 @@ const DEF = {
   castShadow: true,
   offset: null,
   lumens: null,
+  candela: null,
 };
 
 describe("hintDefaults", () => {
@@ -61,6 +62,7 @@ describe("hintDefaults", () => {
       castShadow: false,
       offset: [0, 0, 0.12],
       lumens: 450,
+      candela: null,
     });
   });
 
