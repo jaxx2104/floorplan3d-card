@@ -8,6 +8,7 @@ import {
   bindings as bind,
   allVisible as ctx,
 } from "./helpers/objects.js";
+import { chargerInputs, TYPES } from "../src/objects/types.ts";
 
 const points = (layer) => layer.pool.points;
 const lit = (arr) => arr.filter((l) => l.intensity > 0);
@@ -611,5 +612,194 @@ describe("ObjectLayer", () => {
       layer.update(on, ctx);
       expect(shownWashes(layer, "a")).toEqual([layer.washes.materials.up]);
     });
+  });
+});
+
+describe("lights: off hides the pool sub-group", () => {
+  let view, layer;
+  beforeEach(() => {
+    view = fakeView();
+    layer = new ObjectLayer(view);
+  });
+
+  it("pool visible only with a model and lights on; labels stay in objectsGroup", () => {
+    expect(layer.lights.visible).toBe(false);
+    const m = model([
+      { id: "a", x: 1 },
+      { id: "c", x: 2, type: "climate" },
+    ]);
+    layer.setModel(m);
+    expect(layer.lights.visible).toBe(true);
+    layer.setBindings(
+      bind([
+        ["a", "light.a"],
+        ["c", "climate.c"],
+      ]),
+      {},
+    );
+    layer.update(
+      {
+        "light.a": st("on"),
+        "climate.c": st("heat", { current_temperature: 21 }),
+      },
+      { ...ctx, lightsOn: false },
+    );
+    expect(layer.lights.visible).toBe(false);
+    expect(view.objectsGroup.visible).toBe(true);
+    const label = layer.objectAt("c").part.label;
+    if (label) expect(label.parent).toBe(view.objectsGroup);
+    const d = view.dirty;
+    layer.update(
+      {
+        "light.a": st("on"),
+        "climate.c": st("heat", { current_temperature: 21 }),
+      },
+      ctx,
+    );
+    expect(layer.lights.visible).toBe(true);
+    expect(view.dirty).toBeGreaterThan(d);
+    layer.setModel(null);
+    expect(layer.lights.visible).toBe(false);
+  });
+});
+
+describe("idle: no redraw for unchanged mower poses", () => {
+  it("the same pose (or null twice) marks nothing dirty", () => {
+    const view = fakeView(),
+      layer = new ObjectLayer(view);
+    layer.setModel(model([{ id: "mw", x: 1, type: "mower" }]));
+    layer.setBindings(bind([["mw", "lawn_mower.m"]]), {});
+    layer.update({ "lawn_mower.m": st("mowing") }, ctx);
+    layer.setMowerPose(null);
+    let d = view.dirty;
+    layer.setMowerPose(null);
+    expect(view.dirty).toBe(d);
+    layer.setMowerPose({ x: 1, y: 2, floorId: "ground", heading: 0.5 });
+    d = view.dirty;
+    layer.setMowerPose({ x: 1, y: 2, floorId: "ground", heading: 0.5 });
+    expect(view.dirty).toBe(d);
+    layer.setMowerPose({ x: 1.1, y: 2, floorId: "ground", heading: 0.5 });
+    expect(view.dirty).toBe(d + 1);
+  });
+});
+
+describe("per-light shadow updates", () => {
+  let view, layer;
+  beforeEach(() => {
+    view = fakeView();
+    layer = new ObjectLayer(view);
+  });
+
+  it("a non-shadow lamp toggling while a shadow lamp is lit redraws no shadow map", () => {
+    layer.setModel(
+      model([
+        { id: "a", x: 1 },
+        { id: "g", x: 3, group: "row" },
+      ]),
+    );
+    layer.setBindings(
+      bind([
+        ["a", "light.a"],
+        ["g", "light.g"],
+      ]),
+      {},
+    );
+    layer.update({ "light.a": st("on"), "light.g": st("off") }, ctx);
+    expect(view.flagged).toHaveLength(1);
+    layer.update({ "light.a": st("on"), "light.g": st("on") }, ctx);
+    layer.update({ "light.a": st("on"), "light.g": st("off") }, ctx);
+    expect(view.flagged).toHaveLength(1);
+  });
+
+  it("a new shadow pick ranked higher keeps the lit one in its slot (only the new map redraws)", () => {
+    layer.setModel(
+      model([
+        { id: "a", x: 1, hints: { max: 2 } },
+        { id: "b", x: 2, hints: { max: 20 } },
+      ]),
+    );
+    layer.setBindings(
+      bind([
+        ["a", "light.a"],
+        ["b", "light.b"],
+      ]),
+      {},
+    );
+    layer.update({ "light.a": st("on"), "light.b": st("off") }, ctx);
+    const first = view.flagged.slice();
+    expect(first).toHaveLength(1);
+    layer.update({ "light.a": st("on"), "light.b": st("on") }, ctx);
+    expect(view.flagged).toHaveLength(2);
+    expect(view.flagged[1]).not.toBe(first[0]);
+    expect(layer._slots.get("a").light).toBe(first[0]);
+  });
+
+  it("shadowsStale: lit shadow slots only; dark ones redraw when they light up", () => {
+    layer.setModel(
+      model([
+        { id: "a", x: 1 },
+        { id: "b", x: 2 },
+      ]),
+    );
+    layer.setBindings(
+      bind([
+        ["a", "light.a"],
+        ["b", "light.b"],
+      ]),
+      {},
+    );
+    layer.update({ "light.a": st("on"), "light.b": st("off") }, ctx);
+    const stale = layer.shadowsStale();
+    expect(stale).toEqual([layer._slots.get("a").light]);
+    layer.update({ "light.a": st("on"), "light.b": st("on") }, ctx);
+    expect(view.flagged.at(-1)).toBe(layer._slots.get("b").light);
+  });
+
+  it("the model moving redraws the lit shadow maps", () => {
+    const m = model([{ id: "a", x: 1 }]);
+    layer.setModel(m);
+    layer.setBindings(bind([["a", "light.a"]]), {});
+    const s = { "light.a": st("on") };
+    layer.update(s, ctx);
+    m.root.position.set(0, 0, 4);
+    layer.update(s, ctx);
+    expect(view.flagged).toHaveLength(2);
+  });
+});
+
+describe("EV charger power from a separate sensor", () => {
+  it("chargerInputs lists the power sensors", () => {
+    expect(chargerInputs("switch.wallbox")).toEqual([
+      "sensor.wallbox_power",
+      "sensor.wallbox_charging_power",
+    ]);
+    expect(chargerInputs(null)).toEqual([]);
+    expect(TYPES.ev_charger.inputs).toBe(chargerInputs);
+  });
+
+  it("the label follows the power sensor live", () => {
+    const view = fakeView(),
+      layer = new ObjectLayer(view);
+    layer.setModel(
+      model([{ id: "ev", x: 1, type: "ev_charger", glowName: "led" }]),
+    );
+    layer.setBindings(bind([["ev", "switch.wallbox"]]), {});
+    const charger = st("charging");
+    layer.update(
+      {
+        "switch.wallbox": charger,
+        "sensor.wallbox_power": st("7.2", { unit_of_measurement: "kW" }),
+      },
+      ctx,
+    );
+    expect(layer.objectAt("ev").part.text).toBe("7.2 kW");
+    layer.update(
+      {
+        "switch.wallbox": charger,
+        "sensor.wallbox_power": st("3.1", { unit_of_measurement: "kW" }),
+      },
+      ctx,
+    );
+    expect(layer.objectAt("ev").part.text).toBe("3.1 kW");
   });
 });

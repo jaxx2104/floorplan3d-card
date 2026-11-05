@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { transformPoint, inverseTransformPoint } from "../src/bindings.ts";
-import { realignPins, setPin } from "../src/editor.ts";
+import { realignPins, setPin, migrateLegacyPins } from "../src/editor.ts";
 
 const align = { position: [3, -2, 0.5], rotation: 30, scale: 2 };
 
@@ -77,5 +77,28 @@ describe("realignPins", () => {
     const plain = { pins: { b: layout.pins.b } };
     expect(realignPins(plain, same, align)).toBe(plain);
     expect(realignPins({}, same, align)).toEqual({});
+  });
+});
+
+describe("migrateLegacyPins (I5: once, on the first alignment change)", () => {
+  const layout = {
+    pins: {
+      a: { x: 1, y: 1, z: 1, floor_id: "ground" },
+      b: { x: 1, y: 1, z: 1, floor_id: "attic" },
+      c: { x: 1, y: 1, z: 1, floor_id: "ground", on_model: true },
+    },
+    model: { position: [0, 0, 0] },
+  };
+  it("marks pins on bound floors on_model and sets pins_migrated", () => {
+    const out = migrateLegacyPins(layout, ["ground"]);
+    expect(out.pins.a.on_model).toBe(true);
+    expect(out.pins.b.on_model).toBeUndefined();
+    expect(out.pins.c).toBe(layout.pins.c);
+    expect(out.model.pins_migrated).toBe(true);
+    expect(layout.pins.a.on_model).toBeUndefined();
+  });
+  it("does nothing once migrated", () => {
+    const done = { ...layout, model: { pins_migrated: true } };
+    expect(migrateLegacyPins(done, ["ground"])).toBe(done);
   });
 });

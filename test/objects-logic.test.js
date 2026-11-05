@@ -16,6 +16,7 @@ import {
   attachOffset,
   floorAtHeight,
   effectiveGroups,
+  screenByDistance,
 } from "../src/objects/logic.ts";
 import { stateOf as st } from "./helpers/hass.js";
 
@@ -592,5 +593,18 @@ describe("floorAtHeight", () => {
   it("none below -> null", () => {
     expect(floorAtHeight(floors, -5)).toBeNull();
     expect(floorAtHeight([], 1)).toBeNull();
+  });
+});
+
+describe("tap candidates nearest first", () => {
+  it("screenByDistance sorts within the radius", () => {
+    const pts = [
+      { id: "far", x: 40, y: 0 },
+      { id: "out", x: 100, y: 0 },
+      { id: "near", x: 5, y: 0 },
+      { id: "tie", x: 0, y: 5 },
+    ];
+    expect(screenByDistance(pts, 0, 0, 52)).toEqual(["near", "tie", "far"]);
+    expect(screenByDistance([], 0, 0, 52)).toEqual([]);
   });
 });

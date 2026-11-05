@@ -27,6 +27,7 @@ import {
   attachPin,
   realignPins,
   sliderValue,
+  mergeImport,
 } from "../src/editor.ts";
 
 const square = {
@@ -559,5 +560,84 @@ describe("sliderValue", () => {
     expect(sliderValue("", 0, 1, 0.1)).toBe(null);
     expect(sliderValue("abc", 0, 1, 0.1)).toBe(null);
     expect(sliderValue(null, 0, 1, 0.1)).toBe(null);
+  });
+});
+
+const rect = (x0, y0, x1, y1) => [
+  [x0, y0],
+  [x1, y0],
+  [x1, y1],
+  [x0, y1],
+];
+
+describe("import and views (I6)", () => {
+  it("fitImport remaps view floor links through the floor map", () => {
+    const layout = {
+      floors: [{ id: "up", elevation: 3 }],
+      rooms: [{ id: "r", floor_id: "ground", polygon: rect(0, 0, 1, 1) }],
+      pins: {},
+      views: { first: { floors: ["up", "ground"] }, x: { label: "X" } },
+    };
+    const { layout: l, floorMap } = fitImport(
+      layout,
+      [
+        { id: "ground", elevation: 0 },
+        { id: "first", elevation: 3 },
+      ],
+      [],
+    );
+    expect(floorMap).toEqual({ up: "first" });
+    expect(l.views.first.floors).toEqual(["first", "ground"]);
+    expect(l.views.x).toEqual({ label: "X" });
+  });
+  it("mergeImport keeps the current views, order, model and mower when the file has none", () => {
+    const cur = {
+      views: { a: { rules: [{ hide: "all" }] } },
+      view_order: ["a"],
+      model: { version: "m" },
+      mower: { entity: "x" },
+    };
+    const l = mergeImport(
+      { rooms: [], pins: {}, model: null, mower: null },
+      { rooms: [] },
+      cur,
+    );
+    expect(l.views).toBe(cur.views);
+    expect(l.view_order).toBe(cur.view_order);
+    expect(l.model).toBe(cur.model);
+    expect(l.mower).toBe(cur.mower);
+    const own = mergeImport(
+      { rooms: [], views: { b: {} }, model: null },
+      { views: { b: {} }, model: null },
+      cur,
+    );
+    expect(own.views).toEqual({ b: {} });
+    expect(own.view_order).toBe(cur.view_order);
+    expect(own.model).toBe(null);
+  });
+});
+
+describe("import keeps object bindings and group controllers", () => {
+  const cur = {
+    objects: { lamp: { entity: "light.x" } },
+    tags: { facade: { entity: "switch.f" } },
+  };
+  it("a file without objects / groups keeps the current ones", () => {
+    const l = mergeImport({ rooms: [], pins: {} }, { rooms: [] }, cur);
+    expect(l.objects).toBe(cur.objects);
+    expect(l.tags).toBe(cur.tags);
+  });
+  it("a file with its own wins; invalid ones keep ours", () => {
+    const own = mergeImport(
+      { rooms: [], objects: { a: { hidden: true } }, tags: {} },
+      { objects: { a: { hidden: true } }, groups: {} },
+      cur,
+    );
+    expect(own.objects).toEqual({ a: { hidden: true } });
+    expect(own.tags).toEqual({});
+    const bad = mergeImport({ rooms: [] }, { objects: [1], groups: "x" }, cur);
+    expect(bad.objects).toBe(cur.objects);
+    expect(bad.tags).toBe(cur.tags);
+    expect("objects" in mergeImport({ rooms: [] }, {}, {})).toBe(false);
   });
 });
