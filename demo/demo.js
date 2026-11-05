@@ -1,6 +1,7 @@
 // Demo page wiring: a stand-in <ha-icon>, a mock hass shared by all cards on the page.
 import * as mdi from "@mdi/js";
 import { createMockHass, resetMockHass } from "./mock-hass.js";
+import { installMockActions } from "./mock-actions.js";
 
 class DemoIcon extends HTMLElement {
   static get observedAttributes() {
@@ -22,6 +23,7 @@ if (!customElements.get("ha-icon")) customElements.define("ha-icon", DemoIcon);
 
 const MAIN = document.querySelector("main").innerHTML;
 let cards = [];
+let hassNow = null; // the mock hass the cards got last (the action stand-in runs on it)
 
 // Builds the cards and a fresh mock hass for the query (URLSearchParams).
 function boot(params) {
@@ -36,6 +38,7 @@ function boot(params) {
     cards.map((c) => [c, { darkMode: !!c.closest(".dark") }]),
   );
   const push = (hass) => {
+    hassNow = hass;
     for (const c of cards) c.hass = { ...hass, themes: themes.get(c) };
   };
   for (const c of cards) {
@@ -169,6 +172,7 @@ async function reset(query, opts) {
 boot(new URLSearchParams(location.search));
 
 // log what the card asks for, so the page works without a real HA frontend
+installMockActions(() => hassNow);
 window.addEventListener("hass-more-info", (e) => {
   document.querySelector("#log").textContent =
     "more-info: " + e.detail.entityId;

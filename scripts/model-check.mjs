@@ -2601,13 +2601,14 @@ sections.add(
     n0 = await calls();
     p = await at("lamp_hall");
     await hold(p);
+    // HA toasts (hass-notification) as the demo's stand-in records them; read and cleared
     const toastText = () =>
       page.evaluate(
-        `(() => { const t = ${card}.shadowRoot.querySelector('.fp-toast'); return t && !t.hidden ? t.textContent : null; })()`,
+        "(() => { const n = window.__notifications || []; window.__notifications = []; return n.at(-1) ?? null; })()",
       );
     let toast = await toastText();
     check(
-      "actions: a malformed perform_action -> no call, a message in the card",
+      "actions: a malformed perform_action -> no call, an HA toast",
       (await calls()) === n0 && /domain\.action/.test(toast || ""),
       String(toast),
     );
@@ -2633,7 +2634,7 @@ sections.add(
     await hold(p);
     toast = await toastText();
     check(
-      "actions: a failing service call shows its error in the card",
+      "actions: a failing service call shows its error as an HA toast",
       toast === "Service not found",
       String(toast),
     );
@@ -2704,7 +2705,7 @@ sections.add(
       JSON.stringify(later),
     );
 
-    // confirmation: an in-card dialog, nothing until OK
+    // confirmation: handed to HA with the action (HA's dialog; the demo's stand-in asks __demoConfirm)
     await setActions({
       "object:lamp_hall": {
         tap_action: {
@@ -2713,30 +2714,32 @@ sections.add(
         },
       },
     });
+    await page.evaluate(`(() => { window.__confirmOk = false; window.__confirmText = null;
+    window.__demoConfirm = (t) => { window.__confirmText = t; return window.__confirmOk; }; })()`);
     n0 = await calls();
     p = await at("lamp_hall");
     await page.mouse.click(p[0], p[1]);
     await idle(page);
-    const dlg = await page.evaluate(
-      `(() => { const d = ${card}.shadowRoot.querySelector('.fp-confirm'); return d && d.textContent; })()`,
+    const sent = await page.evaluate(
+      "JSON.stringify((window.__hassActions || []).at(-1) || null)",
     );
     check(
-      "actions: confirmation shows an in-card dialog, no call yet",
-      /Toggle the hall\?/.test(dlg || "") && (await calls()) === n0,
-      String(dlg),
+      "actions: confirmation goes to HA in the hass-action config, cancel calls nothing",
+      (await page.evaluate("window.__confirmText")) === "Toggle the hall?" &&
+        /"confirmation":\{"text":"Toggle the hall\?"\}/.test(sent) &&
+        /"entity":"light\.demo_hall"/.test(sent) &&
+        (await calls()) === n0,
+      sent,
     );
-    await page.evaluate(
-      `${card}.shadowRoot.querySelector('.fp-confirm [data-c=yes]').click()`,
-    );
+    await page.evaluate("window.__confirmOk = true");
+    await page.mouse.click(p[0], p[1]);
     await idle(page);
     check(
-      "actions: OK runs the action and closes the dialog",
-      (await calls()) === n0 + 1 &&
-        !(await page.evaluate(
-          `!!${card}.shadowRoot.querySelector('.fp-confirm')`,
-        )),
+      "actions: a confirmed action runs",
+      (await calls()) === n0 + 1,
       await lastCall(),
     );
+    await page.evaluate("delete window.__demoConfirm");
 
     // popup links: history from the YAML popup list
     await setActions({
@@ -3745,7 +3748,7 @@ sections.add(
     await page.evaluate(`${card}._runObjectAction('facade_1', 'tap')`);
     await idle(page);
     const toast = await page.evaluate(
-      `${card}._toastEl.hidden ? '' : ${card}._toastEl.textContent`,
+      "(window.__notifications || []).at(-1) || ''",
     );
     check(
       'tap hints: tapping an unreachable lamp says "Turn on first: …" and toggles nothing',

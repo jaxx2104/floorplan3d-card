@@ -9,7 +9,7 @@ import {
   TOUCH_SHOW_MS,
 } from "../objects/hints.ts";
 import { groupedHidden, groupedTapId, dockRows } from "../mower-track.ts";
-import { actionTarget, toggleCall, type PopupData } from "../objects/popup.ts";
+import { actionTarget, type PopupData } from "../objects/popup.ts";
 import {
   layoutTags,
   mowerTabEntity,
@@ -642,8 +642,7 @@ export class ObjectInput {
     const st = target && this.card._hass.states[target];
     if (!st || st.state === "unavailable" || st.state === "unknown")
       return false;
-    const [domain, service, data] = toggleCall(target);
-    this.card._callService(domain, service, data);
+    this.card._runAction("toggle", { entity: target });
     return true;
   }
 
@@ -719,7 +718,7 @@ export class ObjectInput {
         this._groups || {},
       );
       if (!r.ok) {
-        this.card._toast(r.reason);
+        this.card._notify(r.reason);
         return;
       }
     }

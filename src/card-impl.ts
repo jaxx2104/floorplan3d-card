@@ -194,8 +194,7 @@ const MARKER_FIELDS = [
 const ACTION_METHODS = [
   "_runAction",
   "_callService",
-  "_toast",
-  "_closeConfirm",
+  "_notify",
   "_moreInfo",
 ] as const satisfies readonly (keyof ActionRunner)[];
 const OBJECT_METHODS = [
@@ -289,7 +288,6 @@ export class Floorplan3dCard extends HTMLElement {
   declare _chips: HTMLDivElement;
   declare _empty: HTMLDivElement;
   declare _notice: HTMLDivElement;
-  declare _toastEl: HTMLDivElement;
   declare _sectionBtn: HTMLButtonElement;
   declare _editBtn: HTMLButtonElement;
   declare _loadUI: ModelLoadUI;
@@ -555,7 +553,6 @@ export class Floorplan3dCard extends HTMLElement {
     if (this._loadUI) this._loadUI.dispose();
     this._objectInput.dispose(); // gesture, hint touch timer, hover frame
     this._taps.cancel();
-    this._actionRunner.dispose(); // confirmation
     if (this._popup) this._popup.close(); // window listeners
     if (this._editing && this._edit) this._edit.detach(); // window listeners (keys, pick menu)
     if (this._ro) this._ro.disconnect();
@@ -604,7 +601,6 @@ export class Floorplan3dCard extends HTMLElement {
             <div class="fp-suntime" hidden><input type="range" min="0" max="1440" step="15" aria-label="Sun time"><span class="time"></span><button class="now">Now</button></div>
             <div class="empty" hidden></div>
             <div class="notice" hidden></div>
-            <div class="fp-toast" hidden></div>
           </div>
         </div>
       </ha-card>`;
@@ -618,7 +614,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._chips = q<HTMLDivElement>(".chips");
     this._empty = q<HTMLDivElement>(".empty");
     this._notice = q<HTMLDivElement>(".notice");
-    this._toastEl = q<HTMLDivElement>(".fp-toast");
     q<HTMLDivElement>(".seg").addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       const mode = t.dataset && t.dataset.mode;
@@ -778,7 +773,7 @@ export class Floorplan3dCard extends HTMLElement {
         (e: unknown) => {
           this._editLoad = null;
           this._editBtn.disabled = false;
-          this._toast(
+          this._notify(
             `Edit mode failed to load: ${e instanceof Error ? e.message : String(e)}`,
           );
         },
@@ -795,7 +790,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._objectInput.clearHover();
     this._endGesture();
     this._taps.cancel();
-    this._closeConfirm();
     this._popup.close();
     this._editing = !this._editing;
     this._body.classList.toggle("editing", this._editing);

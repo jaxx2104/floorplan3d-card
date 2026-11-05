@@ -1,9 +1,8 @@
 // HA-style actions (tap_action / hold_action / double_tap_action) for model objects and markers.
-// Pure: resolution (type defaults < model fp.ui < layout ui < card YAML `actions:`), a description of
-// what to do (actionCall; the card executes it), popup link rows and the double-tap sequencer.
+// Pure: resolution (type defaults < model fp.ui < layout ui < card YAML `actions:`), field checks,
+// popup link rows and the double-tap sequencer. HA's frontend runs the actions (card/action-runner.ts).
 
 import type { ActionConfig, ObjectUi } from "./types/layout.ts";
-import type { HassServiceTarget } from "./types/ha.ts";
 
 export type ActionKind =
   | "toggle"
@@ -30,21 +29,9 @@ export const KINDS: readonly ActionKind[] = [
 const KIND_SET = new Set<unknown>(KINDS);
 export const WHICH: readonly ActionWhich[] = ["tap", "hold", "double_tap"];
 export const DOUBLE_TAP_MS = 250;
-const TOGGLE_DOMAINS = new Set(["light", "switch", "fan", "input_boolean"]);
 
 const plain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
-const domainOf = (e: string): string => String(e).split(".")[0];
-
-// [domain, service, data] toggling an entity (domains without their own toggle use homeassistant.toggle).
-export function toggleCall(
-  entity: string,
-): [string, string, { entity_id: string }] {
-  const d = domainOf(entity);
-  return TOGGLE_DOMAINS.has(d)
-    ? [d, "toggle", { entity_id: entity }]
-    : ["homeassistant", "toggle", { entity_id: entity }];
-}
 
 /** One action in HA's shape { action, ... }; a bare string is the action name; legacy call-service accepted. Invalid: null. */
 export function normAction(v: unknown): ActionConfig | null {
@@ -190,120 +177,25 @@ export function validateAction(
   }
 }
 
-function confirmText(
-  a: ActionConfig,
-  call: ActionCallBase,
-  userId: string | null,
-): string | null {
-  const c = a.confirmation;
-  if (!c || call.kind === "none" || call.kind === "error") return null;
-  if (
-    plain(c) &&
-    userId &&
-    Array.isArray(c.exemptions) &&
-    c.exemptions.some((x) => plain(x) && x.user === userId)
-  )
-    return null;
-  if (plain(c) && typeof c.text === "string" && c.text) return c.text;
-  const what =
-    call.kind === "service"
-      ? `run ${call.domain}.${call.service}`
-      : call.kind === "navigate"
-        ? `open ${call.path}`
-        : call.kind === "url"
-          ? `open ${call.url}`
-          : null;
-  return `Are you sure you want to ${what ?? a.action}?`;
+/** The detail of HA's `hass-action` event for one action. */
+export interface HassActionDetail {
+  config: { entity?: string; tap_action: ActionConfig };
+  action: "tap";
 }
 
 /**
- * What to do for an action. ctx.entity: the entity toggle / more-info act on by default; ctx.userId:
- * the HA user (confirmation.exemptions [{ user }] skip the dialog).
- * Returns { kind: 'service', domain, service, data, target? } | { kind: 'more-info', entityId } |
- * { kind: 'navigate', path, replace } | { kind: 'url', url, newTab } | { kind: 'assist', action } |
- * { kind: 'popup' } | { kind: 'none' } | { kind: 'error', message }; each with confirm (text | null).
+ * HA's frontend (handleAction) runs the action, confirmation dialog and haptics included. It toggles
+ * config.entity and opens more-info for the action's entity, else config.entity: the action's own
+ * entity wins over the target here, so both act on it. Always sent as a tap (the card detects the gesture).
  */
-type ActionCallBase =
-  | {
-      kind: "service";
-      domain: string;
-      service: string;
-      data: Record<string, unknown>;
-      target?: HassServiceTarget;
-    }
-  | { kind: "more-info"; entityId: string }
-  | { kind: "navigate"; path: string; replace: boolean }
-  | { kind: "url"; url: string; newTab: boolean }
-  | { kind: "assist"; action: ActionConfig }
-  | { kind: "popup" }
-  | { kind: "none" }
-  | { kind: "error"; message: string };
-export type ActionCall = ActionCallBase & { confirm: string | null };
-
-export function actionCall(
-  action: unknown,
-  ctx: { entity?: string | null; userId?: string | null } = {},
-): ActionCall {
-  const a = normAction(action);
-  let call: ActionCallBase;
-  const missing = a && validateAction(a);
-  if (!a) call = { kind: "none" };
-  else if (missing) call = { kind: "error", message: missing };
-  else {
-    const entity =
-      (typeof a.entity === "string" && a.entity) || ctx.entity || null;
-    switch (a.action) {
-      case "toggle": {
-        if (!entity) {
-          call = { kind: "error", message: "Nothing to toggle: no entity" };
-          break;
-        }
-        const [domain, service, data] = toggleCall(entity);
-        call = { kind: "service", domain, service, data };
-        break;
-      }
-      case "more-info":
-        call = entity
-          ? { kind: "more-info", entityId: entity }
-          : { kind: "error", message: "more-info needs an entity" };
-        break;
-      case "navigate":
-        call = {
-          kind: "navigate",
-          path: String(a.navigation_path),
-          replace: !!a.navigation_replace,
-        };
-        break;
-      case "url": {
-        const url = String(a.url_path);
-        call = { kind: "url", url, newTab: !url.startsWith("/") };
-        break;
-      }
-      case "perform-action": {
-        const [domain, service] = String(a.perform_action).split("."); // validateAction checked domain.action
-        const svc: ActionCallBase = {
-          kind: "service",
-          domain,
-          service,
-          data: plain(a.data) ? { ...a.data } : {},
-        };
-        if (plain(a.target)) svc.target = { ...a.target };
-        call = svc;
-        break;
-      }
-      case "assist":
-        call = { kind: "assist", action: a };
-        break;
-      case "popup":
-        call = { kind: "popup" };
-        break;
-      default:
-        call = { kind: "none" };
-    }
-  }
+export function hassActionDetail(
+  a: ActionConfig,
+  entity?: string | null,
+): HassActionDetail {
+  const e = (typeof a.entity === "string" && a.entity) || entity || null;
   return {
-    ...call,
-    confirm: a ? confirmText(a, call, ctx.userId || null) : null,
+    config: { ...(e ? { entity: e } : {}), tap_action: a },
+    action: "tap",
   };
 }
 

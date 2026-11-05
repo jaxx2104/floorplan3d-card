@@ -3,7 +3,7 @@
 import type * as THREE from "three";
 import { typeOf } from "./types.ts";
 import { controllersOf } from "./logic.ts";
-import { toggleCall, popupLinks } from "../actions.ts";
+import { popupLinks } from "../actions.ts";
 import { applyBadges } from "../badge-dom.ts";
 import type { ChainState, Controller, ObjectBinding } from "./logic.ts";
 import type { ModelObject } from "./types.ts";
@@ -11,8 +11,6 @@ import type { PopupLink, PopupSource } from "../actions.ts";
 import type { BadgeInfo } from "../badges.ts";
 import type { HassEntity } from "../types/ha.ts";
 import type { ActionConfig, LayoutTag } from "../types/layout.ts";
-
-export { toggleCall };
 
 type States = Record<string, HassEntity>;
 type Groups = Record<string, LayoutTag | null | undefined>;
@@ -717,7 +715,7 @@ export class ObjectPopup {
     const entity = row && row.dataset.entity;
     if (!b || !entity) return;
     const act = b.dataset.act;
-    if (act === "toggle") this.onAction(...toggleCall(entity));
+    if (act === "toggle") this.onLink({ action: "toggle", entity });
     else if (act === "pct")
       this.onAction("light", "turn_on", {
         entity_id: entity,

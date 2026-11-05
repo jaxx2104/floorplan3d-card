@@ -146,17 +146,6 @@ export const STYLE: string = `
   .fp-debug { position: absolute; left: 8px; bottom: 8px; z-index: 4; pointer-events: none; white-space: pre; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
     color: var(--primary-text-color, #212121); background: color-mix(in srgb, var(--card-background-color, #fff) 82%, transparent);
     border: 1px solid var(--divider-color, rgba(0,0,0,.12)); border-radius: 6px; padding: 4px 6px; }
-  .fp-toast { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 4; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box;
-    padding: 6px 12px; border-radius: 8px; font-size: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color);
-    border: 1px solid var(--warning-color, #ff9800); box-shadow: 0 2px 8px rgba(0,0,0,.25); pointer-events: none; }
-  .fp-toast[hidden] { display: none; }
-  .fp-confirm { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; width: min(280px, calc(100% - 32px));
-    box-sizing: border-box; padding: 12px 14px; border-radius: 12px; font-size: 13px; background: var(--card-background-color, #fff);
-    color: var(--primary-text-color); border: 1px solid var(--divider-color, rgba(0,0,0,.12)); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
-  .fp-confirm-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
-  .fp-confirm-btns button { font: inherit; padding: 4px 12px; border-radius: 12px; cursor: pointer;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.12)); background: var(--card-background-color, #fff); color: var(--primary-text-color); }
-  .fp-confirm-btns button.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
   .fp-pop-btns button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 12px; cursor: pointer;
     border: 1px solid var(--divider-color, rgba(0,0,0,.12)); background: var(--card-background-color, #fff); color: var(--primary-text-color); }
   .body { display: flex; }

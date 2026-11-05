@@ -548,13 +548,17 @@ has no marker: the object is the control.
 
 ### Actions
 
-Objects and markers take Home Assistant's standard actions: `tap_action`, `hold_action` (500 ms)
-and `double_tap_action`, each `{ action: ... }` with `toggle`, `more-info` (optional `entity`),
-`navigate` (`navigation_path`), `url` (`url_path`: `http(s)://…` opens a new tab, a path starting
-with `/` the same tab; other schemes are refused), `perform-action` (`perform_action`, `data`,
-`target`; the older `service` / `service_data` work too), `assist`, `none`, plus `popup` (the
-object's popup). `confirmation: true` (or `{ text: ..., exemptions: [{ user: <user id> }] }`) asks
-first in a small dialog in the card, except for the listed users.
+Objects and markers take Home Assistant's standard action config: `tap_action`, `hold_action`
+(500 ms) and `double_tap_action`, each `{ action: ... }` with `toggle`, `more-info` (optional
+`entity`), `navigate` (`navigation_path`, `navigation_replace`), `url` (`url_path`: `http(s)://…` or
+a path starting with `/`; other schemes are refused), `perform-action` (`perform_action`, `data`,
+`target`; the older `call-service` / `service` / `service_data` work too), `assist`, `none`, plus
+the card's own `popup` (the object's popup). The card detects the gesture and hands the action to
+Home Assistant's frontend (the `hass-action` event), so it runs exactly as on HA's own cards:
+`confirmation: true` (or `{ text: ..., exemptions: [{ user: <user id> }] }`) shows HA's confirmation
+dialog, URLs open the way HA opens them, toggles use HA's toggle and haptics follow HA's settings.
+An action's own `entity` is the one `toggle` and `more-info` act on; without one they act on the
+object's entity (or its group controller, see the popup chain).
 Later wins: the model's `fp.ui` (old `tap` / `hold` keys still work) → the Objects tab → the card
 YAML `actions:`, keyed `object:<id>` (model objects), `<entity_id>`, `tag:<name>` (objects with that
 tag) or `device:<device_id>` (objects and markers); `object:` wins over the entity, the entity over
@@ -581,7 +585,7 @@ Defaults: lamps toggle on tap and open the popup on hold; markers toggle lights 
 input booleans and open more-info otherwise, hold opens more-info. A single tap waits 250 ms for a
 second tap only on objects or markers that have a `double_tap_action`; everything else reacts at
 once. An action missing a field (e.g. `navigate` without `navigation_path`) does nothing and shows
-a short message; a failed service call shows its error the same way. Popup rows can end with links: `history`, `logbook` (open HA's history / logbook for
+an HA toast; a failed service call shows HA's own error toast. Popup rows can end with links: `history`, `logbook` (open HA's history / logbook for
 the entity), `statistics` (the entity's more-info) and custom `{ label, navigate }` or `{ label, url }`.
 
 ### Views

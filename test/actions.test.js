@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "bun:test";
 import {
   normAction,
   resolveActions,
-  actionCall,
+  hassActionDetail,
   validateAction,
   popupLinks,
   TapSequencer,
@@ -207,176 +207,42 @@ describe("resolveActions", () => {
   });
 });
 
-describe("validateAction / actionCall", () => {
-  const ctx = { entity: "light.a" };
-
-  it("toggle", () => {
-    expect(actionCall({ action: "toggle" }, ctx)).toEqual({
-      kind: "service",
-      domain: "light",
-      service: "toggle",
-      data: { entity_id: "light.a" },
-      confirm: null,
-    });
-    expect(actionCall({ action: "toggle" }, { entity: "cover.c" }).domain).toBe(
-      "homeassistant",
+describe("validateAction", () => {
+  it("navigate / url / perform-action need their field", () => {
+    expect(validateAction({ action: "navigate" })).toMatch(/navigation_path/);
+    expect(
+      validateAction({ action: "navigate", navigation_path: "/lovelace/2" }),
+    ).toBe(null);
+    expect(validateAction({ action: "url" })).toMatch(/url_path/);
+    expect(validateAction({ action: "perform-action" })).toMatch(
+      /perform_action/,
     );
     expect(
-      actionCall({ action: "toggle", entity: "switch.b" }, ctx).data,
-    ).toEqual({ entity_id: "switch.b" });
-    expect(actionCall({ action: "toggle" }, {})).toMatchObject({
-      kind: "error",
-    });
-  });
-
-  it("more-info", () => {
-    expect(actionCall({ action: "more-info" }, ctx)).toMatchObject({
-      kind: "more-info",
-      entityId: "light.a",
-    });
-    expect(
-      actionCall({ action: "more-info", entity: "sensor.t" }, ctx),
-    ).toMatchObject({ kind: "more-info", entityId: "sensor.t" });
-    expect(actionCall({ action: "more-info" }, {})).toMatchObject({
-      kind: "error",
-    });
-  });
-
-  it("navigate", () => {
-    expect(
-      actionCall({ action: "navigate", navigation_path: "/lovelace/2" }, ctx),
-    ).toMatchObject({ kind: "navigate", path: "/lovelace/2", replace: false });
-    expect(
-      actionCall(
-        { action: "navigate", navigation_path: "/x", navigation_replace: true },
-        ctx,
-      ).replace,
-    ).toBe(true);
-    expect(actionCall({ action: "navigate" }, ctx)).toMatchObject({
-      kind: "error",
-      message: expect.stringContaining("navigation_path"),
-    });
-  });
-
-  it("url: new tab unless a local path", () => {
-    expect(
-      actionCall({ action: "url", url_path: "https://example.com" }, ctx),
-    ).toMatchObject({ kind: "url", url: "https://example.com", newTab: true });
-    expect(
-      actionCall({ action: "url", url_path: "/local/x.html" }, ctx),
-    ).toMatchObject({ kind: "url", newTab: false });
-    expect(actionCall({ action: "url" }, ctx)).toMatchObject({
-      kind: "error",
-      message: expect.stringContaining("url_path"),
-    });
-  });
-
-  it("perform-action", () => {
-    const a = {
-      action: "perform-action",
-      perform_action: "light.turn_on",
-      data: { brightness: 10 },
-      target: { entity_id: "light.b" },
-    };
-    expect(actionCall(a, ctx)).toEqual({
-      kind: "service",
-      domain: "light",
-      service: "turn_on",
-      data: { brightness: 10 },
-      target: { entity_id: "light.b" },
-      confirm: null,
-    });
-    // entity in data counts as a target
-    expect(
-      actionCall(
-        {
-          action: "perform-action",
-          perform_action: "light.turn_on",
-          data: { entity_id: "light.b" },
-        },
-        ctx,
-      ),
-    ).toMatchObject({ kind: "service" });
-    // a script runs without a target
-    expect(
-      actionCall(
-        { action: "perform-action", perform_action: "script.good_night" },
-        ctx,
-      ),
-    ).toMatchObject({
-      kind: "service",
-      domain: "script",
-      service: "good_night",
-    });
-  });
-
-  it("perform-action: missing / malformed perform_action is a message, never a call; no target is fine", () => {
-    expect(actionCall({ action: "perform-action" }, ctx)).toMatchObject({
-      kind: "error",
-      message: expect.stringContaining("perform_action"),
-    });
-    expect(
-      actionCall({ action: "perform-action", perform_action: "nodot" }, ctx),
-    ).toMatchObject({ kind: "error" });
-    expect(
-      actionCall(
-        { action: "perform-action", perform_action: "light.turn_on" },
-        ctx,
-      ),
-    ).toEqual({
-      kind: "service",
-      domain: "light",
-      service: "turn_on",
-      data: {},
-      confirm: null,
-    });
+      validateAction({ action: "perform-action", perform_action: "nodot" }),
+    ).toMatch(/domain\.action/);
     expect(
       validateAction({
         action: "perform-action",
         perform_action: "light.turn_on",
       }),
     ).toBe(null);
-    expect(validateAction({ action: "perform-action" })).toMatch(
-      /perform_action/,
-    );
     expect(validateAction({ action: "toggle" })).toBe(null);
+    expect(validateAction(null)).toBe(null);
   });
 
-  it("perform-action: legacy service / service_data accepted as fallbacks", () => {
+  it("legacy call-service is checked after normAction", () => {
     expect(
-      actionCall(
-        {
-          action: "perform-action",
-          service: "light.turn_on",
-          service_data: { brightness: 5 },
-        },
-        ctx,
+      validateAction(
+        normAction({ action: "call-service", service: "script.good_night" }),
       ),
-    ).toMatchObject({
-      kind: "service",
-      domain: "light",
-      service: "turn_on",
-      data: { brightness: 5 },
-    });
-    // the new keys win
-    expect(
-      actionCall(
-        {
-          action: "perform-action",
-          perform_action: "switch.turn_on",
-          service: "light.turn_on",
-          data: { a: 1 },
-          service_data: { b: 2 },
-        },
-        ctx,
-      ),
-    ).toMatchObject({ domain: "switch", data: { a: 1 } });
+    ).toBe(null);
   });
 
   it("url: only http(s) or a local path", () => {
-    expect(
-      actionCall({ action: "url", url_path: "http://x" }, ctx),
-    ).toMatchObject({ kind: "url" });
+    expect(validateAction({ action: "url", url_path: "http://x" })).toBe(null);
+    expect(validateAction({ action: "url", url_path: "/local/x.html" })).toBe(
+      null,
+    );
     for (const bad of [
       "javascript:alert(1)",
       "data:text/html,x",
@@ -384,53 +250,32 @@ describe("validateAction / actionCall", () => {
       "ftp://x",
       "//evil.example",
     ]) {
-      expect(actionCall({ action: "url", url_path: bad }, ctx)).toMatchObject({
-        kind: "error",
-      });
+      expect(validateAction({ action: "url", url_path: bad })).toMatch(
+        /url_path/,
+      );
     }
   });
+});
 
-  it("confirmation exemptions: no dialog for a listed user", () => {
-    const a = {
-      action: "toggle",
-      confirmation: { text: "Sure?", exemptions: [{ user: "u1" }] },
-    };
-    expect(actionCall(a, { ...ctx, userId: "u1" }).confirm).toBe(null);
-    expect(actionCall(a, { ...ctx, userId: "u2" }).confirm).toBe("Sure?");
-    expect(actionCall(a, ctx).confirm).toBe("Sure?");
-  });
-
-  it("assist, popup, none, unknown", () => {
-    expect(
-      actionCall({ action: "assist", pipeline_id: "p" }, ctx),
-    ).toMatchObject({
-      kind: "assist",
-      action: { action: "assist", pipeline_id: "p" },
+describe("hassActionDetail", () => {
+  it("the action as tap_action, the target as config.entity", () => {
+    const a = { action: "toggle", confirmation: { text: "Sure?" } };
+    expect(hassActionDetail(a, "light.a")).toEqual({
+      config: { entity: "light.a", tap_action: a },
+      action: "tap",
     });
-    expect(actionCall({ action: "popup" }, ctx)).toMatchObject({
-      kind: "popup",
-    });
-    expect(actionCall({ action: "none" }, ctx)).toMatchObject({ kind: "none" });
-    expect(actionCall(null, ctx)).toMatchObject({ kind: "none" });
   });
-
-  it("confirmation: true -> a default text, { text } -> that text", () => {
+  it("the action's own entity wins (HA toggles config.entity)", () => {
     expect(
-      actionCall({ action: "toggle", confirmation: true }, ctx).confirm,
-    ).toMatch(/\?$/);
+      hassActionDetail({ action: "toggle", entity: "switch.b" }, "light.a")
+        .config.entity,
+    ).toBe("switch.b");
+  });
+  it("no entity: no config.entity (navigate, perform-action, assist)", () => {
     expect(
-      actionCall(
-        {
-          action: "navigate",
-          navigation_path: "/x",
-          confirmation: { text: "Go?" },
-        },
-        ctx,
-      ).confirm,
-    ).toBe("Go?");
-    expect(
-      actionCall({ action: "none", confirmation: true }, ctx).confirm,
-    ).toBe(null);
+      hassActionDetail({ action: "navigate", navigation_path: "/x" }, null)
+        .config,
+    ).toEqual({ tap_action: { action: "navigate", navigation_path: "/x" } });
   });
 });
 
