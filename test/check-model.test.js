@@ -300,26 +300,15 @@ describe("checkGlb", () => {
         ],
       }),
     );
-    expect(r).toHaveProperty("ok");
-    expect(() =>
-      checkGlb(
-        glb({
-          asset: { version: "2.0" },
-          scene: 0,
-          scenes: [{ nodes: [0] }],
-          nodes: [
-            {
-              name: "ground",
-              extras: fp({ kind: "level", id: "ground" }),
-              children: [1],
-            },
-            { name: "m", mesh: 3 },
-          ],
-        }),
-      ),
-    ).not.toThrow();
+    // a dangling mesh index is no model error: the level is still read
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+    expect(r.levels.map((l) => l.id)).toEqual(["ground"]);
   });
 });
+
+// resolved from this file, so the suite runs from any working directory
+const CLI = path.join(import.meta.dirname, "..", "tools", "check-model.mjs");
 
 describe("CLI", () => {
   it("prints a report and exits 1 on errors", () => {
@@ -340,7 +329,7 @@ describe("CLI", () => {
     let code = 0,
       out = "";
     try {
-      execFileSync(process.execPath, ["tools/check-model.mjs", file], {
+      execFileSync(process.execPath, [CLI, file], {
         encoding: "utf8",
       });
     } catch (e) {
@@ -350,24 +339,22 @@ describe("CLI", () => {
     expect(code).toBe(1);
     expect(out).toMatch(/ERROR .*duplicate level id "x"/);
     const json = JSON.parse(
-      execFileSync(
-        process.execPath,
-        ["tools/check-model.mjs", file, "--json"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-      ).toString() || "{}",
+      execFileSync(process.execPath, [CLI, file, "--json"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).toString() || "{}",
     );
     expect(json.ok).toBe(false);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("exits 1 on unreadable file in text mode", () => {
     let code = 0,
       out = "";
     try {
-      execFileSync(
-        process.execPath,
-        ["tools/check-model.mjs", "/nonexistent/path.glb"],
-        { encoding: "utf8" },
-      );
+      execFileSync(process.execPath, [CLI, "/nonexistent/path.glb"], {
+        encoding: "utf8",
+      });
     } catch (e) {
       code = e.status;
       out = e.stdout;
@@ -382,7 +369,7 @@ describe("CLI", () => {
     try {
       out = execFileSync(
         process.execPath,
-        ["tools/check-model.mjs", "/nonexistent/path.glb", "--json"],
+        [CLI, "/nonexistent/path.glb", "--json"],
         { encoding: "utf8" },
       );
       code = 0;

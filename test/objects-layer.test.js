@@ -12,6 +12,9 @@ import { chargerInputs, TYPES } from "../src/objects/types.ts";
 
 const points = (layer) => layer.pool.points;
 const lit = (arr) => arr.filter((l) => l.intensity > 0);
+// the lit pool light at a lamp's x (the lamps of model() sit at (x, 2, 0))
+const litAt = (layer, x) =>
+  lit(points(layer)).find((l) => Math.abs(l.position.x - x) < 1e-6);
 
 describe("ObjectLayer", () => {
   let view, layer;
@@ -731,7 +734,7 @@ describe("per-light shadow updates", () => {
     layer.update({ "light.a": st("on"), "light.b": st("on") }, ctx);
     expect(view.flagged).toHaveLength(2);
     expect(view.flagged[1]).not.toBe(first[0]);
-    expect(layer._slots.get("a").light).toBe(first[0]);
+    expect(litAt(layer, 1)).toBe(first[0]); // lamp a kept its light (and map)
   });
 
   it("shadowsStale: lit shadow slots only; dark ones redraw when they light up", () => {
@@ -750,9 +753,9 @@ describe("per-light shadow updates", () => {
     );
     layer.update({ "light.a": st("on"), "light.b": st("off") }, ctx);
     const stale = layer.shadowsStale();
-    expect(stale).toEqual([layer._slots.get("a").light]);
+    expect(stale).toEqual([litAt(layer, 1)]);
     layer.update({ "light.a": st("on"), "light.b": st("on") }, ctx);
-    expect(view.flagged.at(-1)).toBe(layer._slots.get("b").light);
+    expect(view.flagged.at(-1)).toBe(litAt(layer, 2));
   });
 
   it("the model moving redraws the lit shadow maps", () => {

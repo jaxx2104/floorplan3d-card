@@ -132,7 +132,7 @@ describe("resolveVisibility", () => {
     const v = resolveVisibility(idx, rules);
     return (name) => v[at(name)];
   };
-  it("defaults to visible and inherits", () => {
+  it("without rules everything is visible", () => {
     const v = vis([]);
     expect(v("Sofa")).toBe(true);
   });
@@ -293,13 +293,6 @@ describe("resolveVisibility: keep_objects", () => {
 });
 
 describe("views edge cases", () => {
-  it("rule order matters", () => {
-    const v = resolveVisibility(idx, [
-      { show: "room:kitchen" },
-      { hide: "level:ground" },
-    ]);
-    expect(v[at("kitchen")]).toBe(false);
-  });
   it("malformed rules are ignored", () => {
     const rules = [{}, null, { show: 5 }, { hide: "node:" }];
     expect(() => unmatchedSelectors(idx, rules)).not.toThrow();

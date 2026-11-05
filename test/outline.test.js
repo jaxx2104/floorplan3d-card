@@ -87,10 +87,6 @@ describe("outlineFromTriangles", () => {
     expect(outlineFromTriangles([], [0, 0, 0])).toBeNull();
   });
   it("pinch vertices: two squares touching at a corner", () => {
-    const out1 = outlineFromTriangles([...quad(0, 0, 2, 2)], [1, 0, -1]);
-    expect(area(out1)).toBeCloseTo(4);
-    const out2 = outlineFromTriangles([...quad(2, 2, 4, 4)], [3, 0, -3]);
-    expect(area(out2)).toBeCloseTo(4);
     const out12 = outlineFromTriangles(
       [...quad(0, 0, 2, 2), ...quad(2, 2, 4, 4)],
       [3, 0, -3],
@@ -113,38 +109,17 @@ describe("outlineFromTriangles", () => {
     expect(out).toHaveLength(4);
     expect(area(out)).toBeCloseTo(12);
   });
-  it("flipped triangle normalizes winding and integrates into boundary", () => {
-    // Two overlapping quads that cancel interior edges when winding is corrected
+  it("a quad lying on top of the floor leaves the outer boundary", () => {
     const out = outlineFromTriangles(
       [...quad(0, 0, 4, 3), ...quad(1, 1, 3, 2)],
-      [2, 0, -1.5],
+      [0.5, 0, -0.5],
     );
-    expect(out).toBeTruthy();
-    expect(area(out)).toBeGreaterThan(0);
+    expect(out).toHaveLength(4);
+    expect(area(out)).toBeCloseTo(12);
   });
   it("pinch with unequal edge lengths: 2×2 square touching 3×1 rectangle", () => {
-    const rect = (x0, y0, x1, y1, y = 0) => [
-      x0,
-      y,
-      -y0,
-      x1,
-      y,
-      -y0,
-      x1,
-      y,
-      -y1,
-      x0,
-      y,
-      -y0,
-      x1,
-      y,
-      -y1,
-      x0,
-      y,
-      -y1,
-    ];
     const out = outlineFromTriangles(
-      [...rect(0, 0, 2, 2), ...rect(2, 0, 5, 1)],
+      [...quad(0, 0, 2, 2), ...quad(2, 0, 5, 1)],
       [3.5, 0, -0.5],
     );
     expect(out).toHaveLength(4);

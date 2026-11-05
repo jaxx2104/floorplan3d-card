@@ -154,13 +154,16 @@ describe("tiles", () => {
     expect(changedTiles(ha, hb)).toEqual([1 * 4 + 2]);
   });
   it("no previous hashes (or another size): every tile", () => {
+    // 200 x 150 px: 4 x 3 tiles (the edge ones smaller)
     const h = tileHashes(
-      img(64, 64, () => [1, 2, 3]),
-      64,
-      64,
+      img(200, 150, () => [1, 2, 3]),
+      200,
+      150,
     );
-    expect(changedTiles(null, h)).toEqual([0]);
-    expect(changedTiles(new Uint32Array(3), h)).toEqual([0]);
+    const all = [...Array(12).keys()];
+    expect(changedTiles(null, h)).toEqual(all);
+    expect(changedTiles(new Uint32Array(3), h)).toEqual(all);
+    expect(changedTiles(h, h)).toEqual([]);
   });
 });
 

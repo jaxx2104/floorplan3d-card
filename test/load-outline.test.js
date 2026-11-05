@@ -3,7 +3,6 @@ import {
   simplifyPolygon,
   pickOutline,
   serializeOutline,
-  parseOutline,
   saveOutline,
   loadOutline,
   outlineKey,
@@ -123,7 +122,7 @@ describe("storage", () => {
     st.setItem(outlineKey("bad"), "{nope");
     expect(loadOutline("bad", st)).toBe(null);
     st.setItem(outlineKey("bad"), "[[[0,0],[1,1]]]");
-    expect(parseOutline("[[[0,0],[1,1]]]")).toBe(null);
+    expect(loadOutline("bad", st)).toBe(null); // a polygon needs 3 points
   });
   it("survives a throwing storage", () => {
     const boom = {
