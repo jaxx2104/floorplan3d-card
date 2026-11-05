@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "bun:test";
 import {
   layoutModelVersion,
   headerVersion,
@@ -9,7 +9,7 @@ import {
   readWithProgress,
   withTimeout,
   loadModelBuffer,
-  MODEL_TIMEOUT_MS,
+  evictModel,
 } from "../src/model-cache.ts";
 
 describe("model cache versions", () => {
@@ -116,47 +116,137 @@ describe("readWithProgress", () => {
 });
 
 describe("withTimeout", () => {
+  afterEach(() => vi.useRealTimers());
   it("passes the value through in time", async () => {
     await expect(withTimeout(Promise.resolve(7), 50, "slow")).resolves.toBe(7);
   });
   it("rejects with the message after ms and calls onTimeout", async () => {
+    vi.useFakeTimers();
     let aborted = false;
-    await expect(
-      withTimeout(new Promise(() => {}), 10, "Model download timed out", () => {
+    const p = withTimeout(
+      new Promise(() => {}),
+      10,
+      "Model download timed out",
+      () => {
         aborted = true;
-      }),
-    ).rejects.toThrow("Model download timed out");
+      },
+    );
+    vi.advanceTimersByTime(9);
+    expect(aborted).toBe(false);
+    vi.advanceTimersByTime(1);
+    await expect(p).rejects.toThrow("Model download timed out");
     expect(aborted).toBe(true);
-  });
-  it("the download timeout is 60 s", () => {
-    expect(MODEL_TIMEOUT_MS).toBe(60000);
   });
 });
 
+// Cache Storage stand-in: one cache, requests keyed by URL.
+function fakeCaches() {
+  const store = new Map();
+  const cache = {
+    match: async (url) => {
+      const b = store.get(url);
+      return b ? new Response(b) : undefined;
+    },
+    put: async (url, res) => {
+      store.set(url, new Uint8Array(await res.arrayBuffer()));
+    },
+    keys: async () => [...store.keys()].map((url) => ({ url })),
+    delete: async (req) => store.delete(req.url),
+  };
+  return { store, caches: { open: async () => cache } };
+}
+
 describe("loadModelBuffer", () => {
-  it("fetchFn gets an abort signal; skipCache fetches even with a version", async () => {
-    let sig = null;
-    const fetchFn = async (o) => {
-      sig = o && o.signal;
-      return new Response(new Uint8Array([1]));
-    };
+  const base = "http://x/m.glb";
+  let saved, fake;
+  beforeEach(() => {
+    saved = globalThis.caches;
+    fake = fakeCaches();
+    globalThis.caches = fake.caches;
+  });
+  afterEach(() => {
+    globalThis.caches = saved;
+    vi.useRealTimers();
+  });
+  const bytes = (r) => [...new Uint8Array(r.buf)];
+  const serving = (b) => {
+    const fn = vi.fn(async () => new Response(new Uint8Array(b)));
+    return fn;
+  };
+
+  it("fetches once per version, then serves the cached copy", async () => {
+    const fetchFn = serving([1, 2]);
+    const first = await loadModelBuffer({ base, version: "v1", fetchFn });
+    expect(first.cached).toBe(false);
+    const again = await loadModelBuffer({ base, version: "v1", fetchFn });
+    expect(again.cached).toBe(true);
+    expect(bytes(again)).toEqual([1, 2]);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+  it("a new version replaces the old one in the cache", async () => {
+    await loadModelBuffer({ base, version: "v1", fetchFn: serving([1]) });
     const r = await loadModelBuffer({
-      base: "http://x/m.glb",
-      version: null,
-      fetchFn,
+      base,
+      version: "v2",
+      fetchFn: serving([2]),
     });
     expect(r.cached).toBe(false);
-    expect(sig && typeof sig.aborted).toBe("boolean");
+    expect([...fake.store.keys()]).toEqual([cacheUrl(base, "v2")]);
   });
-  it("a stalled download fails after the timeout", async () => {
-    const fetchFn = () => new Promise(() => {});
+  it("skipCache fetches even with a cached copy, and replaces it", async () => {
+    await loadModelBuffer({ base, version: "v1", fetchFn: serving([1]) });
+    const r = await loadModelBuffer({
+      base,
+      version: "v1",
+      fetchFn: serving([7]),
+      skipCache: true,
+    });
+    expect(r.cached).toBe(false);
+    expect(bytes(r)).toEqual([7]);
+    const next = await loadModelBuffer({
+      base,
+      version: "v1",
+      fetchFn: serving([0]),
+    });
+    expect(bytes(next)).toEqual([7]);
+  });
+  it("version null is never cached", async () => {
+    const fetchFn = serving([1]);
+    await loadModelBuffer({ base, version: null, fetchFn });
+    await loadModelBuffer({ base, version: null, fetchFn });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fake.store.size).toBe(0);
+  });
+  it("evictModel drops every cached version of the model", async () => {
+    await loadModelBuffer({ base, version: "v1", fetchFn: serving([1]) });
+    await loadModelBuffer({
+      base: "http://x/other.glb",
+      version: "v1",
+      fetchFn: serving([1]),
+    });
+    await evictModel(base);
+    expect([...fake.store.keys()]).toEqual([
+      cacheUrl("http://x/other.glb", "v1"),
+    ]);
+  });
+  it("an HTTP error rejects with its status and is not cached", async () => {
+    const fetchFn = async () => new Response("no", { status: 404 });
     await expect(
-      loadModelBuffer({
-        base: "http://x/m.glb",
-        version: null,
-        fetchFn,
-        timeoutMs: 10,
-      }),
-    ).rejects.toThrow(/timed out/);
+      loadModelBuffer({ base, version: "v1", fetchFn }),
+    ).rejects.toThrow("HTTP 404");
+    expect(fake.store.size).toBe(0);
+  });
+  it("a stalled download fails after the timeout and aborts the request", async () => {
+    vi.useFakeTimers();
+    let signal = null;
+    const fetchFn = (o) => {
+      signal = o.signal;
+      return new Promise(() => {});
+    };
+    const p = loadModelBuffer({ base, version: null, fetchFn, timeoutMs: 10 });
+    await Promise.resolve();
+    vi.advanceTimersByTime(10);
+    await expect(p).rejects.toThrow(/timed out/);
+    expect(signal.aborted).toBe(true);
   });
 });
