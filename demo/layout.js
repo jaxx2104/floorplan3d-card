@@ -2,7 +2,7 @@
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 
 export const DEMO_LAYOUT = {
-  version: 1,
+  version: 2,
   floors: [],
   rooms: [
     { id: 'r-living', area_id: 'living_room', polygon: rect(0, 0, 5, 5), doors: [[5, 2.5], [2.5, 0]] },

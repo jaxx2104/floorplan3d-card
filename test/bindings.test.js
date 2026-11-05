@@ -1,7 +1,8 @@
 // test/bindings.test.js
 import { describe, it, expect } from 'vitest';
+import { parseLayout } from '../src/schema/layout.ts';
 import {
-  levelsFromFloorMap, migrateModel, resolveLevels, resolveRoomAreas, transformPoint, modelRooms,
+  levelsFromFloorMap, resolveLevels, resolveRoomAreas, transformPoint, modelRooms,
   combineRooms, levelFloorOverrides, bindingDiff, snapshotDiff, levelVisible, measuredElevations,
 } from '../src/bindings.ts';
 
@@ -14,19 +15,21 @@ describe('legacy bindings', () => {
       .toEqual({ ground: { floor: 'floor1' }, attic: { show: 'always' }, x: { show: 'hidden' } });
   });
   it('migrates layout.model.floor_map into levels', () => {
-    expect(migrateModel({ version: 'v', floor_map: { ground: 'floor1' } })).toEqual({ version: 'v', levels: { ground: { floor: 'floor1' } } });
+    const model = (m) => parseLayout({ model: m }).value.model;
+    expect(model({ version: 'v', floor_map: { ground: 'floor1' } })).toEqual({ version: 'v', levels: { ground: { floor: 'floor1' } } });
     const m = { version: 'v', levels: { a: { floor: 'floor1' } } };
-    expect(migrateModel(m)).toBe(m);
-    expect(migrateModel(null)).toBeNull();
+    expect(model(m)).toEqual(m);
+    expect(model(null)).toBeNull();
   });
   it('levelsFromFloorMap ignores non-string values and non-object input', () => {
     expect(levelsFromFloorMap('abc')).toEqual({});
     expect(levelsFromFloorMap({ good: 'floor1', bad: 123, ugly: ['array'] })).toEqual({ good: { floor: 'floor1' } });
     expect(levelsFromFloorMap(null)).toEqual({});
   });
-  it('migrateModel ignores non-plain-object floor_map', () => {
-    expect(migrateModel({ version: 'v', floor_map: 'x' }).levels).toEqual({});
-    expect(migrateModel({ version: 'v', floor_map: { x: 123 } }).levels).toEqual({});
+  it('the floor_map migration ignores non-plain-object floor_map', () => {
+    const model = (m) => parseLayout({ model: m }).value.model;
+    expect(model({ version: 'v', floor_map: 'x' }).levels).toEqual({});
+    expect(model({ version: 'v', floor_map: { x: 123 } }).levels).toEqual({});
   });
 });
 

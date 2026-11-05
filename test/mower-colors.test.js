@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseLayout } from '../src/schema/layout.ts';
 import { processMap, findBlob, colorList, addColorPatch, removeColorPatch, MAX_COLORS } from '../src/mower-image.ts';
 
 const BG1 = [30, 70, 35], BG2 = [60, 110, 50], RED1 = [255, 40, 30], RED2 = [200, 20, 60];
@@ -12,15 +13,18 @@ function rect(a, w, x0, y0, rw, rh, c) {
 }
 
 describe('colour lists', () => {
-  it('reads the old single colour as a one-colour list', () => {
-    expect(colorList({ bg_color: [1, 2, 3] }, 'bg')).toEqual([[1, 2, 3]]);
-    expect(colorList({ color: [4, 5, 6] })).toEqual([[4, 5, 6]]);
-    expect(colorList({ bg_colors: [[1, 2, 3], [7, 8, 9]], bg_color: [0, 0, 0] }, 'bg')).toEqual([[1, 2, 3], [7, 8, 9]]);
-    expect(colorList({ bg_colors: [], bg_color: [0, 0, 0] }, 'bg')).toEqual([]);
+  it('reads the list (the v1 single colour is migrated into it on load)', () => {
+    expect(colorList({ bg_colors: [[1, 2, 3], [7, 8, 9]] }, 'bg')).toEqual([[1, 2, 3], [7, 8, 9]]);
+    expect(colorList({ colors: [[4, 5, 6], 'x'] })).toEqual([[4, 5, 6]]);
+    expect(colorList({ bg_colors: [] }, 'bg')).toEqual([]);
     expect(colorList(null, 'bg')).toEqual([]);
+    const m = (mower) => parseLayout({ mower }).value.mower;
+    expect(m({ overlay: { bg_color: [1, 2, 3] }, image: { color: [4, 5, 6] } })).toEqual({ overlay: { bg_colors: [[1, 2, 3]] }, image: { colors: [[4, 5, 6]] } });
+    expect(m({ overlay: { bg_colors: [[1, 2, 3], [7, 8, 9]], bg_color: [0, 0, 0] } }).overlay).toEqual({ bg_colors: [[1, 2, 3], [7, 8, 9]] });
+    expect(m({ overlay: { bg_colors: [], bg_color: [0, 0, 0] } }).overlay).toEqual({ bg_colors: [] });
   });
-  it('adds (writes the list, drops the old field), no duplicates, at most 4', () => {
-    expect(addColorPatch({ bg_color: [1, 2, 3] }, 'bg', [4, 5, 6])).toEqual({ bg_colors: [[1, 2, 3], [4, 5, 6]], bg_color: undefined });
+  it('adds (writes the list), no duplicates, at most 4', () => {
+    expect(addColorPatch({ bg_colors: [[1, 2, 3]] }, 'bg', [4, 5, 6])).toEqual({ bg_colors: [[1, 2, 3], [4, 5, 6]] });
     expect(addColorPatch({ colors: [[1, 2, 3]] }, null, [1, 2, 3]).colors).toEqual([[1, 2, 3]]);
     let o = {};
     for (let i = 0; i < 6; i++) o = { ...o, ...addColorPatch(o, 'mowed', [i, i, i]) };
@@ -28,7 +32,7 @@ describe('colour lists', () => {
     expect(o.mowed_colors[MAX_COLORS - 1]).toEqual([5, 5, 5]);
   });
   it('removes by index', () => {
-    expect(removeColorPatch({ nomow_colors: [[1, 1, 1], [2, 2, 2]] }, 'nomow', 0)).toEqual({ nomow_colors: [[2, 2, 2]], nomow_color: undefined });
+    expect(removeColorPatch({ nomow_colors: [[1, 1, 1], [2, 2, 2]] }, 'nomow', 0)).toEqual({ nomow_colors: [[2, 2, 2]] });
   });
 });
 

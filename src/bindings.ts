@@ -59,12 +59,6 @@ export function levelsFromFloorMap(map: unknown): Record<string, SavedLevelBindi
   return out;
 }
 
-export function migrateModel<T>(model: T): T | Record<string, unknown> {
-  if (!isPlainObject(model) || !('floor_map' in model)) return model;
-  const { floor_map: fm, ...rest } = model;
-  return { ...rest, levels: { ...levelsFromFloorMap(fm), ...(model.levels as Record<string, unknown> | undefined) } };
-}
-
 const byOrder = (a: LevelLike, b: LevelLike): number => {
   // legacy models without order/elevation: stack bottom-up by their lowest point
   if (a.order == null && b.order == null && a.elevation == null && b.elevation == null) return (a.minY || 0) - (b.minY || 0);

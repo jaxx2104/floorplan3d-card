@@ -103,7 +103,7 @@ export function dragMove(ed: EditMode, e: PointerEvent) {
   const p = planPoint(ed, e, fid);
   if (!p) return;
   const roomId = room.id;
-  const otherRooms = (ed.layout.rooms || []).filter((r) => r.id !== roomId);
+  const otherRooms = ed.layout.rooms.filter((r) => r.id !== roomId);
   const others = E.floorVertices(otherRooms, (r) => ed.floorOf(r), fid)
     .concat(room.polygon.filter((_, i) => i !== d.index));
   const s = E.snapPoint(p, { vertices: others, radius: ed.snapRadius() }).point;

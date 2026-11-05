@@ -1,0 +1,66 @@
+{
+  "from": 3,
+  "warnings": [
+    {
+      "path": "version",
+      "message": "layout version 3 is newer than this card (2); fields it does not know are kept"
+    }
+  ],
+  "unknown": [
+    "rooms[0].walls",
+    "pins.device:a.anchor",
+    "lighting"
+  ],
+  "value": {
+    "version": 3,
+    "floors": [],
+    "rooms": [
+      {
+        "id": "r1",
+        "area_id": "kitchen",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            4,
+            0
+          ],
+          [
+            4,
+            3
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "walls": {
+          "thickness": 0.2
+        }
+      }
+    ],
+    "pins": {
+      "device:a": {
+        "x": 1,
+        "y": 2,
+        "z": 1,
+        "anchor": "ceiling"
+      }
+    },
+    "hidden": [],
+    "mower": null,
+    "model": null,
+    "lighting": {
+      "scenes": [
+        {
+          "id": "evening",
+          "lights": [
+            "light.a"
+          ]
+        }
+      ]
+    }
+  }
+}

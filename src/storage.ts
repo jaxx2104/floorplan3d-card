@@ -3,21 +3,12 @@
 // 2. frontend user data (stored in HA, but per user)
 // 3. browser localStorage (last resort)
 
-import { migrateModel } from './bindings.ts';
+import { logLayoutWarnings, parseLayout, serializeLayout } from './schema/layout.ts';
 import type { Hass } from './types/ha.ts';
-import type { Layout, LayoutModel, NormalisedLayout } from './types/layout.ts';
+import type { Layout } from './types/layout.ts';
 
 /** Where layouts are saved: the companion integration, HA user data, or this browser. */
 export type StorageBackend = 'shared' | 'user' | 'browser';
-
-export const EMPTY_LAYOUT = (): NormalisedLayout => ({
-  version: 1,
-  floors: [],
-  rooms: [],
-  pins: {},
-  hidden: [],
-  mower: null,
-});
 
 export class LayoutStore {
   key: string;
@@ -41,11 +32,17 @@ export class LayoutStore {
     } catch (e) { /* integration not installed */ }
     // nothing shared yet: pick up a layout made before the integration was installed,
     // the next save moves it to shared storage
-    if (this.backend === 'shared' && shared) return normalise(shared);
+    if (this.backend === 'shared' && shared) return this._parse(shared);
     const user = await this._userData(hass);
     if (!this.backend) this.backend = user.ok ? 'user' : 'browser';
-    if (user.value) return normalise(user.value);
-    return normalise(this._browser());
+    return this._parse(user.value || this._browser());
+  }
+
+  // Stored JSON -> the current layout version (migrated, defaults filled); problems go to the console.
+  _parse(stored: unknown): Layout {
+    const p = parseLayout(stored);
+    logLayoutWarnings(`layout "${this.key}":`, p);
+    return p.value;
   }
 
   async _userData(hass: Pick<Hass, 'callWS'>): Promise<{ ok: boolean; value: unknown }> {
@@ -73,13 +70,14 @@ export class LayoutStore {
       this._pending = resolve;
       this._timer = setTimeout(async () => {
         this._pending = null;
+        const data = serializeLayout(layout);
         try {
           if (this.backend === 'shared') {
-            await hass.callWS({ type: 'floorplan3d/layout/set', key: this.key, layout });
+            await hass.callWS({ type: 'floorplan3d/layout/set', key: this.key, layout: data });
           } else if (this.backend === 'user') {
-            await hass.callWS({ type: 'frontend/set_user_data', key: 'floorplan3d_' + this.key, value: layout });
+            await hass.callWS({ type: 'frontend/set_user_data', key: 'floorplan3d_' + this.key, value: data });
           } else {
-            localStorage.setItem('floorplan3d_' + this.key, JSON.stringify(layout));
+            localStorage.setItem('floorplan3d_' + this.key, JSON.stringify(data));
           }
           resolve(true);
         } catch (e) {
@@ -89,28 +87,4 @@ export class LayoutStore {
       }, delay);
     });
   }
-}
-
-// Stored JSON (any shape: older versions, hand edits, imports) -> a Layout with the arrays and maps present.
-export function normalise(input: unknown): NormalisedLayout {
-  const base = EMPTY_LAYOUT();
-  if (!input || typeof input !== 'object') return base;
-  const l = input as Partial<Layout>; // fields checked one by one below
-  const out: NormalisedLayout = {
-    ...base,
-    ...l,
-    floors: Array.isArray(l.floors) ? l.floors : [],
-    rooms: Array.isArray(l.rooms) ? l.rooms : [],
-    pins: l.pins && typeof l.pins === 'object' ? l.pins : {},
-    hidden: Array.isArray(l.hidden) ? l.hidden : [],
-    model: migrateModel(l.model || null) as LayoutModel | null,
-  };
-  // object bindings / tag settings: plain objects or absent (readers default to none)
-  for (const k of ['objects', 'groups', 'tags'] as const) {
-    const v = out[k];
-    if (k in out && !(v && typeof v === 'object' && !Array.isArray(v))) delete out[k];
-  }
-  // pre-0.4.5 group controllers are tags now (layout.tags wins over a leftover groups entry)
-  if (out.groups) { out.tags = { ...out.groups, ...out.tags }; delete out.groups; }
-  return out;
 }

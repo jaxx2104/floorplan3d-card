@@ -26,6 +26,7 @@ import { MarkerLayer } from './card/marker-layer.ts';
 import { ActionRunner } from './card/action-runner.ts';
 import { ObjectInput } from './card/object-input.ts';
 import { SkyController } from './card/sky-controller.ts';
+import { logConfigWarnings, parseCardConfig } from './schema/config.ts';
 import type { CardConfig, ResolvedCardConfig } from './types/config.ts';
 import type { Hass, HassEntity, HassThemes } from './types/ha.ts';
 import type { Layout } from './types/layout.ts';
@@ -234,12 +235,14 @@ export class Floorplan3dCard extends HTMLElement {
   }
 
   setConfig(config: CardConfig): void {
-    this._config = { layout_key: 'default', height: '520px', group_by: 'device', wall_height: 1.0, view: '3d', ...config };
+    const parsed = parseCardConfig(config);
+    logConfigWarnings(parsed);
+    this._config = parsed.value;
     this._mode = this._config.view === 'top' ? 'top' : '3d';
     this._store = new LayoutStore(this._config.layout_key);
     if (this._stage) {
-      this._stage.style.height = this._config.height!; // set: the default above
-      this._body.style.setProperty('--fp-height', this._config.height!);
+      this._stage.style.height = this._config.height;
+      this._body.style.setProperty('--fp-height', this._config.height);
     }
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
@@ -412,7 +415,7 @@ export class Floorplan3dCard extends HTMLElement {
     // the elements of the markup above (always there)
     const q = <E extends Element>(sel: string): E => root.querySelector<E>(sel)!;
     this._stage = q<HTMLDivElement>('.stage');
-    const height = this._config.height!; // setConfig's default
+    const height = this._config.height;
     this._stage.style.height = height;
     q<HTMLDivElement>('.body').style.setProperty('--fp-height', height);
     this._chips = q<HTMLDivElement>('.chips');

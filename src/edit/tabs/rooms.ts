@@ -45,7 +45,7 @@ export function roomsTab(ed: EditMode): View {
     : html`<p class="hint">Click on this room's floor in the model.</p>`}
         <div class="row"><button @click=${act(ed, () => cancelPicking(ed))}>Cancel</button></div></section>`;
   }
-  const rooms = ed.layout.rooms || [];
+  const rooms = ed.layout.rooms;
   const areas = sortedAreas(ed);
   const yamlLabels = ed.card._config && ed.card._config.room_labels;
   const rl = String(yamlLabels || ed.layout.room_labels || 'size');
@@ -105,7 +105,7 @@ function selectedRoomView(ed: EditMode, areas: HassArea[]): View {
 
 // Advanced: the floors table for model-less layouts
 function floorsView(ed: EditMode): TemplateResult {
-  const stored = new Set((ed.layout.floors || []).map((f) => f.id));
+  const stored = new Set(ed.layout.floors.map((f) => f.id));
   const haFloors = new Set(Object.keys(ed.hass.floors || {}));
   return html`<details class="advanced" ?open=${ed._advancedOpen} @toggle=${(e: Event) => { ed._advancedOpen = (e.target as HTMLDetailsElement).open; }}><summary>Advanced (no model)</summary>
       <div class="sub">Floors</div><table class="floors"><tr><th></th><th>Elevation m</th><th>Height m</th><th></th></tr>
@@ -163,7 +163,7 @@ export function setFloorProp(ed: EditMode, id: string, key: 'elevation' | 'heigh
   if (!Number.isFinite(v)) return;
   const floor = ed.floors.find((x) => x.id === id);
   if (!floor) return; // rows are rendered from ed.floors
-  const stored = (ed.layout.floors || []).some((x) => x.id === floor.id);
+  const stored = ed.layout.floors.some((x) => x.id === floor.id);
   const patch: LayoutFloor = { id: floor.id, [key]: v };
   if (!stored) Object.assign(patch, { name: floor.name });
   ed.commit(E.upsertFloor(ed.layout, patch));
@@ -181,7 +181,7 @@ export function setRoomOutdoor(ed: EditMode, outdoor: boolean) {
 
 export function setRoomLabels(ed: EditMode, v: string) {
   const l: Layout = { ...ed.layout };
-  if (v === 'size') delete l.room_labels; else l.room_labels = v;
+  if (v === 'name' || v === 'none') l.room_labels = v; else delete l.room_labels; // size: the default
   ed.commit(l);
 }
 

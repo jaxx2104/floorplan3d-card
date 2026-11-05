@@ -16,7 +16,7 @@ describe('mower setup checklist', () => {
     expect(r.rows.map((x) => x.id)).toContain('color');
   });
   it('complete without the optional mowed colour', () => {
-    const m = { source: 'image', entity: 'lawn_mower.m', image: { color: [1, 2, 3] }, overlay: { entity: 'image.map', x: 3, y: 0, width: 20 } };
+    const m = { source: 'image', entity: 'lawn_mower.m', image: { colors: [[1, 2, 3]] }, overlay: { entity: 'image.map', x: 3, y: 0, width: 20 } };
     const r = setupChecklist(m, states, true);
     expect(ok(r)).toEqual({ entity: true, map: true, aligned: true, color: true, found: true, mowed: false });
     expect(r.complete).toBe(true);

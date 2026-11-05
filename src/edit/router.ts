@@ -124,7 +124,7 @@ function planClick(ed: EditMode, e: PointerEvent) {
     return;
   }
   // pick the smallest room under the click, so a room wins over the garden around it
-  const hits = (ed.layout.rooms || [])
+  const hits = ed.layout.rooms
     .filter((r) => ed.floorOf(r) === fid && r.polygon && pointInPolygon(p, r.polygon))
     .sort((a, b) => Math.abs(signedArea(a.polygon)) - Math.abs(signedArea(b.polygon)));
   ed.selectRoom(hits.length ? hits[0].id : null);

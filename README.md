@@ -224,7 +224,9 @@ room was removed by a re-export, with **Forget** to drop them. See
 [docs/model-builder-guide.md](docs/model-builder-guide.md).
 
 **Data.** Export and import the layout as JSON, and see where it is stored. *Shared* means the
-integration is active and everyone sees the same plan.
+integration is active and everyone sees the same plan. Layouts and exported files of
+older card versions are migrated when they are loaded or imported; values that do not fit are
+dropped with a warning in the browser console.
 
 Coordinates are metres, x = east, y = north. A layout prepared elsewhere (for example from an
 existing house model) can be imported here; see [docs/house-model-spec.md](docs/house-model-spec.md)
@@ -691,6 +693,11 @@ Layout: `src/placement.js` (auto placement), `src/registry.js` (HA registries to
 `src/layout.js` (floors, walls, positions), `src/view.js` (Three.js), `src/editor.js` (edit
 operations), `src/edit-mode.js` (panel and plan interactions), `src/mower.js` (mower math),
 `src/storage.js` (layout storage), `custom_components/floorplan3d/` (integration).
+`src/schema/` is the contract for stored data: the layout schema with its versioned migrations
+(`layout.ts`) and the card YAML options (`config.ts`), built from small combinators (`core.ts`).
+The types in `src/types/layout.ts` and `config.ts` are derived from it. Changing the stored shape
+means bumping `LAYOUT_VERSION`, adding a migration and a fixture under `test/fixtures/layouts`
+(`UPDATE_GOLDEN=1 pnpm test` rewrites the expected results in `golden/`).
 
 ## Troubleshooting
 

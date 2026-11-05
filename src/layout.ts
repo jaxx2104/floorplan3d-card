@@ -30,13 +30,17 @@ export type RoomLabelMode = 'size' | 'name' | 'none';
 export const DEFAULT_FLOOR_HEIGHT = 2.7;
 export const LEVEL_SPACING = 3;
 
+/** A stored floor entry or a model level override (the fields mergeFloors reads). */
+export type FloorEntry = Pick<LayoutFloor, 'id' | 'name' | 'elevation' | 'height'>;
+
 // HA floors (auto-synced, elevation = level * 3) overlaid with what the layout stores.
 // Layout-only floors are kept. Never returns an empty list.
-export function mergeFloors(hass: Hass, layout: Pick<Layout, 'floors'>): Floor[] {
-  const stored = new Map<string, LayoutFloor>();
+
+export function mergeFloors(hass: Hass, layout: { floors?: readonly FloorEntry[] }): Floor[] {
+  const stored = new Map<string, FloorEntry>();
   for (const f of layout.floors || []) stored.set(f.id, { ...stored.get(f.id), ...f }); // merge per id
   const out = floorsFromHA(hass).map((f): Floor => {
-    const s: Partial<LayoutFloor> = stored.get(f.id) || {};
+    const s: Partial<FloorEntry> = stored.get(f.id) || {};
     stored.delete(f.id);
     return {
       id: f.id,

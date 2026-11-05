@@ -1,0 +1,676 @@
+{
+  "from": 1,
+  "warnings": [],
+  "unknown": [],
+  "value": {
+    "version": 2,
+    "floors": [
+      {
+        "id": "ground",
+        "elevation": 0,
+        "height": 2.8
+      },
+      {
+        "id": "floor_1",
+        "name": "Loft",
+        "elevation": 6,
+        "height": 2.4
+      }
+    ],
+    "rooms": [
+      {
+        "id": "r-living",
+        "area_id": "living_room",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            5,
+            0
+          ],
+          [
+            5,
+            5
+          ],
+          [
+            0,
+            5
+          ]
+        ],
+        "doors": [
+          [
+            5,
+            2.5
+          ],
+          [
+            2.5,
+            0
+          ]
+        ]
+      },
+      {
+        "id": "r-hall",
+        "area_id": "hall",
+        "polygon": [
+          [
+            5,
+            0
+          ],
+          [
+            7.5,
+            0
+          ],
+          [
+            7.5,
+            5
+          ],
+          [
+            5,
+            5
+          ]
+        ],
+        "doors": [
+          [
+            6.25,
+            0
+          ],
+          [
+            7.5,
+            3.8
+          ],
+          [
+            6.25,
+            5
+          ]
+        ]
+      },
+      {
+        "id": "r-kitchen",
+        "area_id": "kitchen",
+        "polygon": [
+          [
+            7.5,
+            0
+          ],
+          [
+            12,
+            0
+          ],
+          [
+            12,
+            5
+          ],
+          [
+            9.5,
+            5
+          ],
+          [
+            9.5,
+            6.5
+          ],
+          [
+            7.5,
+            6.5
+          ]
+        ],
+        "doors": [
+          [
+            7.5,
+            3.8
+          ]
+        ]
+      },
+      {
+        "id": "r-bath",
+        "area_id": "bathroom",
+        "polygon": [
+          [
+            5,
+            5
+          ],
+          [
+            7.5,
+            5
+          ],
+          [
+            7.5,
+            9
+          ],
+          [
+            5,
+            9
+          ]
+        ],
+        "doors": [
+          [
+            6.25,
+            5
+          ]
+        ]
+      },
+      {
+        "id": "r-bed",
+        "area_id": "bedroom",
+        "polygon": [
+          [
+            0,
+            5
+          ],
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            9
+          ],
+          [
+            0,
+            9
+          ]
+        ],
+        "doors": [
+          [
+            4.2,
+            5
+          ]
+        ]
+      },
+      {
+        "id": "r-utility",
+        "area_id": "utility",
+        "polygon": [
+          [
+            9.5,
+            5
+          ],
+          [
+            12,
+            5
+          ],
+          [
+            12,
+            9
+          ],
+          [
+            7.5,
+            9
+          ],
+          [
+            7.5,
+            6.5
+          ],
+          [
+            9.5,
+            6.5
+          ]
+        ],
+        "doors": [
+          [
+            12,
+            7
+          ]
+        ]
+      },
+      {
+        "id": "r-terrace",
+        "area_id": "terrace",
+        "polygon": [
+          [
+            0,
+            -3
+          ],
+          [
+            5,
+            -3
+          ],
+          [
+            5,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "outdoor": true
+      },
+      {
+        "id": "r-garden",
+        "area_id": "garden",
+        "polygon": [
+          [
+            12,
+            -7
+          ],
+          [
+            21,
+            -7
+          ],
+          [
+            21,
+            10
+          ],
+          [
+            12,
+            10
+          ]
+        ],
+        "outdoor": true
+      },
+      {
+        "id": "r-kids",
+        "area_id": "kids_room",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            5,
+            0
+          ],
+          [
+            5,
+            4.5
+          ],
+          [
+            0,
+            4.5
+          ]
+        ],
+        "doors": [
+          [
+            5,
+            2.5
+          ]
+        ]
+      },
+      {
+        "id": "r-landing",
+        "area_id": "landing",
+        "polygon": [
+          [
+            5,
+            0
+          ],
+          [
+            7.5,
+            0
+          ],
+          [
+            7.5,
+            9
+          ],
+          [
+            5,
+            9
+          ]
+        ],
+        "doors": [
+          [
+            7.5,
+            2.5
+          ],
+          [
+            7.5,
+            7
+          ],
+          [
+            5,
+            6.5
+          ]
+        ]
+      },
+      {
+        "id": "r-office",
+        "area_id": "office",
+        "polygon": [
+          [
+            7.5,
+            0
+          ],
+          [
+            12,
+            0
+          ],
+          [
+            12,
+            5.05
+          ],
+          [
+            7.5,
+            5
+          ]
+        ],
+        "doors": [
+          [
+            9,
+            0
+          ]
+        ]
+      },
+      {
+        "id": "r-master",
+        "area_id": "master_bedroom",
+        "polygon": [
+          [
+            0,
+            4.5
+          ],
+          [
+            5,
+            4.5
+          ],
+          [
+            5,
+            9
+          ],
+          [
+            0,
+            9
+          ]
+        ],
+        "doors": []
+      },
+      {
+        "id": "r-bath2",
+        "area_id": "bathroom_2",
+        "polygon": [
+          [
+            7.5,
+            5
+          ],
+          [
+            12,
+            5
+          ],
+          [
+            12,
+            9
+          ],
+          [
+            7.5,
+            9
+          ]
+        ],
+        "doors": []
+      },
+      {
+        "id": "r1",
+        "area_id": "loft",
+        "floor_id": "floor_1",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      }
+    ],
+    "pins": {
+      "device:floor_lamp": {
+        "x": 0.6,
+        "y": 4.3,
+        "z": 1.5,
+        "floor_id": "ground"
+      },
+      "device:hall_motion": {
+        "x": 6.1,
+        "y": 2.5,
+        "z": 2.5,
+        "floor_id": "ground"
+      },
+      "device:kitchen_temp": {
+        "x": 8,
+        "y": 1,
+        "floor_id": "ground"
+      },
+      "device:bath_light": {
+        "x": -6.51,
+        "y": 6.2,
+        "z": 2.41,
+        "floor_id": "ground",
+        "on_model": true
+      },
+      "device:desk_lamp": {
+        "x": -2.5,
+        "y": 9,
+        "z": 0.8,
+        "floor_id": "ground",
+        "on_model": true,
+        "attach": "desk_lamp",
+        "offset": [
+          0,
+          0.3,
+          0
+        ]
+      }
+    },
+    "hidden": [
+      "device:router"
+    ],
+    "mower": {
+      "entity": "device_tracker.sunseeker_position",
+      "source": "gps",
+      "floor_id": "ground",
+      "error_entity": "binary_sensor.demo_mower_error",
+      "stuck_minutes": 5,
+      "calibration": [
+        {
+          "src": [
+            45,
+            10
+          ],
+          "plan": [
+            16.5,
+            1.5
+          ]
+        },
+        {
+          "src": [
+            45.000035932447,
+            10
+          ],
+          "plan": [
+            16.5,
+            5.5
+          ]
+        }
+      ],
+      "overlay": {
+        "entity": "image.sunseeker_map",
+        "x": 16.5,
+        "y": 1.5,
+        "rotation": 0,
+        "width": 9,
+        "opacity": 0.55,
+        "refresh": 10,
+        "aligned": true,
+        "height_offset": 0.05,
+        "zone": "lawn",
+        "bg_colors": [
+          [
+            47,
+            93,
+            44
+          ]
+        ],
+        "bg_tolerance": 32,
+        "edit_only": false
+      },
+      "image": {
+        "entity": "camera.sunseeker_live_map",
+        "colors": [
+          [
+            255,
+            59,
+            48
+          ],
+          [
+            250,
+            70,
+            50
+          ]
+        ],
+        "tolerance": 40,
+        "front_offset": 12
+      },
+      "ok_values": [
+        "rain delay",
+        "waiting"
+      ],
+      "static_entity": "",
+      "picture_entity": null
+    },
+    "tags": {
+      "facade": {
+        "entity": "switch.demo_facade",
+        "label": "Facade",
+        "wash": "up"
+      }
+    },
+    "model": {
+      "position": [
+        0.5,
+        0,
+        0
+      ],
+      "rotation": 90,
+      "scale": 1,
+      "opacity": 1,
+      "version": "abc123",
+      "name": "house.glb",
+      "size": 524288,
+      "uploaded": "2026-01-02T03:04:05.000Z",
+      "known": {
+        "levels": [
+          "level0",
+          "level1",
+          "exterior",
+          "roof"
+        ],
+        "rooms": [
+          "living",
+          "kitchen"
+        ]
+      },
+      "levels": {
+        "level1": {
+          "floor": "first"
+        },
+        "roof": {
+          "show": "all-only"
+        }
+      },
+      "rooms": {
+        "living": {
+          "area": "living_room"
+        },
+        "shed": {
+          "area": null
+        }
+      },
+      "pins_migrated": true
+    },
+    "objects": {
+      "ceiling_hall": {
+        "entity": "light.hall",
+        "label": "Hall ceiling",
+        "ui": {
+          "tap_action": {
+            "action": "toggle"
+          },
+          "popup": [
+            "toggle",
+            "brightness"
+          ]
+        },
+        "tags": [
+          "hall",
+          "ceiling"
+        ]
+      },
+      "fridge": {
+        "entity": null,
+        "hidden": true
+      }
+    },
+    "views": {
+      "first": {
+        "rules": [
+          {
+            "hide": "level:roof"
+          }
+        ],
+        "camera": {
+          "position": [
+            6,
+            14,
+            12
+          ],
+          "target": [
+            6,
+            0,
+            -4.5
+          ]
+        },
+        "camera_top": {
+          "center": [
+            6,
+            4.5
+          ],
+          "zoom": 1.2
+        }
+      },
+      "view_2": {
+        "added": true,
+        "label": "Garden",
+        "rules": [
+          {
+            "show": "zone:lawn"
+          }
+        ],
+        "floors": [
+          "ground"
+        ],
+        "cut": false,
+        "zoom_to": "cursor",
+        "section": {
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "constant": -3
+        }
+      }
+    },
+    "view_order": [
+      "view_2",
+      "ground",
+      "first",
+      "all"
+    ],
+    "badges": {
+      "integration": true,
+      "status": true
+    },
+    "room_labels": "size",
+    "tap_hints": "off"
+  }
+}

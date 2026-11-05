@@ -29,7 +29,7 @@ export function startDrawing(ed: EditMode, areaId: string) {
 export function snapDraw(ed: EditMode, p: PlanPoint): SnapResult {
   const d = ed.drawing!; // only called while drawing
   const vertices = [
-    ...E.floorVertices(ed.layout.rooms || [], (r) => ed.floorOf(r), d.floorId),
+    ...E.floorVertices(ed.layout.rooms, (r) => ed.floorOf(r), d.floorId),
     ...d.points,
   ];
   return E.snapPoint(p, { vertices, radius: ed.snapRadius() });

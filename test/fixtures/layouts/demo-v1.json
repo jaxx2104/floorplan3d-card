@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "floors": [],
+  "rooms": [
+    {
+      "id": "r-living",
+      "area_id": "living_room",
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          0,
+          5
+        ]
+      ],
+      "doors": [
+        [
+          5,
+          2.5
+        ],
+        [
+          2.5,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "r-hall",
+      "area_id": "hall",
+      "polygon": [
+        [
+          5,
+          0
+        ],
+        [
+          7.5,
+          0
+        ],
+        [
+          7.5,
+          5
+        ],
+        [
+          5,
+          5
+        ]
+      ],
+      "doors": [
+        [
+          6.25,
+          0
+        ],
+        [
+          7.5,
+          3.8
+        ],
+        [
+          6.25,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "r-kitchen",
+      "area_id": "kitchen",
+      "polygon": [
+        [
+          7.5,
+          0
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          9.5,
+          5
+        ],
+        [
+          9.5,
+          6.5
+        ],
+        [
+          7.5,
+          6.5
+        ]
+      ],
+      "doors": [
+        [
+          7.5,
+          3.8
+        ]
+      ]
+    },
+    {
+      "id": "r-bath",
+      "area_id": "bathroom",
+      "polygon": [
+        [
+          5,
+          5
+        ],
+        [
+          7.5,
+          5
+        ],
+        [
+          7.5,
+          9
+        ],
+        [
+          5,
+          9
+        ]
+      ],
+      "doors": [
+        [
+          6.25,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "r-bed",
+      "area_id": "bedroom",
+      "polygon": [
+        [
+          0,
+          5
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          0,
+          9
+        ]
+      ],
+      "doors": [
+        [
+          4.2,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "r-utility",
+      "area_id": "utility",
+      "polygon": [
+        [
+          9.5,
+          5
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          12,
+          9
+        ],
+        [
+          7.5,
+          9
+        ],
+        [
+          7.5,
+          6.5
+        ],
+        [
+          9.5,
+          6.5
+        ]
+      ],
+      "doors": [
+        [
+          12,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "r-terrace",
+      "area_id": "terrace",
+      "polygon": [
+        [
+          0,
+          -3
+        ],
+        [
+          5,
+          -3
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "outdoor": true
+    },
+    {
+      "id": "r-garden",
+      "area_id": "garden",
+      "polygon": [
+        [
+          12,
+          -7
+        ],
+        [
+          21,
+          -7
+        ],
+        [
+          21,
+          10
+        ],
+        [
+          12,
+          10
+        ]
+      ],
+      "outdoor": true
+    },
+    {
+      "id": "r-kids",
+      "area_id": "kids_room",
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          4.5
+        ],
+        [
+          0,
+          4.5
+        ]
+      ],
+      "doors": [
+        [
+          5,
+          2.5
+        ]
+      ]
+    },
+    {
+      "id": "r-landing",
+      "area_id": "landing",
+      "polygon": [
+        [
+          5,
+          0
+        ],
+        [
+          7.5,
+          0
+        ],
+        [
+          7.5,
+          9
+        ],
+        [
+          5,
+          9
+        ]
+      ],
+      "doors": [
+        [
+          7.5,
+          2.5
+        ],
+        [
+          7.5,
+          7
+        ],
+        [
+          5,
+          6.5
+        ]
+      ]
+    },
+    {
+      "id": "r-office",
+      "area_id": "office",
+      "polygon": [
+        [
+          7.5,
+          0
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          7.5,
+          5
+        ]
+      ],
+      "doors": []
+    },
+    {
+      "id": "r-master",
+      "area_id": "master_bedroom",
+      "polygon": [
+        [
+          0,
+          4.5
+        ],
+        [
+          5,
+          4.5
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          0,
+          9
+        ]
+      ],
+      "doors": []
+    },
+    {
+      "id": "r-bath2",
+      "area_id": "bathroom_2",
+      "polygon": [
+        [
+          7.5,
+          5
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          12,
+          9
+        ],
+        [
+          7.5,
+          9
+        ]
+      ],
+      "doors": []
+    }
+  ],
+  "pins": {
+    "device:floor_lamp": {
+      "x": 0.6,
+      "y": 4.3,
+      "z": 1.5,
+      "floor_id": "ground"
+    }
+  },
+  "hidden": [],
+  "tags": {
+    "facade": {
+      "entity": "switch.demo_facade"
+    }
+  },
+  "mower": {
+    "entity": "device_tracker.sunseeker_position",
+    "source": "gps",
+    "floor_id": "ground",
+    "error_entity": "binary_sensor.demo_mower_error",
+    "stuck_minutes": 5,
+    "calibration": [
+      {
+        "src": [
+          45,
+          10
+        ],
+        "plan": [
+          16.5,
+          1.5
+        ]
+      },
+      {
+        "src": [
+          45.000035932447,
+          10
+        ],
+        "plan": [
+          16.5,
+          5.5
+        ]
+      }
+    ],
+    "overlay": {
+      "entity": "image.sunseeker_map",
+      "x": 16.5,
+      "y": 1.5,
+      "rotation": 0,
+      "width": 9,
+      "opacity": 0.55,
+      "refresh": 10
+    }
+  }
+}

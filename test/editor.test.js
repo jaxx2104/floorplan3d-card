@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   snapPoint, floorVertices, nearestEdge, newRoomId, upsertRoom, deleteRoom, moveVertex, insertVertex,
   removeVertex, addDoor, removeDoor, cleanPolygon, setPin, clearPin, hide, unhide, upsertFloor, deleteFloor,
-  newFloorId, parseImport, fitImport, setObject, setObjectUi, setGroup, attachPin, realignPins, sliderValue,
+  newFloorId, parseImport, fitImport, setObject, setObjectUi, setTag, attachPin, realignPins, sliderValue,
 } from '../src/editor.ts';
 
 const square = { id: 'r1', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] };
@@ -116,7 +116,7 @@ describe('floors', () => {
 describe('parseImport', () => {
   it('accepts a valid layout and fills defaults', () => {
     const l = parseImport(JSON.stringify({ version: 1, rooms: [square] }));
-    expect(l).toMatchObject({ version: 1, rooms: [square], pins: {}, hidden: [], floors: [] });
+    expect(l).toMatchObject({ version: 2, rooms: [square], pins: {}, hidden: [], floors: [], mower: null, model: null });
   });
 
   it('dedupes room ids', () => {
@@ -127,7 +127,8 @@ describe('parseImport', () => {
   it('rejects junk with a readable message', () => {
     expect(() => parseImport('{nope')).toThrow(/Not valid JSON/);
     expect(() => parseImport('[]')).toThrow(/layout object/);
-    expect(() => parseImport('{"version":2}')).toThrow(/version 2/);
+    expect(() => parseImport('{"version":3}')).toThrow(/version 3/);
+    expect(() => parseImport('{"version":"1"}')).toThrow(/version 1/);
     expect(() => parseImport(JSON.stringify({ rooms: [{ id: 'a', polygon: [[0, 0], [1, 1]] }] }))).toThrow(/Room a/);
     expect(() => parseImport(JSON.stringify({ rooms: [{ ...square, doors: [[1, 'x']] }] }))).toThrow(/doors/);
     expect(() => parseImport(JSON.stringify({ floors: [{ name: 'x' }] }))).toThrow(/floor needs an id/);
@@ -166,7 +167,7 @@ describe('fitImport', () => {
   });
 });
 
-describe('setObject / setGroup', () => {
+describe('setObject / setTag', () => {
   it('merges into layout.objects without mutating', () => {
     const l = { objects: { a: { entity: 'light.x' } } };
     const n = setObject(l, 'a', { hidden: true });
@@ -184,11 +185,11 @@ describe('setObject / setGroup', () => {
     const n = setObject(l, 'a', { hidden: false });
     expect(n.objects).toEqual({ b: { entity: 'light.b' } });
   });
-  it('setGroup sets and clears a controller', () => {
-    const l = { groups: { g: { entity: 'light.g' } } };
-    expect(setGroup({}, 'g', { entity: 'switch.s' }).tags.g).toEqual({ entity: 'switch.s' });
-    expect(setGroup(l, 'g', { entity: '' }).tags).toEqual({});
-    expect(l.groups.g.entity).toBe('light.g');
+  it('setTag sets and clears a controller', () => {
+    const l = { tags: { g: { entity: 'light.g' } } };
+    expect(setTag({}, 'g', { entity: 'switch.s' }).tags.g).toEqual({ entity: 'switch.s' });
+    expect(setTag(l, 'g', { entity: '' }).tags).toEqual({});
+    expect(l.tags.g.entity).toBe('light.g');
   });
   it('setObject label: trimmed, empty clears it (back to the model label), other fields kept', () => {
     const l = { objects: { a: { entity: 'light.a' } } };
@@ -198,18 +199,18 @@ describe('setObject / setGroup', () => {
     expect(setObject(named, 'a', { label: '   ' }).objects.a).toEqual({ entity: 'light.a' });
     expect(setObject({ objects: { b: { label: 'X' } } }, 'b', { label: '' }).objects).toEqual({});
   });
-  it('setGroup label: stored with or without a controller, empty clears it', () => {
-    const l = { groups: { g: { entity: 'switch.g' } } };
-    expect(setGroup(l, 'g', { label: ' Facade ' }).tags.g).toEqual({ entity: 'switch.g', label: 'Facade' });
-    expect(setGroup({}, 'g', { label: 'Facade' }).tags.g).toEqual({ label: 'Facade' });
-    expect(setGroup({ groups: { g: { label: 'Facade' } } }, 'g', { label: '' }).tags).toEqual({});
-    expect(setGroup({ groups: { g: { label: 'Facade' } } }, 'g', { entity: 'none' }).tags.g).toEqual({ label: 'Facade' });
+  it('setTag label: stored with or without a controller, empty clears it', () => {
+    const l = { tags: { g: { entity: 'switch.g' } } };
+    expect(setTag(l, 'g', { label: ' Facade ' }).tags.g).toEqual({ entity: 'switch.g', label: 'Facade' });
+    expect(setTag({}, 'g', { label: 'Facade' }).tags.g).toEqual({ label: 'Facade' });
+    expect(setTag({ tags: { g: { label: 'Facade' } } }, 'g', { label: '' }).tags).toEqual({});
+    expect(setTag({ tags: { g: { label: 'Facade' } } }, 'g', { entity: 'none' }).tags.g).toEqual({ label: 'Facade' });
   });
-  it('setGroup: "none" (any case, padded) removes the controller, never stored literally', () => {
-    const l = { groups: { g: { entity: 'light.g' } } };
-    expect(setGroup(l, 'g', { entity: 'none' }).tags).toEqual({});
-    expect(setGroup(l, 'g', { entity: ' None ' }).tags).toEqual({});
-    expect(setGroup(l, 'g', { entity: '  switch.s ' }).tags.g).toEqual({ entity: 'switch.s' });
+  it('setTag: "none" (any case, padded) removes the controller, never stored literally', () => {
+    const l = { tags: { g: { entity: 'light.g' } } };
+    expect(setTag(l, 'g', { entity: 'none' }).tags).toEqual({});
+    expect(setTag(l, 'g', { entity: ' None ' }).tags).toEqual({});
+    expect(setTag(l, 'g', { entity: '  switch.s ' }).tags.g).toEqual({ entity: 'switch.s' });
   });
 });
 

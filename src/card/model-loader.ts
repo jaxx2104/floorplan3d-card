@@ -8,7 +8,6 @@ import { threeAdapter } from '../manifest.ts';
 import { levelsFromFloorMap, resolveLevels, resolveRoomAreas, bindingDiff, snapshotDiff } from '../bindings.ts';
 import { mergeFloors } from '../layout.ts';
 import type { Floorplan3dCard } from '../card-impl.ts';
-import type { CardConfig } from '../types/config.ts';
 import type { LayoutModel } from '../types/layout.ts';
 import type { ModelManifest, ModelOptions } from '../view/model.ts';
 
@@ -85,9 +84,9 @@ export class ModelLoader {
           return this._modelBytes(url, version, src.fetchFn);
         },
         dataFresh: () => this._modelFresh(),
-        position: Array.isArray(c.model_position) ? c.model_position.map(Number) : [0, 0, 0],
-        rotation: Number(c.model_rotation) || 0, scale: Number(c.model_scale) || 1,
-        opacity: c.model_opacity === undefined ? 1 : Number(c.model_opacity),
+        position: c.model_position || [0, 0, 0],
+        rotation: c.model_rotation || 0, scale: c.model_scale || 1,
+        opacity: c.model_opacity ?? 1,
       };
     } else {
       const m = this.card._layout && this.card._layout.model;
@@ -191,11 +190,11 @@ export class ModelLoader {
   }
 
   _modelAlign(): ModelAlign {
-    const c: CardConfig = this.card._config;
+    const c = this.card._config;
     if (c.model) {
       return {
-        position: Array.isArray(c.model_position) ? c.model_position.map(Number) : [0, 0, 0],
-        rotation: Number(c.model_rotation) || 0, scale: Number(c.model_scale) || 1,
+        position: c.model_position || [0, 0, 0],
+        rotation: c.model_rotation || 0, scale: c.model_scale || 1,
       };
     }
     const m: LayoutModel = (this.card._layout && this.card._layout.model) || {};

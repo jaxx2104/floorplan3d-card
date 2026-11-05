@@ -28,6 +28,7 @@ Import it in the card: Edit → Data → Import JSON.
   "pins": {}, "hidden": [], "mower": null }
 ```
 
+- `version`: the layout format, 1 or 2 (the card writes 2; version 1 files are migrated on import).
 - `polygon`: inner floor outline of the room, corners in order, no repeated closing point.
   Neighbouring rooms should share exact corner coordinates on common walls.
 - `doors`: a point on the wall line in the middle of each door opening (drawn as 0.9 m gaps).

@@ -3,7 +3,7 @@ import { objectTags, controllersOf, budgetGroup, bindObjects, chainState, effect
 import { actionTarget, popupRows } from '../src/objects/popup.ts';
 import { resolveActions } from '../src/actions.ts';
 import { parseSelector, matches } from '../src/views.ts';
-import { normalise, } from '../src/storage.ts';
+import { parseLayout } from '../src/schema/layout.ts';
 import { mergeImport, setTag, setObjectTags, addTagToObjects, removeTagFromObjects } from '../src/editor.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
@@ -26,18 +26,17 @@ describe('objectTags', () => {
   });
 });
 
-describe('layoutTags (migration of layout.groups)', () => {
-  it('merges old groups under tags, tags win', () => {
-    expect(layoutTags({ groups: { a: { entity: 'switch.a' }, b: { entity: 'switch.b' } }, tags: { b: { entity: 'switch.c' } } }))
-      .toEqual({ a: { entity: 'switch.a' }, b: { entity: 'switch.c' } });
+describe('layoutTags (v1 layout.groups migrated on load)', () => {
+  it('reads layout.tags', () => {
+    expect(layoutTags({ tags: { b: { entity: 'switch.c' } } })).toEqual({ b: { entity: 'switch.c' } });
     expect(layoutTags({})).toEqual({});
     expect(layoutTags(null)).toEqual({});
   });
-  it('normalise moves groups into tags on load', () => {
-    const l = normalise({ groups: { facade: { entity: 'switch.f', label: 'F' } } });
-    expect(l.tags).toEqual({ facade: { entity: 'switch.f', label: 'F' } });
+  it('the v1 -> v2 migration merges old groups under tags, tags win', () => {
+    const l = parseLayout({ groups: { a: { entity: 'switch.a' }, b: { entity: 'switch.b' } }, tags: { b: { entity: 'switch.c' } } }).value;
+    expect(l.tags).toEqual({ a: { entity: 'switch.a' }, b: { entity: 'switch.c' } });
     expect('groups' in l).toBe(false);
-    expect(normalise({ tags: 'x' }).tags).toBeUndefined();
+    expect(parseLayout({ tags: 'x' }).value.tags).toBeUndefined();
   });
   it('import keeps the current tags when the file has none, takes old groups from the file', () => {
     const cur = { tags: { t: { entity: 'switch.t' } } };
@@ -127,7 +126,7 @@ describe('editor: tags', () => {
   it('setTag writes layout.tags (controller, label; none / empty dropped)', () => {
     expect(setTag({}, 'facade', { entity: ' switch.f ' }).tags).toEqual({ facade: { entity: 'switch.f' } });
     expect(setTag({ tags: { facade: { entity: 'switch.f' } } }, 'facade', { entity: 'none' }).tags).toEqual({});
-    expect(setTag({ groups: { old: { entity: 'switch.o' } } }, 'facade', { label: 'F' }).tags).toEqual({ old: { entity: 'switch.o' }, facade: { label: 'F' } });
+    expect(setTag({ tags: { old: { entity: 'switch.o' } } }, 'facade', { label: 'F' }).tags).toEqual({ old: { entity: 'switch.o' }, facade: { label: 'F' } });
   });
   it('setObjectTags stores a list, or nothing when it equals the defaults', () => {
     expect(setObjectTags({}, 'a', ['x', 'y'], ['x']).objects.a).toEqual({ tags: ['x', 'y'] });

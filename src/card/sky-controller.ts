@@ -144,7 +144,7 @@ export class SkyController {
     if (!this.card._stage || !this.card._config || this.card._config.night_markers !== 'hide') return;
     this.card._stage.classList.add('awake');
     clearTimeout(this._wakeTimer ?? undefined);
-    const sec = Number(this.card._config.idle_reset) > 0 ? Number(this.card._config.idle_reset) : 30;
+    const r = this.card._config.idle_reset, sec = r && r > 0 ? r : 30;
     this._wakeTimer = setTimeout(() => { this._wakeTimer = null; if (this.card._stage) this.card._stage.classList.remove('awake'); }, sec * 1000);
   }
 

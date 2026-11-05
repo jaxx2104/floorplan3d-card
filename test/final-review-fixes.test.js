@@ -6,7 +6,7 @@ import { ObjectLayer } from '../src/objects/layer.ts';
 import { chargerInputs, TYPES } from '../src/objects/types.ts';
 import { screenByDistance } from '../src/objects/logic.ts';
 import { mergeImport } from '../src/editor.ts';
-import { normalise } from '../src/storage.ts';
+import { parseLayout } from '../src/schema/layout.ts';
 
 const st = (state, attributes = {}) => ({ state, attributes });
 const ctx = { visibleLevel: () => true, lightsOn: true };
@@ -172,10 +172,10 @@ describe('import keeps object bindings and group controllers', () => {
     expect(bad.tags).toBe(cur.tags);
     expect('objects' in mergeImport({ rooms: [] }, {}, {})).toBe(false);
   });
-  it('normalise drops non-object objects / groups', () => {
-    const l = normalise({ objects: [1, 2], groups: 'x' });
+  it('parseLayout drops non-object objects / groups', () => {
+    const l = parseLayout({ objects: [1, 2], groups: 'x' }).value;
     expect('objects' in l).toBe(false);
     expect('groups' in l).toBe(false);
-    expect(normalise({ objects: { a: {} } }).objects).toEqual({ a: {} });
+    expect(parseLayout({ objects: { a: {} } }).value.objects).toEqual({ a: {} });
   });
 });

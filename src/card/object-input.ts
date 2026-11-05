@@ -66,7 +66,7 @@ export class ObjectInput {
   _mowerObjectBound: boolean;
   _groups: Groups | Record<string, never>;
   _bindKey: unknown[] | null;
-  _tagsFor: [unknown, unknown, ReturnType<typeof layoutTags>] | undefined;
+  _tagsFor: [unknown, ReturnType<typeof layoutTags>] | undefined;
   _gesture: Gesture | null | undefined;
   _hitWarning: boolean | undefined;
   _hoverId: string | null | undefined;
@@ -236,8 +236,8 @@ export class ObjectInput {
     const model = layer.model;
     const objs = model ? model.manifest.objects : [];
     const l: Partial<Layout> = this.card._layout || {}, lo: Record<string, LayoutObject> = l.objects || NONE, states = this.card._hass.states;
-    if (!this._tagsFor || this._tagsFor[0] !== l.tags || this._tagsFor[1] !== l.groups) this._tagsFor = [l.tags, l.groups, layoutTags(l)];
-    const groups = this._tagsFor[2]; // tag settings (old layout.groups included)
+    if (!this._tagsFor || this._tagsFor[0] !== l.tags) this._tagsFor = [l.tags, layoutTags(l)];
+    const groups = this._tagsFor[1]; // tag settings
     const exists = objs.map((o) => {
       const own = lo[o.id];
       const e = own && own.entity !== undefined ? own.entity : (o.suggest || {}).entity;

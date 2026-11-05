@@ -143,7 +143,7 @@ export class ViewController {
       const levels = mb.manifest.levels.map((lv) => (meas[lv.id] ? { ...lv, elevation: meas[lv.id].elevation, height: lv.height ?? meas[lv.id].height } : lv));
       overrides = levelFloorOverrides(levels, mb.levels, align);
     }
-    const floors: Floor[] = (this._floors = mergeFloors(h, { ...l, floors: [...overrides, ...(l.floors || [])] }));
+    const floors: Floor[] = (this._floors = mergeFloors(h, { ...l, floors: [...overrides, ...l.floors] }));
     this._modelRooms = mb ? modelRooms(mb.manifest.rooms, mb.levels, mb.rooms, align) : [];
     // every model room / zone outline in card plan, for roomless markers (pins) by position
     if (this.card._view.model && this._outlineModel !== this.card._view.model) { // the next load draws these while it waits
@@ -233,7 +233,7 @@ export class ViewController {
       room: r.room, floorId: r.floorId, label: labelled(r) ? roomLabel(r.name, r.room.polygon, mode) : '',
     }));
     this.card._view.setStructure(this._floors!, rooms, { // set by _buildStructure before any push
-      wallHeight: Number(this.card._config.wall_height) || 1.0,
+      wallHeight: this.card._config.wall_height,
       walls: !hasModel, fills: !hasModel, outlines: !hasModel || !!this.card._editing, labels: true,
     });
     this.card._stage.classList.toggle('has-model', hasModel);
@@ -429,7 +429,7 @@ export class ViewController {
     clearTimeout(this._idleTimer ?? undefined);
     this._idleTimer = null;
     if (this.card._view && this.card._view.stopOrbit) this.card._view.stopOrbit(); // a touch ends the idle orbit
-    const sec = Number(this.card._config && this.card._config.idle_reset);
+    const sec = (this.card._config && this.card._config.idle_reset) || 0;
     if (!(sec > 0) || !this.card.isConnected) return;
     this._idleTimer = setTimeout(() => this._idleReset(), sec * 1000);
   }
@@ -448,7 +448,8 @@ export class ViewController {
     if (startMode !== this._mode) this._setMode(startMode);
     this._resetCamera();
     // option idle_orbit (degrees a second): then turn slowly around the start view's target until touched
-    if (Number(this.card._config.idle_orbit) && startMode === '3d') this.card._view.startOrbit(Number(this.card._config.idle_orbit));
+    const orbit = this.card._config.idle_orbit;
+    if (orbit && startMode === '3d') this.card._view.startOrbit(orbit);
   }
 
   // Reset view: the view's saved camera (3D incl. its rotation centre; top: camera_top), else frame it.

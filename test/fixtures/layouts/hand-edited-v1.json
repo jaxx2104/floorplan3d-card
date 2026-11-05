@@ -1,0 +1,23 @@
+{
+  "rooms": [
+    { "id": "ok", "area_id": "kitchen", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]] },
+    { "area_id": "hall", "polygon": [[4, 0], [6, 0], [6, 3], [4, 3, 1]], "doors": [[5, 0], ["x", 1]] },
+    { "id": "bad_points", "polygon": [[0, 0], "1,1", [2, null], [3, 3], [0, 3]] },
+    "not a room",
+    { "id": "no_polygon" }
+  ],
+  "floors": [{ "id": "ground", "elevation": "0" }, { "name": "no id" }],
+  "pins": {
+    "device:a": { "x": 1, "y": 2 },
+    "device:b": { "x": "1", "y": 2 },
+    "device:c": null,
+    "device:d": { "x": 1, "y": 2, "z": 1.1, "floor_id": 7 }
+  },
+  "hidden": ["device:x", 3, null],
+  "objects": { "a": { "entity": "light.a", "wash": "sideways" }, "b": "light.b" },
+  "badges": "all",
+  "room_labels": "big",
+  "views": { "v": { "rules": "hide:level:roof", "label": "V" } },
+  "mower": { "entity": "lawn_mower.m", "track_show": "always", "stuck_minutes": "soon", "overlay": { "width": "9" } },
+  "my_extension": { "keep": ["me"] }
+}

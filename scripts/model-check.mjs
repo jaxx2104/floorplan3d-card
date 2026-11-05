@@ -2758,9 +2758,9 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
   // the icon hidden (or not), clipped to the garden zone; stripes / mowed share; a size change keeps it right
   await ev('window.__demoMowerPaused = true');
   await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, objects: { ...(l.objects || {}), mower: {} }, mower: { ...l.mower, source: 'image', calibration: [],
-    image: { color: [255, 59, 48], tolerance: 40, min_pixels: 4 },
+    image: { colors: [[255, 59, 48]], tolerance: 40, min_pixels: 4 },
     overlay: { entity: 'image.sunseeker_live_map', x: 17.5, y: 1.5, rotation: 0, width: 9, opacity: 0.55, refresh: 10, height_offset: 0,
-      bg_color: [47, 93, 44], mowed_color: [127, 194, 111], nomow_color: [140, 140, 140] } } }); })()`);
+      bg_colors: [[47, 93, 44]], mowed_colors: [[127, 194, 111]], nomow_colors: [[140, 140, 140]] } } }); })()`);
   // exactly one new map picture (a timed unpause let one or two through, racing the processing)
   const tick = async (at) => { await ev(`window.__demoMowerStep(${at ?? ''})`); await idle(page); };
   // start at the top of the circle: where the earlier sections left it, the icon could sit past the
@@ -2783,14 +2783,14 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
     await idle(page);
   };
   const dot = await ev(`(() => { const b = ${card}._imageBlob; return b && [b.px, b.py]; })()`);
-  await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, color: undefined, colors: [] } } }); })()`);
+  await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, colors: [] } } }); })()`);
   await pickAt(true, dot[0], dot[1]);
   const pc = await ev(`(${card}._layout.mower.image.colors || [])[0]`);
   check('3D pick on the mower dot stores the dot colour (floor at 7 m, map on the lawn)', !!pc && pc[0] > 200 && pc[1] < 120 && pc[2] < 120, JSON.stringify({ dot, pc }));
   await pickAt('bg', 8, 8);
   const bgc = await ev(`(${card}._layout.mower.overlay.bg_colors || []).slice(-1)[0]`);
   check('3D pick on the background stores the background colour (the darker margin shade)', !!bgc && Math.abs(bgc[0] - 40) < 6 && Math.abs(bgc[1] - 79) < 6 && Math.abs(bgc[2] - 38) < 6, JSON.stringify(bgc));
-  await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, colors: [[255, 59, 48]] }, overlay: { ...l.mower.overlay, bg_colors: undefined, bg_color: [47, 93, 44] } } }); })()`);
+  await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, colors: [[255, 59, 48]] }, overlay: { ...l.mower.overlay, bg_colors: [[47, 93, 44]] } } }); })()`);
   const mapCheck = () => ev(`(() => {
     const c = ${card}, p = c._view.mapPlane, img = p.userData.loaded.image, o = c._layout.mower.overlay;
     const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height, cv = p.material.map.image, w = cv.width, h = cv.height;
@@ -2806,9 +2806,9 @@ sections.add('mower-lawn', { group: 'mower', query: { model: '1', view: '3d' }, 
       if (Math.hypot(x + 0.5 - bx, y + 0.5 - by) < r) continue; // the icon
       if (px > 21.05) { n.outside[0]++; if (a === 0) n.outside[1]++; continue; }
       if (px > 20.95) continue;
-      if (near(k, o.bg_color, 6)) { n.bg[0]++; if (a === 0) n.bg[1]++; }
-      else if (near(k, o.mowed_color, 6)) { n.mowed[0]++; if (a > 0 && a < 255 && out[k] >= raw[k]) n.mowed[1]++; }
-      else if (near(k, o.nomow_color, 6)) { n.nomow[0]++; if (a > 0 && a < 255 && out[k] < 80) n.nomow[1]++; }
+      if (near(k, o.bg_colors[0], 6)) { n.bg[0]++; if (a === 0) n.bg[1]++; }
+      else if (near(k, o.mowed_colors[0], 6)) { n.mowed[0]++; if (a > 0 && a < 255 && out[k] >= raw[k]) n.mowed[1]++; }
+      else if (near(k, o.nomow_colors[0], 6)) { n.nomow[0]++; if (a > 0 && a < 255 && out[k] < 80) n.nomow[1]++; }
     }
     const ki = (Math.floor(by) * w + Math.floor(bx)) * 4;
     return { w, h, W, H, n, iconRaw: [raw[ki], raw[ki + 1], raw[ki + 2]], iconOut: [out[ki], out[ki + 1], out[ki + 2], out[ki + 3]],

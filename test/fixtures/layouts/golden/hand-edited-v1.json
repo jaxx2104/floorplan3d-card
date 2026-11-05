@@ -1,0 +1,196 @@
+{
+  "from": 1,
+  "warnings": [
+    {
+      "path": "rooms[1].doors[1]",
+      "message": "expected [x, y], got an array"
+    },
+    {
+      "path": "rooms[2].polygon[1]",
+      "message": "expected [x, y], got \"1,1\""
+    },
+    {
+      "path": "rooms[2].polygon[2]",
+      "message": "expected [x, y], got an array"
+    },
+    {
+      "path": "rooms[3]",
+      "message": "expected an object, got \"not a room\""
+    },
+    {
+      "path": "floors[0].elevation",
+      "message": "expected a number, got \"0\""
+    },
+    {
+      "path": "floors[1].id",
+      "message": "missing"
+    },
+    {
+      "path": "pins.device:b.x",
+      "message": "expected a number, got \"1\""
+    },
+    {
+      "path": "pins.device:c",
+      "message": "expected an object, got null"
+    },
+    {
+      "path": "pins.device:d.floor_id",
+      "message": "expected a string, got 7"
+    },
+    {
+      "path": "hidden[1]",
+      "message": "expected a string, got 3"
+    },
+    {
+      "path": "hidden[2]",
+      "message": "expected a string, got null"
+    },
+    {
+      "path": "objects.a.wash",
+      "message": "expected 'down' | 'up' | 'both' | 'none', got \"sideways\""
+    },
+    {
+      "path": "objects.b",
+      "message": "expected an object, got \"light.b\""
+    },
+    {
+      "path": "badges",
+      "message": "expected an object, got \"all\""
+    },
+    {
+      "path": "room_labels",
+      "message": "expected 'size' | 'name' | 'none', got \"big\""
+    },
+    {
+      "path": "views.v.rules",
+      "message": "expected a list, got \"hide:level:roof\""
+    },
+    {
+      "path": "mower.stuck_minutes",
+      "message": "expected a number, got \"soon\""
+    },
+    {
+      "path": "mower.overlay.width",
+      "message": "expected a number, got \"9\""
+    }
+  ],
+  "unknown": [
+    "my_extension"
+  ],
+  "value": {
+    "rooms": [
+      {
+        "id": "ok",
+        "area_id": "kitchen",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            4,
+            0
+          ],
+          [
+            4,
+            3
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      {
+        "area_id": "hall",
+        "polygon": [
+          [
+            4,
+            0
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            6,
+            3
+          ],
+          [
+            4,
+            3
+          ]
+        ],
+        "doors": [
+          [
+            5,
+            0
+          ]
+        ],
+        "id": ""
+      },
+      {
+        "id": "bad_points",
+        "polygon": [
+          [
+            0,
+            0
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      {
+        "id": "no_polygon",
+        "polygon": []
+      }
+    ],
+    "floors": [
+      {
+        "id": "ground"
+      }
+    ],
+    "pins": {
+      "device:a": {
+        "x": 1,
+        "y": 2
+      },
+      "device:d": {
+        "x": 1,
+        "y": 2,
+        "z": 1.1
+      }
+    },
+    "hidden": [
+      "device:x"
+    ],
+    "objects": {
+      "a": {
+        "entity": "light.a"
+      }
+    },
+    "views": {
+      "v": {
+        "label": "V"
+      }
+    },
+    "mower": {
+      "entity": "lawn_mower.m",
+      "track_show": "always",
+      "overlay": {}
+    },
+    "my_extension": {
+      "keep": [
+        "me"
+      ]
+    },
+    "version": 2,
+    "model": null
+  }
+}

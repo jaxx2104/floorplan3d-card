@@ -7,6 +7,7 @@ import { EditMode } from '../src/edit-mode.ts';
 import { slider, entityInput } from '../src/edit/html.ts';
 import { roomsTab } from '../src/edit/tabs/rooms.ts';
 import { onStates } from '../src/edit/panel.ts';
+import { emptyLayout } from '../src/schema/layout.ts';
 
 const flush = () => new Promise((r) => setTimeout(r, 0)); // queued microtask renders have run
 
@@ -19,7 +20,7 @@ function setup(layout = {}) {
     entities: { 'sensor.kettle': { entity_id: 'sensor.kettle', platform: 'sonoff' } },
   };
   const card = {
-    _layout: { version: 1, rooms: [{ id: 'r1', area_id: 'kitchen', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]], doors: [] }], pins: {}, hidden: [], ...layout },
+    _layout: { ...emptyLayout(), rooms: [{ id: 'r1', area_id: 'kitchen', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]], doors: [] }], ...layout },
     _hass: hass, _view: view, _floors: [{ id: 'ground', name: 'Ground', elevation: 0, height: 2.7 }],
     _config: { layout_key: 'default' }, _store: { backend: 'shared' }, _built: { theme: { dark: false, primary: 0 } },
     _modelRooms: [], _floor: 'ground', _viewState: null, _mode: '3d', _editing: true, _stage: document.createElement('div'),

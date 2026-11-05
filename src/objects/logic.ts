@@ -119,11 +119,9 @@ export function objectTags(
   return cleanTags(out);
 }
 
-// Tag settings (controller entity, label) by tag name: layout.tags, with the pre-0.4.5 layout.groups under it.
-export function layoutTags(layout: Pick<Layout, 'groups' | 'tags'> | null | undefined): Record<string, LayoutTag> {
-  const plain = (v: unknown): v is Record<string, never> => !!v && typeof v === 'object' && !Array.isArray(v);
-  if (!plain(layout)) return {};
-  return { ...(plain(layout.groups) ? layout.groups : {}), ...(plain(layout.tags) ? layout.tags : {}) };
+// Tag settings (controller entity, label) by tag name: layout.tags (the v1 layout.groups are migrated into it).
+export function layoutTags(layout: Partial<Pick<Layout, 'tags'>> | null | undefined): Record<string, LayoutTag> {
+  return (layout && layout.tags) || {};
 }
 
 type TagSettings = Record<string, LayoutTag | null | undefined> | null | undefined;

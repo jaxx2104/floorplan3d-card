@@ -213,7 +213,7 @@ export class EditMode {
   }
 
   room(id: string | null | undefined): LayoutRoom | null {
-    return (this.layout.rooms || []).find((r) => r.id === id) || null;
+    return this.layout.rooms.find((r) => r.id === id) || null;
   }
 
   snapRadius(): number {

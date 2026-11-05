@@ -2,6 +2,7 @@
 
 import * as E from '../../editor.ts';
 import { LEVEL_SPACING } from '../../layout.ts';
+import { serializeLayout } from '../../schema/layout.ts';
 import { html } from 'lit/html.js';
 import { act, field } from '../html.ts';
 import type { TemplateResult } from 'lit/html.js';
@@ -60,7 +61,7 @@ export function importLayout(ed: EditMode, text: string) {
 }
 
 export function exportLayout(ed: EditMode) {
-  const blob = new Blob([JSON.stringify(ed.layout, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(serializeLayout(ed.layout), null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `floorplan3d-${ed.card._config.layout_key}.json`;

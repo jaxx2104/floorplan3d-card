@@ -2,7 +2,7 @@
 // layout identity to decide what to rebuild) and never mutates its input.
 
 import { snap } from './placement.ts';
-import { normalise } from './storage.ts';
+import { LAYOUT_VERSION, parseLayout } from './schema/layout.ts';
 import { layoutTags } from './objects/logic.ts';
 import { transformPoint, inverseTransformPoint, type Align } from './bindings.ts';
 import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, LayoutRoom, LayoutTag, PlanPoint, Vec3 } from './types/layout.ts';
@@ -10,9 +10,9 @@ import type { Layout, LayoutFloor, NormalisedLayout, LayoutObject, LayoutPin, La
 export type SnapKind = 'vertex' | 'align' | 'grid';
 export interface SnapResult { point: PlanPoint; kind: SnapKind }
 export interface Edge { index: number; point: PlanPoint; t: number; dist: number }
-/** A pin as handed to setPin / attachPin (z missing: NaN, as before). */
+/** A pin as handed to setPin / attachPin (z missing or not a number: the pin has no z, markers use 1.2 m). */
 export interface PinInput { x: number; y: number; z?: number; floor_id?: string; on_model?: boolean }
-/** A parsed import: normalise() guarantees the lists. */
+/** A parsed import: parseLayout() guarantees the lists. */
 export type ParsedLayout = NormalisedLayout;
 
 export const GRID = 0.05;
@@ -131,7 +131,8 @@ export function cleanPolygon(points: PlanPoint[]): PlanPoint[] {
 // grid: false keeps the exact position (mm), e.g. a marker stuck to a model surface.
 export function setPin(layout: Layout, id: string, pin: PinInput, { grid = true }: { grid?: boolean } = {}): Layout {
   const g = (v: number) => round(grid ? snap(v, GRID) : v);
-  const p: LayoutPin = { x: g(pin.x), y: g(pin.y), z: round(Number(pin.z)), floor_id: pin.floor_id };
+  const z = Number(pin.z);
+  const p: LayoutPin = { x: g(pin.x), y: g(pin.y), ...(Number.isFinite(z) ? { z: round(z) } : {}), floor_id: pin.floor_id };
   if (pin.on_model) p.on_model = true; // placed on the model: follows its alignment (realignPins)
   return { ...layout, pins: { ...layout.pins, [id]: p } };
 }
@@ -158,10 +159,9 @@ export function realignPins(layout: Layout, oldAlign?: Align, newAlign?: Align):
     if (!p || !p.on_model) { out[id] = p; continue; }
     const [ix, iy] = inverseTransformPoint([p.x, p.y], oldAlign);
     const [x, y] = transformPoint([ix, iy], newAlign);
-    const z = Number(p.z) * (ns / os); // a pin without z: NaN, as before
     // micrometre precision: slider ticks realign step by step, mm rounding would accumulate drift
     const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
-    const q = { ...p, x: r6(x), y: r6(y), z: r6(z) };
+    const q = { ...p, x: r6(x), y: r6(y), ...(p.z !== undefined ? { z: r6(p.z * (ns / os)) } : {}) }; // a pin without z stays without
     if (q.x !== p.x || q.y !== p.y || q.z !== p.z) changed = true;
     out[id] = q;
   }
@@ -214,12 +214,14 @@ export function parseImport(text: string): ParsedLayout {
     throw new Error('Not valid JSON: ' + (e as Error).message, { cause: e });
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Expected a layout object');
-  const version = (data as { version?: unknown }).version;
-  if (version !== undefined && version !== 1) throw new Error('Unsupported layout version ' + String(version));
-  const l: ParsedLayout = normalise(data);
-  // the file's rooms are unchecked JSON until validated here
-  (l.rooms as unknown[]).forEach((r0, i) => {
-    const r = r0 as LayoutRoom | null;
+  const raw = data as { version?: unknown; rooms?: unknown; floors?: unknown };
+  const version = raw.version;
+  if (version !== undefined && !(Number.isInteger(version) && (version as number) >= 1 && (version as number) <= LAYOUT_VERSION)) {
+    throw new Error('Unsupported layout version ' + String(version));
+  }
+  // an import replaces the whole layout: what parseLayout would quietly drop is an error here
+  (Array.isArray(raw.rooms) ? raw.rooms : []).forEach((r0, i) => {
+    const r = r0 as Partial<LayoutRoom> | null;
     if (!r || typeof r !== 'object') throw new Error(`Room ${i + 1} is not an object`);
     if (!Array.isArray(r.polygon) || r.polygon.length < 3 || !r.polygon.every(isPoint)) {
       throw new Error(`Room ${r.id || i + 1}: polygon needs at least 3 [x, y] points`);
@@ -228,6 +230,9 @@ export function parseImport(text: string): ParsedLayout {
       throw new Error(`Room ${r.id || i + 1}: doors must be [x, y] points`);
     }
   });
+  for (const f of (Array.isArray(raw.floors) ? raw.floors : []) as (Partial<LayoutFloor> | null)[]) if (!f || typeof f.id !== 'string' || !f.id) throw new Error('Every floor needs an id');
+  const { value: l, warnings } = parseLayout(data);
+  for (const w of warnings) console.warn(`floorplan3d: import ${w.path}: ${w.message}`);
   const ids = new Set<string>();
   l.rooms = l.rooms.map((r) => {
     let id = r.id || 'r';
@@ -235,7 +240,6 @@ export function parseImport(text: string): ParsedLayout {
     ids.add(id);
     return { ...r, id };
   });
-  for (const f of l.floors as (LayoutFloor | null)[]) if (!f || !f.id) throw new Error('Every floor needs an id');
   return l;
 }
 
@@ -279,7 +283,7 @@ export function mergeImport<T extends Layout>(imported: T, raw: Record<string, u
   const l: T = { ...imported };
   const cur: Partial<Layout> = current || {};
   for (const k of ['objects', 'tags'] as const) {
-    if (plainObject(raw[k]) || (k === 'tags' && plainObject(raw.groups))) continue; // old files: groups became tags (normalise)
+    if (plainObject(raw[k]) || (k === 'tags' && plainObject(raw.groups))) continue; // v1 files: groups became tags (migration)
     const kept = cur[k];
     if (plainObject(kept)) (l as Record<string, unknown>)[k] = kept; // the same key's type on both sides
 
@@ -333,7 +337,7 @@ export function setObjectUi(layout: Layout, id: string, which: string, action: u
 // layout.tags[name] = { entity, label, wash }: the optional controller of a tag (every object carrying the tag
 // is lit only while it is on) and its display label (popup chain rows). No entity (empty or "none") /
 // empty label: not stored; wash ("Light on wall" for its objects): down | up | both | none, else from the model;
-// nothing left: no entry. Old layout.groups entries move into tags.
+// nothing left: no entry.
 const WASH_DIRS: unknown[] = ['down', 'up', 'both', 'none'];
 export function setTag(layout: Layout, name: string, patch: Partial<LayoutTag>): Layout {
   const all: Record<string, LayoutTag> = layoutTags(layout);
@@ -346,11 +350,8 @@ export function setTag(layout: Layout, name: string, patch: Partial<LayoutTag>):
   const tags: Record<string, LayoutTag> = { ...all };
   if (Object.keys(cur).length) tags[name] = cur;
   else delete tags[name];
-  const out: Layout = { ...layout, tags };
-  delete out.groups;
-  return out;
+  return { ...layout, tags };
 }
-export const setGroup = setTag; // pre-0.4.5 name
 
 const sameList = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 

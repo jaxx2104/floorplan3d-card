@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LayoutStore, normalise, EMPTY_LAYOUT } from '../src/storage.ts';
+import { LayoutStore } from '../src/storage.ts';
+import { parseLayout, emptyLayout } from '../src/schema/layout.ts';
 
 const fail = () => Promise.reject(new Error('unknown command'));
 
-describe('normalise', () => {
+describe('parseLayout (load)', () => {
   it('fills defaults and repairs bad fields', () => {
-    expect(normalise(null)).toEqual(EMPTY_LAYOUT());
-    expect(normalise({ rooms: 'x', pins: null, floors: [{ id: 'g' }], extra: 1 }))
-      .toMatchObject({ version: 1, rooms: [], pins: {}, floors: [{ id: 'g' }], hidden: [], extra: 1 });
+    expect(parseLayout(null).value).toEqual(emptyLayout());
+    expect(parseLayout({ rooms: 'x', pins: null, floors: [{ id: 'g' }], extra: 1 }).value)
+      .toMatchObject({ version: 2, rooms: [], pins: {}, floors: [{ id: 'g' }], hidden: [], extra: 1 });
   });
   it('migrates the v0.1.4 model floor_map into level bindings', () => {
-    expect(normalise({ model: { version: 'v', floor_map: { ground: 'floor1', attic: 'always' } } }).model)
+    expect(parseLayout({ model: { version: 'v', floor_map: { ground: 'floor1', attic: 'always' } } }).value.model)
       .toEqual({ version: 'v', levels: { ground: { floor: 'floor1' }, attic: { show: 'always' } } });
   });
 });
@@ -25,11 +26,12 @@ describe('LayoutStore', () => {
     const s = new LayoutStore('k');
     const l = await s.load({ callWS });
     expect(s.backend).toBe('shared');
-    expect(l.rooms).toEqual([{ id: 'r' }]);
+    expect(l.rooms).toEqual([{ id: 'r', polygon: [] }]);
     const p = s.save({ callWS }, l);
     await vi.runAllTimersAsync();
     expect(await p).toBe(true);
     expect(callWS).toHaveBeenLastCalledWith({ type: 'floorplan3d/layout/set', key: 'k', layout: l });
+    expect(callWS.mock.lastCall[0].layout).not.toBe(l); // the serialised copy
   });
 
   it('migrates an older per-user layout when nothing is shared yet', async () => {
@@ -39,7 +41,7 @@ describe('LayoutStore', () => {
       return null;
     });
     const s = new LayoutStore('k');
-    expect((await s.load({ callWS })).rooms).toEqual([{ id: 'old' }]);
+    expect((await s.load({ callWS })).rooms).toEqual([{ id: 'old', polygon: [] }]);
     expect(s.backend).toBe('shared');
   });
 
@@ -50,7 +52,7 @@ describe('LayoutStore', () => {
       throw new Error('unknown');
     });
     const s = new LayoutStore('k');
-    expect((await s.load({ callWS })).rooms).toEqual([{ id: 'local' }]);
+    expect((await s.load({ callWS })).rooms).toEqual([{ id: 'local', polygon: [] }]);
     expect(s.backend).toBe('shared');
   });
 
@@ -66,18 +68,18 @@ describe('LayoutStore', () => {
     const p = s.save({ callWS }, { a: 1 });
     await vi.runAllTimersAsync();
     await p;
-    expect(callWS).toHaveBeenLastCalledWith({ type: 'frontend/set_user_data', key: 'floorplan3d_default', value: { a: 1 } });
+    expect(callWS).toHaveBeenLastCalledWith({ type: 'frontend/set_user_data', key: 'floorplan3d_default', value: { a: 1, version: 2 } });
   });
 
   it('falls back to localStorage', async () => {
     localStorage.setItem('floorplan3d_k', JSON.stringify({ rooms: [{ id: 'z' }] }));
     const s = new LayoutStore('k');
-    expect((await s.load({ callWS: fail })).rooms).toEqual([{ id: 'z' }]);
+    expect((await s.load({ callWS: fail })).rooms).toEqual([{ id: 'z', polygon: [] }]);
     expect(s.backend).toBe('browser');
     const p = s.save({ callWS: fail }, { rooms: [] });
     await vi.runAllTimersAsync();
     expect(await p).toBe(true);
-    expect(JSON.parse(localStorage.getItem('floorplan3d_k'))).toEqual({ rooms: [] });
+    expect(JSON.parse(localStorage.getItem('floorplan3d_k'))).toEqual({ rooms: [], version: 2 });
   });
 
   it('debounces saves and settles superseded promises', async () => {
@@ -91,7 +93,7 @@ describe('LayoutStore', () => {
     expect(await second).toBe(true);
     expect(await first).toBe(false);
     expect(callWS).toHaveBeenCalledTimes(1);
-    expect(callWS.mock.calls[0][0].layout).toEqual({ n: 2 });
+    expect(callWS.mock.calls[0][0].layout).toEqual({ n: 2, version: 2 });
   });
 
   it('reports a failed save', async () => {

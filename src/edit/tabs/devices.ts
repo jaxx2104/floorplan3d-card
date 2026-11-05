@@ -34,7 +34,7 @@ export function badgesView(ed: EditMode): TemplateResult {
 
 function selectedView(ed: EditMode, m: Marker): TemplateResult {
   const pos = ed.card._positions && ed.card._positions.get(m.id);
-  const pin = (ed.layout.pins || {})[m.id];
+  const pin = ed.layout.pins[m.id];
   const pinned = !!pin;
   const attached = pin && pin.attach;
   const target = attached ? ed.card._objects && ed.card._objects.objectAt(attached) : null;
@@ -71,7 +71,7 @@ function stickView(ed: EditMode): TemplateResult {
 export function devicesTab(ed: EditMode): TemplateResult {
   const all = allMarkers(ed);
   const byId = new Map(all.map((m) => [m.id, m]));
-  const hidden = ed.layout.hidden || [];
+  const hidden = ed.layout.hidden;
   const m = ed.selectedMarker && byId.get(ed.selectedMarker);
   if (m && m.id === ed.card._mowerMarkerId) return selectedView(ed, m);
   const unplaced = all.filter((x) => !hidden.includes(x.id) && !hidden.includes(x.entityId) && !(ed.card._positions || new Map()).has(x.id));
@@ -96,7 +96,7 @@ export function stickMoves(ed: EditMode): StickMove[] {
   const vw = ed.view, out: StickMove[] = [];
   if (!vw.model) return out;
   const byId = new Map(allMarkers(ed).map((m) => [m.id, m])); // hidden ones included
-  for (const [id, pin] of Object.entries(ed.layout.pins || {})) {
+  for (const [id, pin] of Object.entries(ed.layout.pins)) {
     const m = byId.get(id);
     if (!m || !pin || pin.attach || id === ed.card._mowerMarkerId) continue; // device gone: leave its pin alone
     const floor = ed.floors.find((f) => f.id === pin.floor_id) || ed.floors[0];
@@ -113,7 +113,7 @@ export function stickMoves(ed: EditMode): StickMove[] {
 
 // A pin placed while a model is loaded sits on the model and follows its alignment.
 export function onModel(ed: EditMode, id: string): boolean {
-  const pin = (ed.layout.pins || {})[id];
+  const pin = ed.layout.pins[id];
   return !!ed.view.model || !!(pin && pin.on_model);
 }
 
@@ -124,14 +124,14 @@ export function stickApply(ed: EditMode) { // the previewed moves; a pin changed
   const moves = ed.stick ? ed.stick.moves : [];
   ed.stick = null;
   let layout = ed.layout;
-  for (const mv of moves) if ((layout.pins || {})[mv.id] === mv.from) layout = E.setPin(layout, mv.id, mv.pin, { grid: false });
+  for (const mv of moves) if (layout.pins[mv.id] === mv.from) layout = E.setPin(layout, mv.id, mv.pin, { grid: false });
   if (layout !== ed.layout) ed.commit(layout);
 }
 
 export function detach(ed: EditMode) { // keep where it is now, as a normal pin on the model
   const id = selectedId(ed);
   const pos = ed.card._positions && ed.card._positions.get(id);
-  const pin: LayoutPin | undefined = (ed.layout.pins || {})[id];
+  const pin: LayoutPin | undefined = ed.layout.pins[id];
   const at = pos ? { x: pos.x, y: pos.y, z: pos.z, floor_id: pos.floorId } : pin;
   if (at) ed.commit(E.setPin(ed.layout, id, { ...at, on_model: true }, { grid: false }));
 }
@@ -151,7 +151,7 @@ export function place(ed: EditMode, id: string) {
 
 export function setTapHints(ed: EditMode, v: string) {
   const l: Layout = { ...ed.layout };
-  if (v === 'near') delete l.tap_hints; else l.tap_hints = v;
+  if (v === 'always' || v === 'off') l.tap_hints = v; else delete l.tap_hints; // near: the default
   ed.commit(l);
 }
 
@@ -160,7 +160,7 @@ export function setMarkerZ(ed: EditMode, value: string) {
   const id = selectedId(ed);
   const pos = ed.card._positions!.get(id); // the height input shows only for a drawn marker
   if (!Number.isFinite(v) || !pos) return;
-  const pin: LayoutPin | undefined = (ed.layout.pins || {})[id];
+  const pin: LayoutPin | undefined = ed.layout.pins[id];
   if (pin && pin.attach && Array.isArray(pin.offset)) {
     // attached: raise / lower the offset; object missing: keep the attach, only the fallback height changes
     const o = pin.offset;

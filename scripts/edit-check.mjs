@@ -408,7 +408,7 @@ try {
   const setup2 = await ev(`(() => { const d = ${card}.shadowRoot.querySelector('details.mower-setup');
     return { open: d.open, complete: d.classList.contains('complete'), colour: d.querySelector('[data-target*="img-pick"]').className }; })()`);
   check('setup checklist open with a missing step', setup2.open && !setup2.complete && setup2.colour.includes('todo'), JSON.stringify(setup2));
-  await ev(`${card}._edit.commit({ ...${card}._edit.layout, mower: { ...${card}._edit.layout.mower, image: { color: ${JSON.stringify(col)}, tolerance: 40, min_pixels: 4 } } })`);
+  await ev(`${card}._edit.commit({ ...${card}._edit.layout, mower: { ...${card}._edit.layout.mower, image: { colors: [${JSON.stringify(col)}], tolerance: 40, min_pixels: 4 } } })`);
   await page.screenshot({ path: path.join(shots, 'edit-mower-image.png') });
   await ev('window.__demoMowerPaused = false');
 

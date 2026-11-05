@@ -80,33 +80,29 @@ export interface ImagePixels {
 }
 
 // ---------- colour lists: up to MAX_COLORS per category ----------
-// Stored as overlay.bg_colors / mowed_colors / nomow_colors and image.colors; the older single
-// bg_color / ... / image.color is read as a one-colour list (and dropped on the next write).
+// Stored as overlay.bg_colors / mowed_colors / nomow_colors and image.colors (the v1 single
+// bg_color / ... / image.color is migrated into the list on load, see schema/layout.ts).
 export const MAX_COLORS = 4;
 const isRgb = (c: unknown): c is RgbColor => Array.isArray(c) && c.length >= 3 && c.slice(0, 3).every((v) => Number.isFinite(Number(v)));
-const keysOf = (kind: MapColorKind | null | undefined): [string, string] => (kind ? [`${kind}_colors`, `${kind}_color`] : ['colors', 'color']);
+const keyOf = (kind: MapColorKind | null | undefined): string => (kind ? `${kind}_colors` : 'colors');
 
 // kind: 'bg' | 'mowed' | 'nomow' (on the overlay) or null (the mower icon, on mower.image)
 export function colorList(obj: Record<string, unknown> | null | undefined, kind: MapColorKind | null = null): number[][] {
-  if (!obj) return [];
-  const [many, one] = keysOf(kind);
-  const m = obj[many], o = obj[one];
-  const list: RgbColor[] = Array.isArray(m) ? m.filter(isRgb) : isRgb(o) ? [o] : [];
+  const m = obj ? obj[keyOf(kind)] : null;
+  const list: RgbColor[] = Array.isArray(m) ? m.filter(isRgb) : [];
   return list.slice(0, MAX_COLORS).map((c) => c.slice(0, 3).map(Number));
 }
 
 // Patch adding a colour (an equal one is not added twice; a full list replaces its last colour).
-export function addColorPatch(obj: Record<string, unknown> | null | undefined, kind: MapColorKind | null, color: RgbColor): Record<string, number[][] | undefined> {
-  const [many, one] = keysOf(kind);
+export function addColorPatch(obj: Record<string, unknown> | null | undefined, kind: MapColorKind | null, color: RgbColor): Record<string, number[][]> {
   const c = color.slice(0, 3).map(Number);
   let list = colorList(obj, kind).filter((x) => String(x) !== String(c));
   if (list.length >= MAX_COLORS) list = list.slice(0, MAX_COLORS - 1);
-  return { [many]: [...list, c], [one]: undefined };
+  return { [keyOf(kind)]: [...list, c] };
 }
 
-export function removeColorPatch(obj: Record<string, unknown> | null | undefined, kind: MapColorKind | null, index: number): Record<string, number[][] | undefined> {
-  const [many, one] = keysOf(kind);
-  return { [many]: colorList(obj, kind).filter((_, i) => i !== index), [one]: undefined };
+export function removeColorPatch(obj: Record<string, unknown> | null | undefined, kind: MapColorKind | null, index: number): Record<string, number[][]> {
+  return { [keyOf(kind)]: colorList(obj, kind).filter((_, i) => i !== index) };
 }
 
 // Overlay geometry, exactly as view.setMapOverlay draws it: a plane centred on (x, y), `width`
