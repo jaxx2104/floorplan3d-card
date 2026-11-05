@@ -123,16 +123,40 @@ describe("autoPlace", () => {
     for (const p of out.values()) expect(inside(p, L)).toBe(true);
   });
 
-  // Known bug (src/placement.ts insetCorner): corners are pushed toward the centroid, which lies
-  // outside an L-shaped room, so some corner devices land outside it. Flip to it() once fixed.
-  it.failing("puts corner devices inside a concave room", () => {
+  it("puts corner devices inside a concave room", () => {
     const ms = [0, 1, 2, 3, 4, 5].map((i) => ({
       id: "m" + i,
       domain: "binary_sensor",
       deviceClass: "motion",
     }));
-    for (const p of autoPlace({ polygon: L }, ms, 2.7).values())
-      expect(inside(p, L)).toBe(true);
+    for (const poly of [L, [...L].reverse()])
+      for (const p of autoPlace({ polygon: poly }, ms, 2.7).values())
+        expect(inside(p, poly)).toBe(true);
+  });
+
+  it("never puts a corner device at the reflex corner of a concave room", () => {
+    const ms = [0, 1, 2, 3, 4].map((i) => ({
+      id: "m" + i,
+      domain: "binary_sensor",
+      deviceClass: "motion",
+    }));
+    const out = [...autoPlace({ polygon: L }, ms, 2.7).values()];
+    expect(out).toHaveLength(5);
+    for (const p of out)
+      expect(Math.hypot(p.x - 2, p.y - 2)).toBeGreaterThan(1);
+    // five convex corners: every device gets its own
+    const keys = new Set(out.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
+    expect(keys.size).toBe(5);
+  });
+
+  it("insets convex-room corners toward the centroid", () => {
+    const p = autoPlace(
+      { polygon: square },
+      [{ id: "m", domain: "binary_sensor", deviceClass: "motion" }],
+      2.7,
+    ).get("m");
+    expect(p.x).toBeCloseTo(0.28);
+    expect(p.y).toBeCloseTo(0.21);
   });
 
   it("returns nothing for a room without a usable polygon", () => {

@@ -87,17 +87,52 @@ function pointOnPerimeter(
   return poly[0];
 }
 
-function insetCorner(
-  poly: readonly PlanPoint[],
-  i: number,
-  inset: number,
-): PlanPoint {
-  const c = centroid(poly);
-  const p = poly[i];
-  const dx = c[0] - p[0],
-    dy = c[1] - p[1];
-  const l = Math.hypot(dx, dy) || 1;
-  return [p[0] + (dx / l) * inset * 1.4, p[1] + (dy / l) * inset * 1.4];
+// Corner spots, `inset` metres into the room. A convex room keeps the push toward the centroid.
+// In a concave room the centroid can lie outside the floor, so each convex corner is pushed along
+// its interior bisector instead (shrinking the push until the spot is inside); reflex corners are
+// skipped, a device there would face the walls of the notch.
+function cornerSpots(poly: readonly PlanPoint[], inset: number): PlanPoint[] {
+  const sign = Math.sign(signedArea(poly)) || 1;
+  const n = poly.length;
+  const turn = (i: number): number => {
+    const a = poly[(i + n - 1) % n],
+      p = poly[i],
+      b = poly[(i + 1) % n];
+    return (
+      sign * ((p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]))
+    );
+  };
+  const d = inset * 1.4;
+  if (poly.every((_, i) => turn(i) >= -1e-12)) {
+    const c = centroid(poly);
+    return poly.map((p): PlanPoint => {
+      const dx = c[0] - p[0],
+        dy = c[1] - p[1];
+      const l = Math.hypot(dx, dy) || 1;
+      return [p[0] + (dx / l) * d, p[1] + (dy / l) * d];
+    });
+  }
+  const spots: PlanPoint[] = [];
+  for (let i = 0; i < n; i++) {
+    if (turn(i) <= 1e-12) continue; // reflex or straight
+    const a = poly[(i + n - 1) % n],
+      p = poly[i],
+      b = poly[(i + 1) % n];
+    const la = Math.hypot(a[0] - p[0], a[1] - p[1]),
+      lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
+    // at a convex corner the sum of the unit edge vectors points into the room
+    const bx = (a[0] - p[0]) / la + (b[0] - p[0]) / lb,
+      by = (a[1] - p[1]) / la + (b[1] - p[1]) / lb;
+    const l = Math.hypot(bx, by);
+    for (let k = d; k > d / 16; k /= 2) {
+      const q: PlanPoint = [p[0] + (bx / l) * k, p[1] + (by / l) * k];
+      if (pointInPolygon(q, poly)) {
+        spots.push(q);
+        break;
+      }
+    }
+  }
+  return spots;
 }
 
 // ---------- type rules ----------
@@ -313,18 +348,23 @@ export function autoPlace(
         }
       }
     }
-    if (!candidates.length) candidates.push(insetCorner(poly, 0, inset));
+    if (!candidates.length)
+      candidates.push(cornerSpots(poly, inset)[0] ?? poly[0]);
     groups.center.forEach(({ m, r }, i) => {
       const p = candidates[i % candidates.length];
       out.set(m.id, { x: p[0], y: p[1], z: zOf(r), auto: true });
     });
   }
 
-  // corners: one per vertex, then wrap
-  groups.corner.forEach(({ m, r }, i) => {
-    const p = insetCorner(poly, i % poly.length, inset);
-    out.set(m.id, { x: p[0], y: p[1], z: zOf(r), auto: true });
-  });
+  // corners: one per usable corner, then wrap
+  if (groups.corner.length) {
+    const spots = cornerSpots(poly, inset);
+    if (!spots.length) spots.push(pointOnPerimeter(poly, 0.3, inset));
+    groups.corner.forEach(({ m, r }, i) => {
+      const p = spots[i % spots.length];
+      out.set(m.id, { x: p[0], y: p[1], z: zOf(r), auto: true });
+    });
+  }
 
   // door: near the room's first door (or the first vertex), spread sideways
   if (groups.door.length) {
