@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeAll } from "bun:test";
+import { cardConfigSchema, parseCardConfig } from "../src/schema/config.ts";
 
 // stand-in for HA's ha-form
 class FakeForm extends HTMLElement {}
@@ -28,54 +29,49 @@ describe("card editor", () => {
     });
   });
 
-  it("offers room_labels name / size / none (size is the default)", () => {
-    const field = mod.SCHEMA.flatMap((x) => x.schema || [x]).find(
-      (x) => x.name === "room_labels",
-    );
-    expect(field.selector.select.options.map((o) => o.value).sort()).toEqual([
-      "name",
-      "none",
-      "size",
-    ]);
-    expect(mod.cleanConfig({ room_labels: "size" })).toEqual({});
-    expect(mod.cleanConfig({ room_labels: "none" })).toEqual({
-      room_labels: "none",
-    });
+  // the leaf fields, through grids and expandables
+  const leaves = (list) => list.flatMap((x) => (x.schema ? leaves(x.schema) : [x]));
+  const fields = () => leaves(mod.SCHEMA);
+  const RENDER_FORM_FIELDS = ["render_quality", "render_tone_mapping"]; // folded into render
+
+  it("every form field is a card option of the YAML contract", () => {
+    const shape = Object.keys(cardConfigSchema.shape);
+    const unknown = fields()
+      .map((f) => f.name)
+      .filter((n) => !shape.includes(n) && !RENDER_FORM_FIELDS.includes(n));
+    expect(unknown).toEqual([]);
   });
 
-  it("offers zoom_to center / cursor (center is the default)", () => {
-    const field = mod.SCHEMA.flatMap((x) => x.schema || [x]).find(
-      (x) => x.name === "zoom_to",
-    );
-    expect(field.selector.select.options.map((o) => o.value)).toEqual([
-      "center",
-      "cursor",
-    ]);
-    expect(mod.cleanConfig({ zoom_to: "center" })).toEqual({});
-    expect(mod.cleanConfig({ zoom_to: "cursor" })).toEqual({
-      zoom_to: "cursor",
-    });
+  it("every value the form offers parses without a warning", () => {
+    for (const f of fields()) {
+      if (RENDER_FORM_FIELDS.includes(f.name)) continue;
+      const values = f.selector?.select
+        ? f.selector.select.options.map((o) => o.value)
+        : f.selector?.boolean
+          ? [true, false]
+          : [];
+      for (const v of values)
+        expect(
+          parseCardConfig({ [f.name]: v }).warnings,
+          `${f.name}: ${v}`,
+        ).toEqual([]);
+    }
   });
 
-  it("offers lights auto / off (auto is the default)", () => {
-    const field = mod.SCHEMA.flatMap((x) => x.schema || [x]).find(
-      (x) => x.name === "lights",
-    );
-    expect(field.selector.select.options.map((o) => o.value)).toEqual([
-      "auto",
-      "off",
-    ]);
-    expect(mod.cleanConfig({ lights: "auto" })).toEqual({});
-    expect(mod.cleanConfig({ lights: "off" })).toEqual({ lights: "off" });
-  });
-
-  it("offers merge as a boolean (true is the default)", () => {
-    const field = mod.SCHEMA.flatMap((x) => x.schema || [x]).find(
-      (x) => x.name === "merge",
-    );
-    expect(field.selector).toEqual({ boolean: {} });
-    expect(mod.cleanConfig({ merge: true })).toEqual({});
-    expect(mod.cleanConfig({ merge: false })).toEqual({ merge: false });
+  it("drops the contract's defaults, and the documented runtime defaults", () => {
+    const contract = parseCardConfig({}).value;
+    for (const [k, v] of Object.entries(contract))
+      if (k !== "type") expect(mod.cleanConfig({ [k]: v }), k).toEqual({});
+    // options without a schema default whose unset value means this
+    for (const [k, dflt, other] of [
+      ["room_labels", "size", "none"],
+      ["zoom_to", "center", "cursor"],
+      ["lights", "auto", "off"],
+      ["merge", true, false],
+    ]) {
+      expect(mod.cleanConfig({ [k]: dflt })).toEqual({});
+      expect(mod.cleanConfig({ [k]: other })).toEqual({ [k]: other });
+    }
   });
 
   it("renders ha-form with defaults and emits cleaned config", () => {
