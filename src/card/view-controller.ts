@@ -325,8 +325,11 @@ export class ViewController {
 
   // Rooms, walls and labels into the view. Labels with a model: edit mode, or storey views for
   // rooms on the view's primary level.
+  // While one model replaces another (a merge reload) the plan's walls and fills stay off: drawn for the
+  // moment between, their shaders compiled and were dropped again, and the plan flashed up under the model.
   _pushStructure(): void {
-    const hasModel = !!this.card._view.model;
+    const hasModel =
+      !!this.card._view.model || this.card._view.isModelSwapping();
     const st = this._viewState;
     const mode = this._roomLabelMode();
     this._labelKey = this._labelKeyNow();

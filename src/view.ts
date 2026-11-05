@@ -568,6 +568,9 @@ export class FloorplanView {
   isModelLoading(opts: ModelArgs<"isModelLoading">[0]) {
     return this.modelLayer.isModelLoading(opts);
   }
+  isModelSwapping() {
+    return this.modelLayer.isModelSwapping();
+  }
   setModel(opts: ModelArgs<"setModel">[0]) {
     return this.modelLayer.setModel(opts);
   }

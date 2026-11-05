@@ -1694,21 +1694,26 @@ sections.add(
         .then(JSON.parse);
     // shader programs created since the last read: per render, the ids new in renderer.info.programs
     await page.evaluate(`(() => { const r = ${card}._view.renderer, seen = new Set(r.info.programs.map((p) => p.id)), f = r.render.bind(r);
-    window.__newPrograms = [];
-    r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); } }; })()`);
+    window.__newPrograms = []; window.__progInfo = new Map();
+    r.render = (sc, cam) => { f(sc, cam); for (const p of r.info.programs) if (!seen.has(p.id)) { seen.add(p.id); window.__newPrograms.push(p.id); window.__progInfo.set(p.id, (p.name ? p.name + ':' : '') + String(p.cacheKey).split(',')[0]); } }; })()`);
     // created: new programs; transient: created but already released (compiled for a passing state);
-    // otherNew: new programs used by materials outside the model
+    // otherNew: new programs used by materials outside the model; transientKinds: material type (and name) of each transient
     const programs = () =>
       page.evaluate(`(() => { const v = ${card}._view, r = v.renderer, other = new Set(), live = new Set(r.info.programs.map((p) => p.id));
     v.scene.traverse((o) => { if (!o.material) return; let inModel = false; for (let n = o; n; n = n.parent) if (n === v.modelGroup) inModel = true;
       if (!inModel) for (const m of [].concat(o.material)) { const p = r.properties.get(m).currentProgram; if (p) other.add(p.id); } });
     const created = window.__newPrograms.splice(0);
-    return { live: live.size, created: created.length, transient: created.filter((id) => !live.has(id)).length, otherNew: created.filter((id) => other.has(id)).length }; })()`);
-    // the demo mower driven step by step (its 500 ms timer held): each step moves the marker and swaps the live
-    // map; a step is done once a frame has drawn it, the map texture changed (when it has one) and the card is idle
+    return { live: live.size, created: created.length, transient: created.filter((id) => !live.has(id)).length, otherNew: created.filter((id) => other.has(id)).length, transientKinds: created.filter((id) => !live.has(id)).map((id) => window.__progInfo.get(id)) }; })()`);
+    // the demo mower driven step by step (its 500 ms timer held): each step moves the marker and updates the
+    // live map entity (image.sunseeker_live_map). The demo layout's overlay shows the static image.sunseeker_map,
+    // so the overlay texture only changes on a step when the overlay is the live map: waited for only then.
+    // A step is done once a frame has drawn it (and the overlay swapped, when it shows the live map) and the
+    // card is idle.
     await page.evaluate("window.__demoMowerPaused = true");
+    const liveOverlay = await page.evaluate(
+      `((${card}._layout.mower || {}).overlay || {}).entity === 'image.sunseeker_live_map'`,
+    );
     const mapSig = `(() => { const v = ${card}._view, m = v.mapPlane && v.mapPlane.material && v.mapPlane.material.map; return m ? m.uuid + ':' + m.version : ''; })()`;
-    let mapSwaps = true;
     const mowerStep = async () => {
       await page.evaluate(
         `(() => { window.__mapSig0 = ${mapSig}; window.__frames0 = ${card}._view.stats.frames; window.__demoMowerStep(); })()`,
@@ -1719,11 +1724,10 @@ sections.add(
         "a frame after the mower step",
         10000,
       );
-      // no live map texture, or it never changes on a step (seen on the first step): not waited for again
-      if (mapSwaps)
-        mapSwaps = await waitTrue(
+      if (liveOverlay)
+        await waitTrue(
           page,
-          `!window.__mapSig0 || ${mapSig} !== window.__mapSig0`,
+          `${mapSig} !== window.__mapSig0`,
           "the live map swap",
           5000,
         );
@@ -1734,7 +1738,7 @@ sections.add(
     for (let i = 0; i < 20; i++) await mowerStep();
     const moving = await programs();
     check(
-      "mower moving (20 steps: marker, live map): no new shader programs",
+      "mower moving (20 steps: marker, live map entity): no new shader programs",
       moving.created === 0,
       JSON.stringify(moving),
     );

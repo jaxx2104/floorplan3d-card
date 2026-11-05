@@ -439,6 +439,12 @@ export class ModelLayer {
     );
   }
 
+  // A model on its way in place of one that was shown (a reload, another model): the old one is gone but the
+  // model look is kept (_disposeModel(true)) until the new one is there or fails.
+  isModelSwapping(): boolean {
+    return !this.view.model && !!this._modelId && this.view.look._modelLook;
+  }
+
   setModel(opts: ModelOptions | null | undefined): Promise<string | null> {
     const id = this._modelIdOf(opts);
     if (!opts || !id) {
