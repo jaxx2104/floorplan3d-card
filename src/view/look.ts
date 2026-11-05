@@ -581,6 +581,15 @@ export class RenderLook {
     this.view.dirty = true;
   }
 
+  // The ao pass of a frame: the card option's, in the tiers without the room probes and contact shadows only.
+  // Those already shade the corners, wall feet and the floor under furniture, and on top of them the pass (which
+  // multiplies the finished frame, the lamps' and the sun's direct light included) darkened a quarter of the demo's
+  // interior views to 0.65 of their light, the probes' corners a second time.
+  aoPass(): AmbientOcclusion | null {
+    const t = this.tier();
+    return this._ao && !(t.lightProbes || t.contactShadows) ? this._ao : null;
+  }
+
   // Card option ao (true or { intensity, radius, resolution }): ambient occlusion over the model, see ao.js.
   setAo(opt: unknown): void {
     const next = normAo(opt);

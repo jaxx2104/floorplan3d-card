@@ -124,6 +124,20 @@ describe("FloorplanView facade", () => {
     v.model = { id: "m" };
     expect(v._glowVisible("light", g)).toBe(false);
   });
+
+  it("the ao pass runs in standard only: high's probes and contact shadows already shade the corners", () => {
+    const look = Object.create(RenderLook.prototype);
+    look._ao = { settings: {} };
+    look.quality = () => "standard";
+    expect(look.aoPass()).toBe(look._ao);
+    for (const q of ["high", "still"]) {
+      look.quality = () => q;
+      expect(look.aoPass()).toBe(null);
+    }
+    look._ao = null;
+    look.quality = () => "standard";
+    expect(look.aoPass()).toBe(null);
+  });
 });
 
 describe("CameraRig", () => {

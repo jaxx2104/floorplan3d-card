@@ -1050,7 +1050,7 @@ export class FloorplanView {
   // loop (false: the 'still' tier drawing the frame on screen again to keep it under the trace).
   _drawGl(count: boolean): void {
     const look = this.look;
-    const ao = this.model ? look._ao : null,
+    const ao = this.model ? look.aoPass() : null,
       fin = this.model ? look._finish : null;
     if (ao || (fin && fin.needsDepth)) {
       if (!look._depthPass) look._depthPass = new DepthPrepass(this.renderer);

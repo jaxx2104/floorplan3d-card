@@ -10,8 +10,8 @@
 // and the frame itself costs one texture lookup on floor pixels.
 //
 // Why baked planes rather than the AO pass: AO is a separate opt-in (card option ao) that runs every frame;
-// this is the same few-centimetre grounding at no per-frame cost, also with AO off, and it sees what is
-// hidden from the camera (under a sofa seen from above).
+// this is the same few-centimetre grounding at no per-frame cost, and it sees what is hidden from the camera
+// (under a sofa seen from above). The tiers with contact shadows skip the AO pass (RenderLook.aoPass).
 import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import type { Drawable } from "./view/core.ts";
