@@ -699,7 +699,7 @@ operations), `src/edit-mode.js` (panel and plan interactions), `src/mower.js` (m
 (`layout.ts`) and the card YAML options (`config.ts`), built from small combinators (`core.ts`).
 The types in `src/types/layout.ts` and `config.ts` are derived from it. Changing the stored shape
 means bumping `LAYOUT_VERSION`, adding a migration and a fixture under `test/fixtures/layouts`
-(`UPDATE_GOLDEN=1 pnpm test` rewrites the expected results in `golden/`).
+(`UPDATE_GOLDEN=1 bun run test` rewrites the expected results in `golden/`).
 
 ## Troubleshooting
 
