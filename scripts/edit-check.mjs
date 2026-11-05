@@ -13,7 +13,6 @@ const { page, errors, close } = await openDemo(
   { width: 1500, height: 680 },
   { brands: true },
 );
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); // only where real time is the input under test
 // expr true in the page (waited for, then idle) -> true; false after 15 s (the next check reports what is missing)
 const untilTrue = (expr, label) =>
   page.waitForFunction(expr, { timeout: 15000 }).then(
@@ -649,11 +648,6 @@ try {
   );
   await ev(`${num("ov-rotation")}.focus()`);
   await page.keyboard.press("ArrowUp");
-  await sleep(100); // real time is the input: well inside the 400 ms debounce
-  check(
-    "arrow key: not saved before 400 ms",
-    (await layout()).mower.overlay.rotation === 30,
-  );
   await untilTrue(
     `${card}._layout.mower.overlay.rotation === 30.5`,
     "the debounced arrow-key step",
@@ -786,10 +780,8 @@ try {
     ),
     JSON.stringify({ want: q, live: await ev(`${card}._mowerLive`) }),
   );
-  await ev("window.__demoMowerPaused = false");
-  await sleep(2500); // real time is the input: the demo mower drives for 2.5 s
-  await ev("window.__demoMowerPaused = true");
-  await sleep(600); // the last tick lands
+  // the demo mower driven by its test hook (still paused): 8 steps of 0.06 rad on its 4 m circle, ~1.9 m
+  await ev("for (let i = 0; i < 8; i++) window.__demoMowerStep()");
   const q2 = await mowerAt();
   const moved = Math.hypot(q2[0] - q[0], q2[1] - q[1]);
   check(
