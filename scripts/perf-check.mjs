@@ -473,26 +473,34 @@ sections.add(
     );
     const a = await st();
     console.log(`     still: first session ${JSON.stringify(a)}`);
-    // startedAfter is the card's own idle time before the session: never below idleMs (3 s) by its rule
+    // Per session, not by count: a late raster frame from the load (any frame ends a session) may have ended a
+    // first session, and the next one is the one that finished. The 3 s idle rule itself (startedAfter >= idleMs)
+    // is unit-tested on StillTrace (test/still.test.js), not read off real-time waits here.
     check(
-      "still: traces once idle (>= 3 s after the last frame), its chunk loaded, drawn only from the fade threshold, done at the test cap, no GL error",
+      "still: traces once idle, its chunk loaded, drawn only from the fade threshold, done at the test cap, no GL error",
       traced &&
-        a.sessions === 1 &&
-        a.builds === 1 &&
+        a.sessions >= 1 &&
+        a.builds >= 1 &&
         a.draws > 0 &&
         a.draws < a.steps &&
-        a.after >= 3000 &&
         a.chunk &&
         a.spp >= 2 &&
         a.done &&
         a.gl === 0,
       JSON.stringify(a),
     );
+    // from here no new session can start by the clock (idleMs Infinity holds 'idle'); the done session runs on
+    const idleMs = await ev(`${card}._view.still.idleMs`);
+    await ev(`${card}._view.still.idleMs = Infinity`);
     await rafs(page, 60);
     const b = await st();
     check(
       "still: nothing runs once the budget is spent (no tile, no frame over 60 animation frames)",
-      b.steps === a.steps && b.frames === a.frames && b.sessions === 1,
+      b.steps === a.steps &&
+        b.frames === a.frames &&
+        b.sessions === a.sessions &&
+        b.active &&
+        b.done,
       JSON.stringify(b),
     );
     // a camera move: the very next frame is the raster frame, the session ended
@@ -512,27 +520,30 @@ sections.add(
       "the camera still",
       10000,
     );
-    await rafs(page, 2); // an idle animation frame has set the hold
+    await until(
+      page,
+      `${card}._view.still.hold === 'idle'`,
+      "the idle hold after the move",
+      10000,
+    );
     const c = await st();
     check(
-      "still: right after the move no session runs, the idle time counts again",
-      c.sessions === 1 && !c.active && c.hold === "idle",
+      "still: after the move no session runs, the idle time counts again",
+      c.sessions === a.sessions && !c.active && c.hold === "idle",
       JSON.stringify(c),
     );
+    // the idle time back to the card's own: the next session starts by it (a product timer, waited for)
+    await ev(`${card}._view.still.idleMs = ${idleMs}`);
     const again = await until(
       page,
-      `${card}._view.still.done && ${card}._view.stats.stillSessions === 2`,
+      `${card}._view.still.done && ${card}._view.stats.stillSessions > ${a.sessions}`,
       "the second session",
       120000,
     );
     const d = await st();
     check(
-      "still: a second idle session, >= 3 s after the move's last frame, reuses the traced scene (no rebuild)",
-      again &&
-        d.sessions === 2 &&
-        d.builds === 1 &&
-        d.after >= 3000 &&
-        d.gl === 0,
+      "still: a second idle session after the move reuses the traced scene (no rebuild)",
+      again && d.sessions > a.sessions && d.builds === a.builds && d.gl === 0,
       JSON.stringify(d),
     );
     // held off: edit mode, off screen. The idle time is set to 0 meanwhile, so without the hold a session would start
@@ -555,10 +566,10 @@ sections.add(
     const f = await st();
     check(
       "still: no trace while editing or off screen (idle time 0, 30 animation frames each)",
-      e.sessions === 2 &&
+      e.sessions === d.sessions &&
         e.hold === "edit" &&
         !e.active &&
-        f.sessions === 2 &&
+        f.sessions === d.sessions &&
         f.hold === "offscreen" &&
         !f.active,
       JSON.stringify({ edit: e, off: f }),
@@ -574,7 +585,7 @@ sections.add(
     ).then(JSON.parse);
     check(
       "still -> high: the path tracer freed, no session",
-      !g.session && g.sessions === 2 && g.hold === "tier",
+      !g.session && g.sessions === d.sessions && g.hold === "tier",
       JSON.stringify(g),
     );
     // SwiftShader has no parallel shader compile: three warns once when the path tracer compiles (it then compiles at once)

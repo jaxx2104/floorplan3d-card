@@ -12,6 +12,7 @@ import {
   STILL_FADE_FROM,
   STILL_FADE_TO,
 } from "../src/still.ts";
+import { StillTrace } from "../src/view/still.ts";
 
 const base = {
   tier: true,
@@ -92,5 +93,89 @@ describe("still: idle path tracing rules", () => {
   it("traces at half resolution", () => {
     expect(stillSize(1200, 700)).toEqual([600, 350]);
     expect(stillSize(1, 1)).toEqual([1, 1]);
+  });
+});
+
+// The view side's idle clock (view/still.ts StillTrace), on a stub view and a stub path tracer: the 3 s idle rule
+// the headless perf-check used to read off a real session (startedAfter >= 3000 after real-time waits). The render
+// loop hands it the frame time, so the test steps that clock itself.
+describe("StillTrace: a session starts once the idle time has passed since the last raster frame", () => {
+  class FakeSession {
+    samples = 0;
+    compiling = false;
+    prepare() {
+      return true;
+    }
+    keepRaster() {}
+    begin() {}
+    step() {
+      this.samples++;
+    }
+    draw() {}
+    dispose() {}
+  }
+  const make = () => {
+    const view = {
+      look: { tier: () => ({ pathTrace: true }), _env: null },
+      model: { id: "m" },
+      onScreen: true,
+      renderer: { clippingPlanes: [] },
+      modelClip: { constant: 1e9 },
+      camera: { updateMatrixWorld() {} },
+      _drawGl() {},
+      _drawOverlay() {},
+      stats: { stillSessions: 0, stillBuilds: 0, stillSteps: 0, stillDraws: 0 },
+      test: true,
+      dirty: false,
+    };
+    const t = new StillTrace(view);
+    t._mod = { PathTraceSession: FakeSession }; // the chunk loaded
+    t._source = () => ({});
+    return { t, view };
+  };
+
+  it("holds 'idle' until idleMs after the last frame, then starts with startedAfter = that idle time", () => {
+    const { t, view } = make();
+    t.frameDrawn(10000);
+    t.idle(10000 + STILL_IDLE_MS - 1);
+    expect(t.hold).toBe("idle");
+    expect(view.stats.stillSessions).toBe(0);
+    t.idle(10000 + STILL_IDLE_MS);
+    expect(t.hold).toBe(null);
+    expect(t.active).toBe(true);
+    expect(view.stats.stillSessions).toBe(1);
+    expect(view.stats.stillBuilds).toBe(1);
+    expect(t.startedAfter).toBe(STILL_IDLE_MS);
+  });
+
+  it("a raster frame ends the session and the idle time counts again from it", () => {
+    const { t, view } = make();
+    t.frameDrawn(0);
+    t.idle(STILL_IDLE_MS);
+    expect(t.active).toBe(true);
+    t.frameDrawn(5000);
+    expect(t.active).toBe(false);
+    t.idle(5000 + STILL_IDLE_MS - 1);
+    expect(t.hold).toBe("idle");
+    expect(view.stats.stillSessions).toBe(1);
+    t.idle(5000 + STILL_IDLE_MS + 500);
+    expect(view.stats.stillSessions).toBe(2);
+    expect(t.startedAfter).toBe(STILL_IDLE_MS + 500);
+  });
+
+  it("a running session is never held by the idle time (it traces on, then stays done)", () => {
+    const { t, view } = make();
+    t.idleMs = 1000;
+    t.frameDrawn(0);
+    t.idle(1000);
+    for (let i = 1; i <= 200 && !t.done; i++) t.idle(1000 + i * 20);
+    expect(t.done).toBe(true);
+    const steps = view.stats.stillSteps;
+    t.idleMs = Infinity; // no effect on the running session
+    t.idle(99999);
+    expect(t.hold).toBe(null);
+    expect(t.active).toBe(true);
+    expect(view.stats.stillSteps).toBe(steps); // budget spent: no more tiles
+    expect(view.stats.stillSessions).toBe(1);
   });
 });
