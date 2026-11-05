@@ -15,7 +15,7 @@ import {
   envSky,
   envChanged,
   envIntensity,
-  skyUniforms,
+  ENV_GROUND,
   EnvLight,
   ENV_ANGLE_DEG,
   ENV_THROTTLE_MS,
@@ -217,6 +217,7 @@ describe("sky environment: inputs and triggers", () => {
       body: "sun",
       dir: [0, 1, 0],
       coverage: 0,
+      ground: ENV_GROUND,
     });
     expect(envSky(0.49, up, { dir: [0, 1, 0] }, 30).body).toBe("sun");
     expect(envSky(0.5, up, { dir: [1, 1, 0] }, 30)).toMatchObject({
@@ -243,11 +244,12 @@ describe("sky environment: inputs and triggers", () => {
       true,
     );
     expect(envChanged(a, envSky(0, up, null, 5))).toBe(true);
+    expect(envChanged(a, envSky(0, up, null, 0, 0x404040))).toBe(true); // another ground colour
     expect(envChanged(a, envSky(1, up, { dir: up }, 0))).toBe(true);
   });
   it("brightness: the day sky, the moon sky dimmer by phase and clouds, a moonless one dimmer still", () => {
     expect(envIntensity(0, 0)).toBeCloseTo(ENV_DAY);
-    expect(envIntensity(0, 100)).toBeGreaterThan(ENV_DAY); // like the hemisphere fill under clouds
+    expect(envIntensity(0, 100)).toBe(ENV_DAY); // the Sky's lit clouds brighten it themselves
     const full = envIntensity(1, 0, 1, "moon"),
       newMoon = envIntensity(1, 0, 0, "moon"),
       cloudy = envIntensity(1, 100, 1, "moon");
@@ -256,16 +258,6 @@ describe("sky environment: inputs and triggers", () => {
     expect(cloudy).toBeLessThan(full);
     expect(envIntensity(1, 0, 0, "dark")).toBeCloseTo(ENV_DAY * ENV_DARK);
     expect(full).toBeLessThan(envIntensity(0, 0) / 4);
-  });
-  it("sky shader: hazier and greyer under clouds, a cool tint at night", () => {
-    const clear = skyUniforms(envSky(0, up, null, 0)),
-      overcast = skyUniforms(envSky(0, up, null, 100));
-    expect(overcast.turbidity).toBeGreaterThan(clear.turbidity);
-    expect(overcast.grey).toBeGreaterThan(clear.grey);
-    expect(clear.tint).toEqual([1, 1, 1]);
-    expect(skyUniforms(envSky(1, up, { dir: up }, 0)).tint[2]).toBeGreaterThan(
-      skyUniforms(envSky(1, up, { dir: up }, 0)).tint[0],
-    );
   });
 });
 

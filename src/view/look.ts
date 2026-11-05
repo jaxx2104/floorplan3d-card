@@ -462,7 +462,14 @@ export class RenderLook {
     const sunDir =
       this.sky.sunDir ||
       sunDirection(model.north, this.view.modelGroup.rotation.y); // as the sun light (_fitShadow)
-    const sky = envSky(t, sunDir, moon, cover);
+    // the ground below the sky's horizon: the recipe's hemisphere ground colour
+    const sky = envSky(
+      t,
+      sunDir,
+      moon,
+      cover,
+      skyLights(this.render, t).hemiGround,
+    );
     env.request(sky);
     this.view.scene.environmentIntensity = envIntensity(
       t,
