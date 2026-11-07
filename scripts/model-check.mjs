@@ -8,9 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { openDemo, newPage, root } from "./lib/demo-browser.mjs";
 import { Sections, parseArgs, selectGroups } from "./lib/sections.mjs";
-import { inverseTransformPoint, transformPoint } from "../src/bindings.ts";
+import { transformPoint } from "../src/bindings.ts";
 import { alignModelPoint } from "../src/views.ts";
-import { pixelToPlan } from "../src/mower-image.ts";
 import { fitOutline, HOUSE_OUTLINE } from "../src/load-outline.ts";
 import { matchExposure } from "../src/render-recipe.ts";
 import { ENV_DAY } from "../src/view/env-light.ts";
@@ -319,20 +318,6 @@ sections.add(
         JSON.stringify(await style(occ.id)) === "[0.25,false]",
         JSON.stringify(await style(occ.id)),
       );
-      await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
-      await settle(page, card);
-      await camAndOcclusion(page, {
-        position: [occ.pos[0], occ.pos[1] + 2, occ.pos[2] + 12],
-        target: occ.pos,
-      });
-      const es = await style(occ.id);
-      check(
-        "hidden marker in edit mode: half opacity, still draggable",
-        (await cls(occ.id)) && JSON.stringify(es) === "[0.5,true]",
-        JSON.stringify(es),
-      );
-      await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
-      await idle(page);
       await camAndOcclusion(page, {
         position: [occ.pos[0], occ.pos[1] + 14, occ.pos[2] + 3],
         target: occ.pos,
@@ -563,47 +548,6 @@ sections.add(
       "stage has has-model, day/night button shown",
       look.hasModel && !look.dayHidden,
     );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    check(
-      "edit mode shows room labels",
-      (await page.evaluate(
-        `${card}._view.sprites.labels('room', true).length`,
-      )) > 0,
-    );
-    const traced = await page.evaluate(`(() => {
-    const ed = ${card}._edit, v = ${card}._view;
-    let found = null;
-    v.model.root.traverse((m) => {
-      if (found || !m.isMesh) return;
-      const t = v.meshTriangles(m);
-      for (let i = 0; i + 8 < t.length && !found; i += 9) {
-        const ux = t[i+3]-t[i], uz = t[i+5]-t[i+2], vx = t[i+6]-t[i], vz = t[i+8]-t[i+2];
-        if (Math.abs(uz * vx - ux * vz) > 1e-3 && Math.abs(t[i+1] - t[i+4]) < 1e-6 && Math.abs(t[i+1] - t[i+7]) < 1e-6)
-          found = { m, hit: [(t[i]+t[i+3]+t[i+6])/3, t[i+1], (t[i+2]+t[i+5]+t[i+8])/3] };
-      }
-    });
-    if (!found) return null;
-    const r = ed._traceOutline(found.m, found.hit);
-    return r.poly ? r.poly.length : 0;
-  })()`);
-    check(
-      "pick: a floor piece of the model gives an outline polygon",
-      traced >= 3,
-      String(traced),
-    );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    check(
-      "leaving edit mode restores the view's labels",
-      (await page.evaluate(
-        `${card}._view.sprites.labels('room', true).length`,
-      )) === look.labels,
-    );
     // framing uses the room polygons even though no fills/outlines/walls are rendered with a model
     await page.evaluate(
       `${card}._setFloor('ground'); ${card}._view.setMode('3d'); ${card}._view.fit({ instant: true })`,
@@ -621,20 +565,6 @@ sections.add(
       "model + rooms: camera frames the rooms",
       ext > 0 && d0 < 2.5 * ext,
       `dist ${d0.toFixed(1)} ext ${ext.toFixed(1)}`,
-    );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await settle(page, card);
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await settle(page, card);
-    const d1 = await dist();
-    check(
-      "edit mode on/off keeps the camera distance within 5 %",
-      Math.abs(d1 - d0) / d0 < 0.05,
-      `${d0.toFixed(2)} -> ${d1.toFixed(2)}`,
     );
     // chip switch keeps the camera; Reset view frames again
     const camAt = () =>
@@ -972,25 +902,6 @@ sections.add(
       "render recipe: lamp / sun shadow bias from the recipe (test mode map size)",
       r.bias === -0.0008 && r.sunBias === -0.0003 && r.mapSize === 256,
       JSON.stringify(r),
-    );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Model')?.click()`,
-    );
-    await idle(page);
-    const line = await page.evaluate(
-      `${card}.shadowRoot.querySelector('[data-info=render-recipe]')?.textContent || ''`,
-    );
-    check(
-      "Model tab: Render recipe: from model (11 keys)",
-      line === "Render recipe: from model (11 keys)",
-      line,
-    );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
     );
   },
 );
@@ -1637,29 +1548,6 @@ sections.add(
         a.bad.wall_uplight_1 === "shared",
       JSON.stringify(a),
     );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(() => {
-      const b = [
-        ...document
-          .querySelector("floorplan3d-card-impl")
-          .shadowRoot.querySelectorAll(".panel button"),
-      ].find((x) => x.textContent.trim() === "Model");
-      if (b) b.click();
-    });
-    await idle(page);
-    const report = await page.evaluate(
-      `(${card}.shadowRoot.querySelector('.panel details.report') || {}).textContent || ''`,
-    );
-    check(
-      "Model tab lists the spot target warning",
-      /spot target looks wrong \(shared \/ too far\): wall_uplight_1, wall_uplight_2/.test(
-        report,
-      ),
-      report.slice(0, 200),
-    );
     fs.unlinkSync(bad);
     allErrors.push(...s.errors);
   },
@@ -1695,19 +1583,12 @@ sections.add(
       if (!inModel) for (const m of [].concat(o.material)) { const p = r.properties.get(m).currentProgram; if (p) other.add(p.id); } });
     const created = window.__newPrograms.splice(0);
     return { live: live.size, created: created.length, transient: created.filter((id) => !live.has(id)).length, otherNew: created.filter((id) => other.has(id)).length, transientKinds: created.filter((id) => !live.has(id)).map((id) => window.__progInfo.get(id)) }; })()`);
-    // the demo mower driven step by step (its 500 ms timer held): each step moves the marker and updates the
-    // live map entity (image.sunseeker_live_map). The demo layout's overlay shows the static image.sunseeker_map,
-    // so the overlay texture only changes on a step when the overlay is the live map: waited for only then.
-    // A step is done once a frame has drawn it (and the overlay swapped, when it shows the live map) and the
-    // card is idle.
+    // the demo mower driven step by step (its 500 ms timer held): each step moves the marker. A step is done
+    // once a frame has drawn it and the card is idle.
     await page.evaluate("window.__demoMowerPaused = true");
-    const liveOverlay = await page.evaluate(
-      `((${card}._layout.mower || {}).overlay || {}).entity === 'image.sunseeker_live_map'`,
-    );
-    const mapSig = `(() => { const v = ${card}._view, m = v.mapPlane && v.mapPlane.material && v.mapPlane.material.map; return m ? m.uuid + ':' + m.version : ''; })()`;
     const mowerStep = async () => {
       await page.evaluate(
-        `(() => { window.__mapSig0 = ${mapSig}; window.__frames0 = ${card}._view.stats.frames; window.__demoMowerStep(); })()`,
+        `(() => { window.__frames0 = ${card}._view.stats.frames; window.__demoMowerStep(); })()`,
       );
       await waitTrue(
         page,
@@ -1715,13 +1596,6 @@ sections.add(
         "a frame after the mower step",
         10000,
       );
-      if (liveOverlay)
-        await waitTrue(
-          page,
-          `${mapSig} !== window.__mapSig0`,
-          "the live map swap",
-          5000,
-        );
       await idle(page);
     };
     for (let i = 0; i < 2; i++) await mowerStep(); // as before: the first moves happen before the count starts
@@ -1729,7 +1603,7 @@ sections.add(
     for (let i = 0; i < 20; i++) await mowerStep();
     const moving = await programs();
     check(
-      "mower moving (20 steps: marker, live map entity): no new shader programs",
+      "mower moving (20 steps): no new shader programs",
       moving.created === 0,
       JSON.stringify(moving),
     );
@@ -1767,38 +1641,11 @@ sections.add(
         `(() => { const c = ${card}; return !!c._index && c._index.nodes.some((n) => /fp_merged_/.test(n.path)); })()`,
       ),
     );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(() => {
-      const b = [
-        ...document
-          .querySelector("floorplan3d-card-impl")
-          .shadowRoot.querySelectorAll(".panel button"),
-      ].find((x) => x.textContent.trim() === "Model");
-      if (b) b.click();
-    });
-    await idle(page);
-    const tabText = await page.evaluate(
-      `(${card}.shadowRoot.querySelector('.panel [data-info=merge-stats]') || {}).textContent || ''`,
-    );
-    check(
-      "Model tab shows the draw calls before → after",
-      tabText ===
-        `Draw calls: ${on.before.calls} → ${on.after.calls} (meshes ${on.before.meshes} → ${on.after.meshes})`,
-      tabText,
-    );
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
     // the owner and material of a merged mesh: find one of its source meshes with merge off
     const probe =
       await page.evaluate(`(() => { let o = null; ${card}._view.model.root.traverse((x) => { if (!o && /^fp_merged_/.test(x.name)) o = x; });
     return { owner: o.parent.name, mat: o.material.name }; })()`);
-    // settle first: leaving edit mode rebuilds its outlines over the next frames (their shaders come and go)
-    // (idle first, then rendered-frame streaks until two streaks of 10 frames in a row compile nothing: counted in
+    // settle first (idle first, then rendered-frame streaks until two streaks of 10 frames in a row compile nothing: counted in
     // frames, so a loaded runner only makes it slower, not shorter)
     await idle(page);
     for (let i = 0, quiet = 0; i < 30 && quiet < 2; i++) {
@@ -1874,7 +1721,7 @@ sections.add(
         `(window.__m0 = ${card}._view.model, true)`,
       );
       await page.evaluate(
-        `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, views: { ...(l.views || {}), first: { ...((l.views || {}).first || {}), rules: [{ hide: ${JSON.stringify(sel)} }] } } }); })()`,
+        `(() => { const c = ${card}, l = c._layout; c._layout = ({ ...l, views: { ...(l.views || {}), first: { ...((l.views || {}).first || {}), rules: [{ hide: ${JSON.stringify(sel)} }] } } }); })()`,
       );
       await page
         .waitForFunction(
@@ -2079,199 +1926,6 @@ sections.add(
     );
     await idle(page);
     check("view change closes the popup", !(await pop()));
-    // edit mode: object taps are off until the Objects tab exists
-    await page.evaluate(
-      `${card}.shadowRoot.querySelector('.chip[data-view=ground]').click()`,
-    );
-    await settle(page, card);
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    const n1 = await calls();
-    p = await at();
-    if (p) await page.mouse.click(p[0], p[1]);
-    await idle(page);
-    check(
-      "edit mode: tapping the lamp does not toggle it",
-      (await calls()) === n1,
-    );
-    {
-      // Objects tab (edit mode)
-      const sr = `${card}.shadowRoot`;
-      const tabBtn = () =>
-        page.evaluate(
-          `!![...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects')`,
-        );
-      check("Objects tab is shown (the model has objects)", await tabBtn());
-      check(
-        "Objects tab sits after Devices",
-        (await page.evaluate(
-          `[...${sr}.querySelectorAll('.tabs button')].map((b) => b.textContent.trim()).slice(0, 3).join()`,
-        )) === "Rooms,Devices,Objects",
-      );
-      await page.evaluate(
-        `[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`,
-      );
-      await idle(page);
-      check(
-        "rooms start collapsed (no object rows)",
-        (await page.evaluate(`${sr}.querySelectorAll('li.obj').length`)) === 0,
-      );
-      // click the lamp in 3D: selects (expands) its row, does not toggle
-      const nObj = await calls();
-      const hall0 = await hall();
-      p = await at();
-      await page.mouse.click(p[0], p[1]);
-      await idle(page);
-      const rowInfo = () =>
-        page.evaluate(`(() => { const li = ${sr}.querySelector('li.obj[data-obj=lamp_hall]'); if (!li) return null;
-    const inp = li.querySelector('[name=obj-entity]'); return { sel: li.classList.contains('sel'), ph: inp.placeholder, val: inp.value, badge: (li.querySelector('.badge') || {}).textContent || '' }; })()`);
-      let ri = await rowInfo();
-      check(
-        "tapping the lamp in 3D selects its row",
-        !!ri && ri.sel,
-        JSON.stringify(ri),
-      );
-      check(
-        "the tap did not toggle it",
-        (await calls()) === nObj && (await hall()) === hall0,
-      );
-      check(
-        "row shows the auto entity",
-        !!ri &&
-          ri.badge === "auto" &&
-          ri.ph === "light.demo_hall" &&
-          ri.val === "",
-        JSON.stringify(ri),
-      );
-      // rebind to another entity
-      const other = await page.evaluate(
-        `Object.keys(${card}._hass.states).find((e) => e.startsWith('light.') && e !== 'light.demo_hall')`,
-      );
-      const setEntity = (v) =>
-        page.evaluate(
-          `(() => { const i = ${sr}.querySelector('[name=obj-entity][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-        );
-      await setEntity(other);
-      await idle(page);
-      const bound = () =>
-        page.evaluate(
-          `(() => { const b = ${card}._bindings.get('lamp_hall'); const o = ${card}._objects.objectAt('lamp_hall'); return { cfg: ${card}._layout.objects && ${card}._layout.objects.lamp_hall, e: b.entity, layer: o.binding.entity }; })()`,
-        );
-      let bd = await bound();
-      check(
-        "changing the entity rebinds the object",
-        bd.e === other &&
-          bd.layer === other &&
-          bd.cfg &&
-          bd.cfg.entity === other,
-        JSON.stringify(bd),
-      );
-      await setEntity("light.does_not_exist");
-      await idle(page);
-      ri = await rowInfo();
-      check(
-        'an unknown entity shows "entity not found"',
-        !!ri && ri.badge === "entity not found",
-        JSON.stringify(ri),
-      );
-      const hasTest = () =>
-        page.evaluate(
-          `!!${sr}.querySelector('li.obj[data-obj=lamp_hall] button[name=obj-test]')`,
-        );
-      check("no Test button on an unbound row", !(await hasTest()));
-      await setEntity("");
-      await idle(page);
-      bd = await bound();
-      check(
-        "clearing the entity returns to auto",
-        bd.e === "light.demo_hall" && !bd.cfg,
-        JSON.stringify(bd),
-      );
-      // Test toggles through callService
-      const c0 = await calls();
-      const h0 = await hall();
-      await page.evaluate(
-        `${sr}.querySelector('li.obj[data-obj=lamp_hall] button[name=obj-test]').click()`,
-      );
-      await idle(page);
-      check(
-        "Test toggles the bound light",
-        (await calls()) === c0 + 1 && (await hall()) !== h0,
-        `${c0} -> ${await calls()}`,
-      );
-      // Hide
-      await page.evaluate(
-        `(() => { const c = ${sr}.querySelector('[name=obj-hidden][data-id=lamp_hall]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-      );
-      await idle(page);
-      check(
-        "hide marks the object hidden",
-        await page.evaluate(
-          `!!${card}._bindings.get('lamp_hall').hidden && ${card}._layout.objects.lamp_hall.hidden === true`,
-        ),
-      );
-      check("no Test button on a hidden row", !(await hasTest()));
-      await page.evaluate(
-        `(() => { const c = ${sr}.querySelector('[name=obj-hidden][data-id=lamp_hall]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-      );
-      await idle(page);
-      check(
-        "un-hide drops the entry",
-        await page.evaluate(
-          `!${card}._bindings.get('lamp_hall').hidden && !(${card}._layout.objects || {}).lamp_hall`,
-        ),
-      );
-      check("Test button back on the bound row", await hasTest());
-      // label: rename the lamp -> the row and the popup title show it; clearing returns to the model label
-      const setLabel = (v) =>
-        page.evaluate(
-          `(() => { const i = ${sr}.querySelector('[name=obj-label][data-id=lamp_hall]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-        );
-      const lbl = () =>
-        page.evaluate(`(() => { const li = ${sr}.querySelector('li.obj[data-obj=lamp_hall]'); const i = li.querySelector('[name=obj-label]');
-    return { name: li.querySelector('.name').textContent, ph: i.placeholder, cfg: ((${card}._layout.objects || {}).lamp_hall || {}).label || null }; })()`);
-      await setLabel("  Hall pendant ");
-      await idle(page);
-      let lb = await lbl();
-      check(
-        "Label input renames the object (stored, row name)",
-        lb.cfg === "Hall pendant" &&
-          lb.name === "Hall pendant" &&
-          lb.ph === "Hall ceiling lamp",
-        JSON.stringify(lb),
-      );
-      await page.evaluate(`${card}._openObjectPopup('lamp_hall')`); // what a hold on the lamp opens
-      await idle(page);
-      pp = await pop();
-      check(
-        "renamed lamp: the popup title shows the new label",
-        !!pp && pp.title === "Hall pendant",
-        JSON.stringify(pp),
-      );
-      await page.evaluate(`${card}._popup.close()`);
-      await setLabel("");
-      await idle(page);
-      lb = await lbl();
-      check(
-        "clearing the label returns to the model label",
-        lb.cfg === null && lb.name === "Hall ceiling lamp",
-        JSON.stringify(lb),
-      );
-      await page.screenshot({
-        path: path.join(root, "screenshots", "objects-tab.png"),
-      });
-      // leaving the tab turns object taps off again
-      await page.evaluate(
-        `[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Devices').click()`,
-      );
-      await idle(page);
-      check(
-        "object taps are off again outside the Objects tab",
-        await page.evaluate(`!${card}._objectTapsOn()`),
-      );
-    }
     allErrors.push(...s.errors);
   },
 );
@@ -2402,41 +2056,12 @@ sections.add(
     );
     await page.keyboard.press("Escape");
     await idle(page);
-    // layout list [toggle] is respected: edit mode, Objects tab, Popup "Only on / off"
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`,
-    );
-    await idle(page);
-    await page.evaluate(`${card}._edit.selectObject('lamp_kitchen')`);
-    await idle(page);
-    const popSel = `${sr}.querySelector('select[name=obj-popup][data-id=lamp_kitchen]')`;
-    const opts = await page.evaluate(
-      `(() => { const s = ${popSel}; return s && [...s.options].map((o) => o.textContent).join('|'); })()`,
-    );
-    check(
-      "Objects tab has a Popup select: Automatic / Only on / off",
-      opts === "Automatic|Only on / off",
-      String(opts),
-    );
-    await page.evaluate(
-      `(() => { const s = ${popSel}; s.value = 'toggle'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    const saved = await page.evaluate(
-      `JSON.stringify(${card}._layout.objects.lamp_kitchen.ui)`,
-    );
-    check(
-      "Only on / off saves ui.popup = [toggle] in the layout",
-      saved === '{"popup":["toggle"]}',
-      saved,
-    );
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    ); // leave edit mode
+    // layout list [toggle] is respected (layout.objects.<id>.ui.popup)
+    const setPopup = (ui) =>
+      page.evaluate(
+        `(() => { const c = ${card}, l = c._layout, o = { ...(l.objects || {}) }; o.lamp_kitchen = { ...(o.lamp_kitchen || {}), ui: ${JSON.stringify(ui)} }; if (!${JSON.stringify(ui)}) delete o.lamp_kitchen.ui; c._layout = { ...l, objects: o }; })()`,
+      );
+    await setPopup({ popup: ["toggle"] });
     await idle(page);
     await open();
     await tileReady();
@@ -2447,18 +2072,8 @@ sections.add(
     );
     await page.keyboard.press("Escape");
     await idle(page);
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
+    await setPopup(null);
     await idle(page);
-    await page.evaluate(
-      `(() => { const s = ${popSel}; s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    const back = await page.evaluate(
-      `JSON.stringify((${card}._layout.objects || {}).lamp_kitchen || null)`,
-    );
-    check("Automatic removes the key again", !/popup/.test(back), back);
   },
 );
 
@@ -3313,139 +2928,6 @@ sections.add(
       (await look()).lit > 0 && (await sceneLights()).pool === poolSize,
       String(poolSize),
     );
-    // Objects tab: every row bound (no "entity not found"); the group controller field
-    await page.evaluate("window.__setDemoSun(30, 180)");
-    const sr = `${card}.shadowRoot`;
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `[...${sr}.querySelectorAll('.tabs button')].find((b) => b.textContent.trim() === 'Objects').click()`,
-    );
-    await idle(page);
-    for (let i = 0; i < 20; i++) {
-      const opened = await page.evaluate(
-        `(() => { const b = [...${sr}.querySelectorAll('[name=obj-expand]')].find((x) => x.textContent.trim() === '▸'); if (b) b.click(); return !!b; })()`,
-      );
-      if (!opened) break;
-      await idle(page);
-    }
-    const rows = await page.evaluate(
-      `[...${sr}.querySelectorAll('li.obj')].map((li) => ({ id: li.dataset.obj, badge: (li.querySelector('.badge') || {}).textContent || '', test: !!li.querySelector('[name=obj-test]') }))`,
-    );
-    check(
-      'Objects tab: 14 rows, all "auto", none "entity not found"',
-      rows.length === 14 && rows.every((r) => r.badge === "auto"),
-      JSON.stringify(rows),
-    );
-    check(
-      "Objects tab: lamps have a Test button",
-      ["lamp_living", "facade_1", "terrace_spot"].every(
-        (id) => (rows.find((r) => r.id === id) || {}).test,
-      ),
-    );
-    const grp = () =>
-      page.evaluate(`(() => { const g = ${sr}.querySelector('.grp[data-grp=facade]'); return g && { warn: !!g.querySelector('.badge.warn'), val: g.querySelector('input').value,
-    saved: JSON.stringify((${card}._layout.tags || {}).facade || null), eff: JSON.stringify(${card}._groups.facade || null) }; })()`);
-    const setGrp = async (v) => {
-      await page.evaluate(
-        `(() => { const i = ${sr}.querySelector('[name=grp-entity][data-id=facade]'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-      );
-      await idle(page);
-    };
-    let g = await grp();
-    check(
-      "Groups: facade controller switch.demo_facade, found",
-      !!g && !g.warn && g.val === "switch.demo_facade",
-      JSON.stringify(g),
-    );
-    await page.evaluate(
-      `${card}._hass.callService('switch', 'turn_off', { entity_id: 'switch.demo_facade' })`,
-    );
-    await idle(page);
-    await setGrp("switch.demo_typo");
-    g = await grp();
-    check(
-      'Groups: a controller HA does not know shows "entity not found" and is ignored by the chain',
-      !!g && g.warn && g.eff === "null" && (await look()).facadeLit === 3,
-      JSON.stringify(g),
-    );
-    await setGrp("none");
-    g = await grp();
-    check(
-      'Groups: "none" removes the controller (nothing stored)',
-      !!g && g.saved === "null" && g.val === "" && !g.warn,
-      JSON.stringify(g),
-    );
-    await setGrp("switch.demo_facade");
-    g = await grp();
-    check(
-      "Groups: controller back, the switch is off -> facade dark",
-      !!g && !g.warn && (await look()).facadeLit === 0,
-      JSON.stringify(g),
-    );
-    // tags: defaults = fp.group + HA labels; a tag added on the row; a second controller tag joins the chain
-    const chips = (id) =>
-      page.evaluate(
-        `[...${sr}.querySelectorAll('li.obj[data-obj=${id}] .otag')].map((x) => [...x.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim())`,
-      ); // the tag text (lit adds comment markers)
-    check(
-      "Tags: facade_1 shows its model group and HA label (facade, Outdoor)",
-      JSON.stringify(await chips("facade_1")) === '["facade","Outdoor"]',
-      JSON.stringify(await chips("facade_1")),
-    );
-    await page.evaluate(
-      `${card}._hass.callService('switch', 'turn_on', { entity_id: 'switch.demo_facade' })`,
-    );
-    await page.evaluate(
-      `(() => { const i = ${sr}.querySelector('[name=tag-add][data-id=terrace_spot]'); i.value = 'night'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    const ts = await page.evaluate(
-      `JSON.stringify(${card}._layout.objects.terrace_spot)`,
-    );
-    check(
-      "Tags: + tag on a row saves the full list",
-      ts.includes('"tags":["Outdoor","night"]'),
-      ts,
-    );
-    await page.evaluate(
-      `(() => { const i = ${sr}.querySelector('[name=grp-entity][data-id=night]'); i.value = 'switch.demo_facade'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `${card}._hass.callService('switch', 'turn_off', { entity_id: 'switch.demo_facade' })`,
-    );
-    await idle(page);
-    const spotChain = await page.evaluate(
-      `JSON.stringify(${card}._objects.objectAt('terrace_spot').chain)`,
-    );
-    check(
-      "Tags: a controller on the new tag gates the spot (switch off -> dark)",
-      spotChain.includes('"lit":false') &&
-        spotChain.includes("switch.demo_facade"),
-      spotChain.slice(0, 200),
-    );
-    await page.evaluate(
-      `(() => { const b = ${sr}.querySelector('[name=tag-rm][data-id=terrace_spot][data-tag=night]'); b.click(); })()`,
-    );
-    await idle(page);
-    const ts2 = await page.evaluate(
-      `JSON.stringify((${card}._layout.objects || {}).terrace_spot || null)`,
-    );
-    check(
-      "Tags: x removes it; back to the defaults (nothing stored)",
-      !ts2.includes("tags"),
-      ts2,
-    );
-    await page.evaluate(
-      `${card}._hass.callService('switch', 'turn_on', { entity_id: 'switch.demo_facade' })`,
-    );
-    await idle(page);
-    await page.screenshot({
-      path: path.join(root, "screenshots", "objects-tab-demo.png"),
-    });
     allErrors.push(...s.errors);
   },
 );
@@ -3627,7 +3109,7 @@ sections.add(
       `${card}._hass.callService('switch', 'turn_on', { entity_id: 'switch.demo_facade' })`,
     );
     await page.evaluate(
-      `${card}._commit({ ...${card}._layout, tags: { ...${card}._layout.tags, facade: { ...(${card}._layout.tags || {}).facade, wash: 'both' } } })`,
+      `${card}._layout = ({ ...${card}._layout, tags: { ...${card}._layout.tags, facade: { ...(${card}._layout.tags || {}).facade, wash: 'both' } } })`,
     );
     await idle(page);
     w = await W();
@@ -3652,7 +3134,7 @@ sections.add(
     );
     // the object's own setting wins over its tag
     await page.evaluate(
-      `${card}._commit({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: { ...((${card}._layout.objects || {}).facade_2 || {}), wash: 'none' } } })`,
+      `${card}._layout = ({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: { ...((${card}._layout.objects || {}).facade_2 || {}), wash: 'none' } } })`,
     );
     await idle(page);
     w = await W();
@@ -3662,7 +3144,7 @@ sections.add(
       JSON.stringify(w.quads),
     );
     await page.evaluate(
-      `${card}._commit({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: (({ wash, ...r }) => r)((${card}._layout.objects || {}).facade_2 || {}) } })`,
+      `${card}._layout = ({ ...${card}._layout, objects: { ...${card}._layout.objects, facade_2: (({ wash, ...r }) => r)((${card}._layout.objects || {}).facade_2 || {}) } })`,
     );
     await idle(page);
     await page.screenshot({
@@ -3690,7 +3172,7 @@ sections.add(
     await idle(page);
     // tap hints: always -> dots; facade hollow while its controller is off; a tap says why
     await page.evaluate(
-      `${card}._commit({ ...${card}._layout, tap_hints: 'always' })`,
+      `${card}._layout = ({ ...${card}._layout, tap_hints: 'always' })`,
     );
     await idle(page);
     const H = () =>
@@ -3730,7 +3212,7 @@ sections.add(
       JSON.stringify(h.items),
     );
     await page.evaluate(
-      `${card}._commit({ ...${card}._layout, tap_hints: 'off' })`,
+      `${card}._layout = ({ ...${card}._layout, tap_hints: 'off' })`,
     );
     await idle(page);
     check("tap hints: off hides them", !(await H()).vis);
@@ -3874,7 +3356,7 @@ sections.add(
 // 2. missing model
 sections.add(
   "missing-model",
-  { group: "upload", query: { model: "/demo/missing.glb" } },
+  { group: "load", query: { model: "/demo/missing.glb" } },
   async (s) => {
     await s.page.waitForFunction(
       `!${card}.shadowRoot.querySelector('.notice').hidden`,
@@ -3896,1946 +3378,7 @@ sections.add(
   },
 );
 
-// 2b. upload a model in edit mode (Model tab), align it, remove it
-sections.add(
-  "upload",
-  {
-    group: "upload",
-    query: { view: "3d", height: "560px" },
-    viewport: { width: 1500, height: 680 },
-  },
-  async (s) => {
-    const { page } = s;
-    const panel = (sel) => `${card}.shadowRoot.querySelector(".panel ${sel}")`;
-    const clickText = (t) =>
-      page.evaluate((t) => {
-        const b = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel button"),
-        ].find((x) => x.textContent.trim() === t);
-        if (b) b.click();
-        return !!b;
-      }, t);
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await clickText("Model");
-    await idle(page);
-    check(
-      "model tab offers upload",
-      (
-        await page.evaluate(`${panel("label.button")}?.textContent || ''`)
-      ).includes("Upload .glb"),
-    );
-    const upload = async (file) => {
-      const input = await page.evaluateHandle(panel("[name=model-file]"));
-      await input.uploadFile(file);
-    };
-    const bad = path.join(root, "screenshots", "not-a-model.glb");
-    fs.writeFileSync(bad, "hello");
-    await upload(bad);
-    await page.waitForFunction(`!!${panel(".msg.error")}`, { timeout: 5000 });
-    check(
-      "non-glb rejected with message",
-      (await page.evaluate(`${panel(".msg.error")}.textContent`)).includes(
-        "glTF",
-      ),
-    );
-    fs.unlinkSync(bad);
-
-    await upload(path.join(root, "demo", "house.glb"));
-    await page.waitForFunction(`!!${card}._view.model`, { timeout: 30000 });
-    await idle(page);
-    const lm = await page.evaluate(`${card}._layout.model`);
-    check(
-      "upload stored in layout",
-      lm && lm.name === "house.glb" && lm.version && lm.size > 1000,
-      JSON.stringify(lm),
-    );
-    check(
-      "model loaded with level groups",
-      JSON.stringify(
-        await page.evaluate(
-          `${card}._view.modelManifest().levels.map((l) => l.id)`,
-        ),
-      ) === '["level0","level1","exterior","roof"]',
-    );
-    const lv = () =>
-      page.evaluate(
-        `JSON.stringify(Object.fromEntries(Object.entries(${card}.modelBindings().levels).map(([k, v]) => [k, v.show + ':' + v.floor])))`,
-      );
-    check(
-      "levels map by order, exterior with ground, roof all-only",
-      (await lv()) ===
-        JSON.stringify({
-          level0: "with:ground",
-          level1: "with:first",
-          exterior: "always:ground",
-          roof: "all-only:null",
-        }),
-      await lv(),
-    );
-    check(
-      "rooms come from the model",
-      await page.evaluate(
-        `${card}._modelRooms.some((r) => r.id === 'm:kitchen' && r.floor_id === 'ground')`,
-      ),
-    );
-    check(
-      "model room replaces the drawn kitchen",
-      await page.evaluate(
-        `${card}._allRooms().filter((r) => r.area_id === 'kitchen').length === 1`,
-      ),
-    );
-    await page.evaluate(
-      `(() => { const s = ${panel("[name=md-rotation]")}; s.value = "90"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
-    );
-    await page.evaluate(
-      `(() => { const s = ${panel("[name=md-opacity]")}; s.value = "0.5"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
-    );
-    await idle(page);
-    check(
-      "rotation slider turns the model",
-      Math.round(
-        await page.evaluate(
-          `${card}._view.modelGroup.rotation.y * 180 / Math.PI`,
-        ),
-      ) === 90,
-    );
-    check(
-      "opacity applied",
-      await page.evaluate(
-        `(() => { let o; ${card}._view.model.root.traverse((m) => { if (m.isMesh && o === undefined) o = m.material.opacity; }); return o === 0.5; })()`,
-      ),
-    );
-    check(
-      "slider kept (no re-render)",
-      await page.evaluate(`${panel("[name=md-rotation]")}.value === "90"`),
-    );
-    await page.evaluate(
-      `(() => { const s = ${panel("[name=md-rotation]")}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
-    );
-    await idle(page);
-    await page.screenshot({
-      path: path.join(root, "screenshots/model-upload.png"),
-    });
-    // rotation moves the rooms with the model
-    const k0 = await page.evaluate(
-      `JSON.stringify(${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon[1])`,
-    );
-    await page.evaluate(
-      `(() => { const s = ${panel("[name=md-rotation]")}; s.value = '90'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    check(
-      "rotation moves rooms",
-      (await page.evaluate(
-        `JSON.stringify(${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon[1])`,
-      )) !== k0,
-    );
-    await page.evaluate(
-      `(() => { const s = ${panel("[name=md-rotation]")}; s.value = '0'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    // a marker dropped on the model follows the model's alignment
-    {
-      await page.evaluate(
-        `${card}._setMode('3d'); ${card}._setFloor('ground'); ${card}._view.fit({ model: true, instant: true })`,
-      );
-      await clickText("Devices"); // markers are draggable here (the Model tab picks the model instead)
-      await idle(page);
-      const kp = await page.evaluate(
-        `${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon`,
-      );
-      const tx = kp.reduce((a, p) => a + p[0], 0) / kp.length,
-        ty = kp.reduce((a, p) => a + p[1], 0) / kp.length;
-      const pick = await page.evaluate(`(() => { const c = ${card}, v = c._view;
-      for (const m of c._markers) {
-        const p = c._positions.get(m.id), o = v.markerObjects.get(m.id);
-        if (!p || !o || !o.obj.visible || p.floorId !== 'ground' || m.id === c._mowerMarkerId) continue;
-        const r = c._markerRect(m.id), t = r && c._markerAt(r.x + r.width / 2, r.y + r.height / 2);
-        if (t && t.id === m.id) return { id: m.id, z: p.z, from: [r.x + r.width / 2, r.y + r.height / 2] };
-      }
-      return null; })()`);
-      const to = await page.evaluate(
-        `${card}._view.screenPoint(${tx}, ${ty}, ${pick.z}, 'ground')`,
-      );
-      await page.mouse.move(...pick.from);
-      await page.mouse.down();
-      await page.mouse.move(to[0], to[1], { steps: 8 });
-      await page.mouse.up();
-      await idle(page);
-      const pin0 = await page.evaluate(
-        `${card}._layout.pins[${JSON.stringify(pick.id)}]`,
-      );
-      await clickText("Model"); // alignment sliders
-      await idle(page);
-      check(
-        "pin dropped on the model has on_model",
-        !!(pin0 && pin0.on_model),
-        JSON.stringify(pin0),
-      );
-      const align = () =>
-        page.evaluate(
-          `(() => { const m = ${card}._layout.model; return { position: m.position || [0, 0, 0], rotation: m.rotation || 0, scale: m.scale || 1 }; })()`,
-        );
-      const a0 = await align();
-      await page.evaluate(
-        `(() => { const s = ${panel("[name=md-rotation]")}; s.value = "30"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
-      );
-      await idle(page);
-      const a1 = await align();
-      const pin1 = await page.evaluate(
-        `${card}._layout.pins[${JSON.stringify(pick.id)}]`,
-      );
-      const r = ((a0.rotation - a1.rotation) * Math.PI) / 180; // rotated old position about the model origin
-      const ox = pin0.x - a0.position[0],
-        oy = pin0.y - a0.position[1];
-      const want = [
-        a1.position[0] + ox * Math.cos(-r) - oy * Math.sin(-r),
-        a1.position[1] + ox * Math.sin(-r) + oy * Math.cos(-r),
-      ];
-      check(
-        "rotating the model 30° rotates the pin with it",
-        a1.rotation === 30 &&
-          Math.hypot(pin1.x - want[0], pin1.y - want[1]) <= 0.01,
-        `${JSON.stringify(pin0)} -> ${JSON.stringify(pin1)}, want ${want}`,
-      );
-      const l0 = inverseTransformPoint([pin0.x, pin0.y], a0),
-        l1 = inverseTransformPoint([pin1.x, pin1.y], a1);
-      check(
-        "pin keeps its spot in model coordinates",
-        Math.hypot(l0[0] - l1[0], l0[1] - l1[1]) <= 0.01,
-        `${l0} vs ${l1}`,
-      );
-      const w = await page.evaluate(
-        `${card}._view.markerObjects.get(${JSON.stringify(pick.id)}).obj.position.toArray()`,
-      );
-      check(
-        "marker world position follows the pin",
-        Math.hypot(w[0] - pin1.x, w[2] + pin1.y) <= 0.01,
-        `${w} vs ${pin1.x},${pin1.y}`,
-      );
-      const inside =
-        await page.evaluate(`(() => { const poly = ${card}._modelRooms.find((r) => r.id === 'm:kitchen').polygon, x = ${pin1.x}, y = ${pin1.y};
-      let ins = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j];
-        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ins = !ins; } return ins; })()`);
-      check("pin still inside the rotated model room", inside);
-      // back to 0°: the pin returns; then drop it so the checks below see the original layout
-      await page.evaluate(
-        `(() => { const s = ${panel("[name=md-rotation]")}; s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`,
-      );
-      await idle(page);
-      const pin2 = await page.evaluate(
-        `${card}._layout.pins[${JSON.stringify(pick.id)}]`,
-      );
-      check(
-        "rotating back restores the pin",
-        Math.hypot(pin2.x - pin0.x, pin2.y - pin0.y) <= 0.001,
-        JSON.stringify(pin2),
-      );
-      await page.evaluate(
-        `(() => { const c = ${card}; const pins = { ...c._layout.pins }; delete pins[${JSON.stringify(pick.id)}]; c._commit({ ...c._layout, pins }); })()`,
-      );
-    }
-    // assign a room to no area
-    await page.evaluate(
-      `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-room][data-id=kitchen]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    check(
-      "room binding saved",
-      JSON.stringify(await page.evaluate(`${card}._layout.model.rooms`)) ===
-        '{"kitchen":{"area":null}}',
-      JSON.stringify(await page.evaluate(`${card}._layout.model.rooms`)),
-    );
-    // click to pick: the kitchen floor in top view
-    await page.evaluate(`${card}._setMode('top')`);
-    await page.evaluate(`${card}._view.fit({ model: true })`);
-    await idle(page);
-    const pt = await page.evaluate(
-      `${card}._view.screenPoint(9.5, 2, 0, 'ground')`,
-    );
-    await page.mouse.click(pt[0], pt[1]);
-    await idle(page);
-    check(
-      "click picks the room",
-      JSON.stringify(await page.evaluate(`${card}._edit.modelPick`)) ===
-        '{"kind":"room","id":"kitchen"}' &&
-        (await page.evaluate(
-          `!!${card}.shadowRoot.querySelector('tr.sel[data-pick="room:kitchen"]')`,
-        )),
-      JSON.stringify(await page.evaluate(`${card}._edit.modelPick`)),
-    );
-    await page.evaluate(`${card}._setMode('3d')`);
-    await idle(page);
-    // a model whose level ids differ again (and without views of its own): the ids keep their order mapping
-    const renamed = path.join(root, "screenshots", "renamed.glb");
-    const ren = { level0: "lvl_a0", level1: "lvl_a1" };
-    fs.writeFileSync(
-      renamed,
-      rewriteGlbJson(
-        fs.readFileSync(path.join(root, "demo", "house.glb")),
-        (json) => {
-          for (const n of json.nodes || []) {
-            const fp = n.extras && n.extras.fp;
-            if (fp && fp.views) delete fp.views;
-            if (fp && fp.kind === "level" && ren[fp.id]) fp.id = ren[fp.id];
-          }
-          return json;
-        },
-      ),
-    );
-    await upload(renamed);
-    await page.waitForFunction(
-      `${card}._view.modelManifest()?.levels.some((l) => l.id === 'lvl_a0')`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    fs.unlinkSync(renamed);
-    check(
-      "renamed levels still map by order",
-      (await lv()) ===
-        JSON.stringify({
-          lvl_a0: "with:ground",
-          lvl_a1: "with:first",
-          exterior: "always:ground",
-          roof: "all-only:null",
-        }),
-      await lv(),
-    );
-    const vis = () =>
-      page.evaluate(
-        `(() => { const l = ${card}._view.modelManifest().levels; return [l[0].node.visible, l[1].node.visible]; })()`,
-      );
-    check(
-      "ground shows its own storey only",
-      JSON.stringify(await vis()) === "[true,false]",
-    );
-    // legacy show modes (written before levels became "belongs to HA floor") stay readable
-    const setLevel = (id, b) =>
-      page.evaluate(
-        `${card}._edit.setModelProps({ levels: { ...(${card}._layout.model.levels || {}), ${JSON.stringify(id)}: ${JSON.stringify(b)} } })`,
-      );
-    const selectLevel = (id, value) =>
-      page.evaluate(
-        `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-level][data-id=${id}]'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-      );
-    await setLevel("exterior", { show: "always", floor: "ground" });
-    await idle(page);
-    check(
-      'exterior "always" keeps its zones',
-      (await page.evaluate(
-        `${card}._modelRooms.some((r) => r.id === 'm:garden')`,
-      )) &&
-        JSON.stringify(
-          await page.evaluate(`${card}._layout.model.levels.exterior`),
-        ) === '{"show":"always","floor":"ground"}',
-      JSON.stringify(
-        await page.evaluate(`${card}._layout.model.levels.exterior`),
-      ),
-    );
-    check(
-      'exterior "always" does not remap storeys',
-      (await lv()) ===
-        JSON.stringify({
-          exterior: "always:ground",
-          lvl_a0: "with:ground",
-          lvl_a1: "with:first",
-          roof: "all-only:null",
-        }),
-      await lv(),
-    );
-    check(
-      "legacy show mode reads as its floor in the dropdown",
-      await page.evaluate(
-        `${card}.shadowRoot.querySelector('[name=md-level][data-id=exterior]').value === 'floor:ground'`,
-      ),
-    );
-    await setLevel("exterior", { show: "hidden", floor: "ground" });
-    await idle(page);
-    check(
-      'exterior "hidden" does not remap storeys',
-      (await lv()) ===
-        JSON.stringify({
-          exterior: "hidden:ground",
-          lvl_a0: "with:ground",
-          lvl_a1: "with:first",
-          roof: "all-only:null",
-        }),
-      await lv(),
-    );
-    await selectLevel("exterior", "auto");
-    await idle(page);
-    check(
-      "mapped level visible on its floor",
-      JSON.stringify(await vis()) === "[true,false]",
-    );
-    check(
-      "level rows marked auto",
-      (await page.evaluate(`${panel("table.floors")}.textContent`)).includes(
-        "auto",
-      ),
-    );
-    check(
-      "level dropdown: auto, HA floors, no floor",
-      (await page.evaluate(
-        `[...${card}.shadowRoot.querySelectorAll('[name=md-level][data-id=exterior] option')].map((o) => o.value).join()`,
-      )) === "auto,floor:ground,floor:first,none",
-      await page.evaluate(
-        `[...${card}.shadowRoot.querySelectorAll('[name=md-level][data-id=exterior] option')].map((o) => o.value).join()`,
-      ),
-    );
-    await selectLevel("exterior", "none");
-    await idle(page);
-    check(
-      '"no floor" writes { floor: null }',
-      JSON.stringify(
-        await page.evaluate(`${card}._layout.model.levels.exterior`),
-      ) === '{"floor":null}' &&
-        JSON.parse(await lv()).exterior === "always:null" &&
-        (await page.evaluate(
-          `${card}.shadowRoot.querySelector('[name=md-level][data-id=exterior]').value === 'none'`,
-        )),
-      await lv(),
-    );
-    await selectLevel("exterior", "floor:first");
-    await idle(page);
-    check(
-      "choosing a floor writes { floor }",
-      JSON.stringify(
-        await page.evaluate(`${card}._layout.model.levels.exterior`),
-      ) === '{"floor":"first"}',
-    );
-    await selectLevel("exterior", "auto");
-    await setLevel("lvl_a1", { show: "always", floor: "first" });
-    await idle(page);
-    check(
-      'legacy "always shown"',
-      JSON.stringify(
-        await page.evaluate(`${card}._layout.model.levels.lvl_a1`),
-      ).includes('"always"') && JSON.stringify(await vis()) === "[true,true]",
-      JSON.stringify(await page.evaluate(`${card}._layout.model.levels`)),
-    );
-    await setLevel("lvl_a0", { show: "hidden", floor: "ground" });
-    await idle(page);
-    check('legacy "hidden"', JSON.stringify(await vis()) === "[false,true]");
-    await selectLevel("lvl_a0", "auto");
-    await idle(page);
-    check(
-      'choose "auto" removes the saved binding, the legacy mode stays as view rules',
-      !("lvl_a0" in (await page.evaluate(`${card}._layout.model.levels`))) &&
-        JSON.stringify(await vis()) === "[false,true]" &&
-        JSON.stringify(
-          await page.evaluate(`${card}._layout.views.all.rules`),
-        ).includes('{"hide":"level:lvl_a0"}'),
-      JSON.stringify(await page.evaluate(`${card}._layout.views`)),
-    );
-    check(
-      "dropdown shows auto again",
-      await page.evaluate(
-        `${card}.shadowRoot.querySelector('[name=md-level][data-id=lvl_a0]').value === 'auto'`,
-      ),
-    );
-
-    // untagged model: loads whole, no rooms
-    const untagged = path.join(root, "screenshots", "untagged.glb");
-    fs.writeFileSync(
-      untagged,
-      rewriteGlbJson(
-        fs.readFileSync(path.join(root, "demo", "house.glb")),
-        (json) => {
-          for (const n of json.nodes || []) {
-            delete n.extras;
-            if (n.name === "roof") n.name = "top";
-          } // legacy name "roof" would still tag a level
-          return json;
-        },
-      ),
-    );
-    await upload(untagged);
-    await page.waitForFunction(
-      `${card}._view.model && ${card}._view.modelManifest().levels.length === 0`,
-      { timeout: 30000 },
-    );
-    fs.unlinkSync(untagged);
-    check(
-      "untagged model loads whole",
-      await page.evaluate(
-        `${card}._view.model.root.visible && ${card}._modelRooms.length === 0`,
-      ),
-    );
-    await idle(page);
-    check(
-      "stale bindings offered for forgetting",
-      await page.evaluate(
-        `!!${card}.shadowRoot.querySelector('[name=md-forget]')`,
-      ),
-    );
-    await page.evaluate(
-      `${card}.shadowRoot.querySelector('[name=md-forget]').click()`,
-    );
-    await idle(page);
-    await upload(path.join(root, "demo", "house.glb"));
-    await page.waitForFunction(
-      `${card}._view.modelManifest()?.levels.length === 4`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    const cam0 = await page.evaluate(
-      `${card}._view.camera.position.toArray().join()`,
-    );
-    await clickText("Frame model");
-    await idle(page);
-    check(
-      "frame model moves the camera",
-      (await page.evaluate(
-        `${card}._view.camera.position.toArray().join()`,
-      )) !== cam0,
-    );
-    // day/night survives a model reload
-    const dn = `${card}.shadowRoot.querySelector('button.daynight')`;
-    const skyTo = async (m) => {
-      for (
-        let i = 0;
-        i < 3 && (await page.evaluate(`${card}._skyMode`)) !== m;
-        i++
-      )
-        await page.evaluate(`${dn}.click()`);
-    };
-    await skyTo("night");
-    await page.evaluate(
-      `(() => { const c = ${card}; window.__up0 = c._layout.model && c._layout.model.uploaded; window.__gen0 = c._loadGen; window.__m0 = c._view.model; })()`,
-    );
-    await upload(path.join(root, "demo", "house.glb"));
-    // the upload is through (layout.model.uploaded changed, the update ran), then the reload it started (if any) is done
-    await waitTrue(
-      page,
-      `!!${card}._layout.model && ${card}._layout.model.uploaded !== window.__up0 && !${card}._edit.uploading`,
-      "the re-upload",
-    );
-    await idle(page);
-    await waitTrue(
-      page,
-      `${card}._loadGen === window.__gen0 || (!!${card}._view.model && ${card}._view.model !== window.__m0)`,
-      "the reloaded model",
-    );
-    await idle(page);
-    check(
-      "night kept after re-upload",
-      (await page.evaluate(`${card}._skyMode`)) === "night" &&
-        (await page.evaluate(`${card}._view.sun.intensity`)) === 0,
-    );
-    await skyTo("day");
-    await idle(page);
-    check(
-      "back to day",
-      (await page.evaluate(`${card}._view.sun.intensity`)) > 1 &&
-        (await page.evaluate(`${card}._view.sun.castShadow`)) === true,
-    );
-
-    // legacy model (no fp tags, floor:<id> / site / roof names): auto mapping, per-chip visibility, no regeneration notice
-    const legacy = path.join(root, "screenshots", "legacy.glb");
-    const legacyNames = {
-      level0: "floor:ground",
-      level1: "floor:first",
-      exterior: "site",
-    };
-    fs.writeFileSync(
-      legacy,
-      rewriteGlbJson(
-        fs.readFileSync(path.join(root, "demo", "house.glb")),
-        (json) => {
-          for (const n of json.nodes || []) {
-            delete n.extras;
-            if (legacyNames[n.name]) n.name = legacyNames[n.name];
-          }
-          return json;
-        },
-      ),
-    );
-    await upload(legacy);
-    await page.waitForFunction(
-      `${card}._view.modelManifest()?.levels.some((l) => l.id === 'site')`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    fs.unlinkSync(legacy);
-    check(
-      "legacy names read as levels",
-      (await page.evaluate(
-        `${card}._view.modelManifest().levels.map((l) => l.id).join()`,
-      )) === "ground,first,site,roof",
-      await page.evaluate(
-        `${card}._view.modelManifest().levels.map((l) => l.id).join()`,
-      ),
-    );
-    check(
-      "legacy levels map automatically",
-      (await lv()) ===
-        JSON.stringify({
-          ground: "with:ground",
-          first: "with:first",
-          site: "always:ground",
-          roof: "all-only:null",
-        }),
-      await lv(),
-    );
-    const legacyVis = () =>
-      page.evaluate(
-        `(() => { const l = ${card}._view.modelManifest().levels; return [l[0].node.visible, l[1].node.visible]; })()`,
-      );
-    await page.evaluate(`${card}._setFloor('ground')`);
-    await idle(page);
-    check(
-      "legacy: ground chip shows ground only",
-      JSON.stringify(await legacyVis()) === "[true,false]",
-    );
-    const storeyTop = (id) =>
-      page.evaluate(
-        `(() => { const f = ${card}._floors.find((x) => x.id === ${JSON.stringify(id)}); return f.elevation + (f.height || 2.7); })()`,
-      );
-    check(
-      "legacy: cut at the top of the ground storey (not the 1 m wall height)",
-      Math.abs(
-        (await page.evaluate(`${card}._view.modelClip.constant`)) -
-          (await storeyTop("ground")),
-      ) < 1e-6 && (await storeyTop("ground")) > 2,
-      `${await page.evaluate(`${card}._view.modelClip.constant`)} vs ${await storeyTop("ground")}`,
-    );
-    await page.evaluate(`${card}._setFloor('first')`);
-    await idle(page);
-    check(
-      "legacy: first chip stacks the storeys",
-      JSON.stringify(await legacyVis()) === "[true,true]",
-    );
-    await clickText("Data");
-    await clickText("Model");
-    await idle(page);
-    check(
-      'no "Since the last setup" notice after upload',
-      !(await page.evaluate(`${panel("")}.textContent`)).includes(
-        "Since the last setup",
-      ),
-    );
-
-    // importing a plan export keeps the uploaded model and the view settings, and maps foreign floor ids onto HA floors
-    await page.evaluate(
-      `${card}.saveViewPatch(${card}._viewId, { label: 'Kept view' })`,
-    );
-    await idle(page);
-    const keptId = await page.evaluate(`${card}._viewId`);
-    await clickText("Data");
-    const plan = path.join(root, "screenshots", "plan-export.json");
-    fs.writeFileSync(
-      plan,
-      JSON.stringify({
-        version: 1,
-        floors: [{ id: "level0", elevation: 0, height: 2.8 }],
-        rooms: [
-          {
-            id: "x",
-            area_id: "kitchen",
-            floor_id: "level0",
-            polygon: [
-              [0, 0],
-              [4, 0],
-              [4, 3],
-              [0, 3],
-            ],
-          },
-        ],
-      }),
-    );
-    const imp = await page.evaluateHandle(panel("[name=import]"));
-    await imp.uploadFile(plan);
-    await waitTrue(
-      page,
-      `(${card}._layout.rooms || []).some((r) => r.id === "x") && !!${panel(".msg")}`,
-      "the imported layout",
-      10000,
-    );
-    await idle(page);
-    fs.unlinkSync(plan);
-    check(
-      "import keeps the uploaded model",
-      await page.evaluate(`!!(${card}._layout.model && ${card}._view.model)`),
-    );
-    check(
-      "import of a file without views keeps the view settings",
-      (await page.evaluate(
-        `(${card}._layout.views || {})[${JSON.stringify(keptId)}]?.label`,
-      )) === "Kept view",
-    );
-    check(
-      "import maps floor ids onto HA floors",
-      (await page.evaluate(`${card}._layout.rooms[0].floor_id`)) === "ground" &&
-        (await page.evaluate(`${panel(".msg")}.textContent`)).includes(
-          "level0 → Ground floor",
-        ),
-    );
-    for (
-      let i = 0;
-      i < 3 && (await page.evaluate(`${card}._skyMode`)) !== "night";
-      i++
-    )
-      await page.evaluate(
-        `${card}.shadowRoot.querySelector('button.daynight').click()`,
-      ); // night, then remove the model
-    await idle(page);
-    await clickText("Model");
-    await idle(page);
-    await clickText("Remove model");
-    await clickText("Really remove?");
-    await idle(page);
-    check(
-      "remove clears model",
-      (await page.evaluate(`${card}._layout.model`)) === null &&
-        !(await page.evaluate(`${card}._view.model`)),
-    );
-    check(
-      "removal resets the look",
-      await page.evaluate(`(() => { const c = ${card}; return !c._stage.classList.contains('has-model')
-    && c.shadowRoot.querySelector('button.daynight').hidden && c._view.renderer.toneMapping === 0 && c._view.renderer.shadowMap.enabled === false; })()`),
-    );
-    const dayLook = await page.evaluate(
-      `(() => { const v = ${card}._view; return { hemi: v.hemi.intensity, sun: v.sun.intensity, tm: v.renderer.toneMapping }; })()`,
-    );
-    check(
-      "removing the model at night restores the day look",
-      dayLook.hemi === 2.2 && dayLook.sun === 1.4 && dayLook.tm === 0,
-      JSON.stringify(dayLook),
-    );
-    allErrors.push(...s.errors);
-  },
-);
-
-// 2d. model views and layers in edit mode (demo/house.glb uploaded): views from the model, per-view
-// layer rules, click-in-3D menu, saved camera, linked floors, pick a room outline, untagged copies
-sections.add(
-  "model-views",
-  {
-    group: "views",
-    query: { view: "3d", height: "560px" },
-    viewport: { width: 1500, height: 680 },
-  },
-  async (s) => {
-    const { page } = s;
-    const sr = `${card}.shadowRoot`;
-    const clickText = async (t) => {
-      const ok = await page.evaluate((t) => {
-        const b = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel button"),
-        ].find((x) => x.textContent.trim() === t);
-        if (b) b.click();
-        return !!b;
-      }, t);
-      await idle(page);
-      return ok;
-    };
-    const upload = async (file) => {
-      await clickText("Model");
-      const input = await page.evaluateHandle(
-        `${sr}.querySelector('.panel [name=model-file]')`,
-      );
-      await input.uploadFile(file);
-    };
-    const chip = async (id) => {
-      await page.evaluate(
-        `${sr}.querySelector('.chip[data-view=${id}]').click()`,
-      );
-      await idle(page);
-    };
-    const chipIds = () =>
-      page.evaluate(
-        `[...${sr}.querySelectorAll('.chip')].map((b) => b.dataset.view)`,
-      );
-    const nodeVis = (name) =>
-      page.evaluate(
-        `(() => { const n = ${card}._view.model.root.getObjectByName(${JSON.stringify(name)}); for (let p = n; p; p = p.parent) if (!p.visible) return false; return !!n; })()`,
-      );
-    // a screen point over a plan spot that is not covered by a marker or other DOM (so the click reaches the canvas)
-    const freePoint = (spots, z, floor) =>
-      page.evaluate(
-        (spots, z, floor) => {
-          const c = document.querySelector("floorplan3d-card-impl");
-          for (const [x, y] of spots) {
-            const [cx, cy] = c._view.screenPoint(x, y, z, floor);
-            const el = c.shadowRoot.elementFromPoint(cx, cy);
-            if (el && el.tagName === "CANVAS") return [cx, cy];
-          }
-          return null;
-        },
-        spots,
-        z,
-        floor,
-      );
-    const grid = (x0, x1, y0, y1) => {
-      const out = [];
-      for (let i = 0; i <= 4; i++)
-        for (let j = 0; j <= 4; j++)
-          out.push([x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * j) / 4]);
-      return out;
-    };
-    const devs = () =>
-      page.evaluate(`(() => { const c = ${card}, v = c._view; const lvl = new Map(v.modelManifest().rooms.map((r) => [r.id, r.level]));
-    const out = {};
-    for (const m of c._markers) {
-      const p = c._positions.get(m.id), o = v.markerObjects.get(m.id);
-      if (!p || !o) continue;
-      const room = p.auto === false || p.live ? null : (c._modelRooms.find((r) => r.area_id === m.areaId) || {}).modelId;
-      const k = room ? lvl.get(room) : p.live ? 'mower' : (m.id === 'device:tv' ? 'outside:' : 'pin:') + p.floorId;
-      const e = out[k] = out[k] || { shown: 0, hidden: 0 };
-      if (o.obj.visible) e.shown++; else e.hidden++;
-    }
-    return out; })()`);
-
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await upload(path.join(root, "demo", "house.glb"));
-    await page.waitForFunction(
-      `${card}._view.model && ${card}._view.modelManifest().levels.length === 4`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    check(
-      "uploaded model: chips are its views in order",
-      JSON.stringify(await chipIds()) === '["exterior","ground","first"]' &&
-        JSON.stringify(
-          await page.evaluate(
-            `[...${sr}.querySelectorAll('.chip')].map((b) => b.textContent)`,
-          ),
-        ) === '["Exterior","Ground floor","First floor"]',
-      JSON.stringify(await chipIds()),
-    );
-    await chip("ground");
-    await clickText("Views");
-    check(
-      "room labels in edit mode show sizes",
-      await page.evaluate(
-        `(() => { const l = ${card}._view.sprites.labels('room', true); return l.length > 0 && l.every((t) => t.includes('×') || t.includes('m²')); })()`,
-      ),
-    );
-
-    // layer eye: furniture hidden in this view only
-    const furniture = ["sofa", "coffee_table", "kitchen_table", "bed"];
-    const eye = () =>
-      page.evaluate(
-        `${sr}.querySelector('.panel li[data-sel="layer:furniture"] .eye').click()`,
-      );
-    check(
-      "Views tab lists the furniture and ceiling layers",
-      await page.evaluate(
-        `!!${sr}.querySelector('.panel li[data-sel="layer:furniture"]') && !!${sr}.querySelector('.panel li[data-sel="layer:ceiling"]')`,
-      ),
-    );
-    await eye();
-    await idle(page);
-    await eye();
-    await idle(page);
-    const rulesOf = (id) =>
-      page.evaluate(
-        `JSON.stringify(((${card}._layout.views || {})[${JSON.stringify(id)}] || {}).rules || [])`,
-      );
-    check(
-      "eye on layer:furniture stores a hide rule for this view",
-      (await rulesOf("ground")) === '[{"hide":"layer:furniture"}]',
-      await rulesOf("ground"),
-    );
-    const furnVis = async () => {
-      const out = [];
-      for (const n of furniture) out.push(await nodeVis(n));
-      return out;
-    };
-    check(
-      "furniture hidden in the Ground floor view",
-      (await furnVis()).every((x) => x === false),
-      JSON.stringify(await furnVis()),
-    );
-    check("room floors stay visible", await nodeVis("kitchen"));
-    await chip("first");
-    check(
-      "furniture visible again in the First floor view",
-      (await furnVis()).every((x) => x === true) && (await nodeVis("desk")),
-      JSON.stringify(await furnVis()),
-    );
-    check("other view has no rule", (await rulesOf("first")) === "[]");
-    await chip("ground");
-    await eye();
-    await idle(page);
-    check(
-      "third eye click: back to default",
-      (await rulesOf("ground")) === "[]" &&
-        (await furnVis()).every((x) => x === true),
-      await rulesOf("ground"),
-    );
-
-    // click in 3D -> menu -> Hide in this view; Reveal in tree
-    await page.evaluate(`${card}._setMode('top')`);
-    await page.evaluate(`${card}._view.fit({ instant: true })`);
-    await idle(page);
-    let pt = await freePoint(grid(0.3, 2.1, 2.65, 3.35), 0.45, "ground");
-    check("a free spot over the sofa", !!pt);
-    if (pt) {
-      await page.mouse.click(pt[0], pt[1]);
-      await idle(page);
-      const menu = await page.evaluate(
-        `(() => { const m = ${sr}.querySelector('.fp-pickmenu'); return m ? [...m.querySelectorAll('button')].map((b) => b.textContent) : null; })()`,
-      );
-      check(
-        "click on furniture opens the menu",
-        JSON.stringify(menu) ===
-          '["Hide in this view","Hide surfaces, keep devices","Show in this view","Hide in all views","Reveal in tree"]',
-        JSON.stringify(menu),
-      );
-      check(
-        "the pick is the sofa group",
-        (await page.evaluate(
-          `${card}._edit.vwPick && ${card}._edit.vwPick.sel`,
-        )) === "node:house/level0/sofa",
-        await page.evaluate(`${card}._edit.vwPick && ${card}._edit.vwPick.sel`),
-      );
-      await page.evaluate(
-        `${sr}.querySelector('.fp-pickmenu [data-act=vw-hide-here]').click()`,
-      );
-      await idle(page);
-      check(
-        '"Hide in this view" hides the sofa only',
-        !(await nodeVis("sofa")) &&
-          (await nodeVis("coffee_table")) &&
-          (await rulesOf("ground")) === '[{"hide":"node:house/level0/sofa"}]',
-        await rulesOf("ground"),
-      );
-      check(
-        "menu closed",
-        await page.evaluate(`!${sr}.querySelector('.fp-pickmenu')`),
-      );
-    }
-    pt = await freePoint(grid(2.1, 3.1, 1.35, 1.85), 0.45, "ground");
-    if (pt) {
-      await page.mouse.click(pt[0], pt[1]);
-      await idle(page);
-      await page.evaluate(
-        `(() => { const b = ${sr}.querySelector('.panel .tab-body'); b.scrollTop = 0; })()`,
-      );
-      await page.evaluate(
-        `${sr}.querySelector('.fp-pickmenu [data-act=vw-reveal]').click()`,
-      );
-      await idle(page);
-      const rev =
-        await page.evaluate(`(() => { const li = ${sr}.querySelector('.panel li[data-sel="node:house/level0/coffee_table"]'); if (!li) return null;
-      const b = ${sr}.querySelector('.panel .tab-body').getBoundingClientRect(), r = li.getBoundingClientRect();
-      return { flash: li.classList.contains('flash'), inView: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 }; })()`);
-      check(
-        '"Reveal in tree" scrolls to the coffee table row and flashes it',
-        !!rev && rev.flash && rev.inView,
-        JSON.stringify(rev),
-      );
-    } else check("a free spot over the coffee table", false);
-    await page.evaluate(`${card}.saveViewPatch('ground', { rules: [] })`);
-    await idle(page);
-    await page.evaluate(`${card}._setMode('3d')`);
-    await idle(page);
-
-    // saved camera: save, move, switch away and back
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [18, 22, 16], target: [6, 0, -4] }, { instant: true })`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `${sr}.querySelector('.panel [name=vw-save-cam]').click()`,
-    );
-    await idle(page);
-    const saved = await page.evaluate(`${card}._layout.views.ground.camera`);
-    check(
-      '"Save current view as start" stores the camera',
-      !!saved &&
-        Math.hypot(
-          saved.position[0] - 18,
-          saved.position[1] - 22,
-          saved.position[2] - 16,
-        ) < 0.01,
-      JSON.stringify(saved),
-    );
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [40, 35, 40], target: [0, 0, 0] }, { instant: true })`,
-    );
-    await chip("first");
-    await chip("ground");
-    await settle(page, card);
-    const back = await page.evaluate(
-      `(() => { const c = ${card}._view.getCamera(); return c; })()`,
-    );
-    const dp = Math.hypot(
-        ...back.position.map((x, i) => x - saved.position[i]),
-      ),
-      dt = Math.hypot(...back.target.map((x, i) => x - saved.target[i]));
-    check(
-      "saved camera restored after switching away and back (within 0.1 m)",
-      dp < 0.1 && dt < 0.1,
-      `${dp.toFixed(3)} / ${dt.toFixed(3)}`,
-    );
-    await page.evaluate(
-      `${sr}.querySelector('.panel [name=vw-reset-cam]').click()`,
-    );
-    await idle(page);
-    check(
-      "Reset camera clears it",
-      !(await page.evaluate(`(${card}._layout.views.ground || {}).camera`)),
-    );
-
-    // linked floors: unchecking the Ground floor link hides its roomless devices outside every room / zone
-    // (a pin far off the plan), not the room devices, pins inside a room or the mower (outdoors)
-    await page.evaluate(
-      `(() => { const c = ${card}; c._edit.commit({ ...c._layout, pins: { ...c._layout.pins, 'device:tv': { x: -30, y: -30, z: 1, floor_id: 'ground' } } }); })()`,
-    );
-    await idle(page);
-    let d = await devs();
-    const roomless0 = d["outside:ground"] ? d["outside:ground"].shown : 0;
-    const setLink = (id, on) =>
-      page.evaluate(
-        `(() => { const el = ${sr}.querySelector('.panel [name=vw-floor][data-id=${id}]'); el.checked = ${on}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-      );
-    await setLink("ground", false);
-    await idle(page);
-    d = await devs();
-    check(
-      "unlinking the floor hides its devices outside rooms; pins in rooms and the mower stay",
-      roomless0 > 0 &&
-        d["outside:ground"].shown === 0 &&
-        d.level0.shown > 0 &&
-        d["pin:ground"].shown > 0 &&
-        (!d.mower || d.mower.shown === 1) &&
-        JSON.stringify(
-          await page.evaluate(`${card}._layout.views.ground.floors`),
-        ) === "[]",
-      JSON.stringify(d),
-    );
-    await setLink("ground", true);
-    await idle(page);
-    d = await devs();
-    check(
-      "linking it again shows them",
-      d["outside:ground"].shown === roomless0,
-      JSON.stringify(d),
-    );
-    await page.evaluate(
-      `(() => { const c = ${card}; const pins = { ...c._layout.pins }; delete pins['device:tv']; c._edit.commit({ ...c._layout, pins }); })()`,
-    );
-    await idle(page);
-
-    // pick on a tagged room floor links the model room
-    await page.evaluate(
-      `(() => { const c = ${card}; c._edit.commit({ ...c._layout, rooms: c._layout.rooms.filter((r) => r.area_id !== 'kitchen') }); })()`,
-    );
-    await page.evaluate(
-      `${card}._edit.setModelProps({ rooms: { kitchen: { area: null } } })`,
-    );
-    await idle(page);
-    await clickText("Rooms");
-    const pickBtn = () =>
-      page.evaluate(() => {
-        const li = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel li"),
-        ].find(
-          (x) =>
-            x.querySelector(".name") &&
-            x.querySelector(".name").textContent.trim() === "Kitchen",
-        );
-        const b =
-          li &&
-          [...li.querySelectorAll("button")].find(
-            (x) => x.textContent.trim() === "Pick",
-          );
-        if (b) b.click();
-        return !!b;
-      });
-    check("Rooms tab offers Pick for the unlinked kitchen", await pickBtn());
-    await idle(page);
-    await page.evaluate(`${card}._setMode('top')`);
-    await page.evaluate(`${card}._view.fit({ instant: true })`);
-    await idle(page);
-    const kitchenSpots = [
-      [8, 1],
-      [8.2, 4.2],
-      [11.5, 0.5],
-      [11.5, 4.5],
-      [8.5, 6],
-      [9, 0.5],
-      [10, 4.5],
-    ];
-    pt = await freePoint(kitchenSpots, 0, "ground");
-    if (pt) await page.mouse.click(pt[0], pt[1]);
-    await idle(page);
-    check(
-      "pick on a tagged room floor links the model room",
-      (await page.evaluate(`${card}._layout.model.rooms.kitchen.area`)) ===
-        "kitchen" && !(await page.evaluate(`${card}._edit.picking`)),
-      JSON.stringify(await page.evaluate(`${card}._layout.model.rooms`)),
-    );
-    await page.evaluate(`${card}._setMode('3d')`);
-    await idle(page);
-
-    // legacy copy (no extras, legacy level names): generated views, cut on, no elevation inputs, picking traces the floor
-    const legacy = path.join(root, "screenshots", "legacy-views.glb");
-    const legacyNames = {
-      level0: "floor:ground",
-      level1: "floor:first",
-      exterior: "site",
-    };
-    fs.writeFileSync(
-      legacy,
-      rewriteGlbJson(
-        fs.readFileSync(path.join(root, "demo", "house.glb")),
-        (json) => {
-          for (const n of json.nodes || []) {
-            delete n.extras;
-            if (legacyNames[n.name]) n.name = legacyNames[n.name];
-          }
-          return json;
-        },
-      ),
-    );
-    await upload(legacy);
-    await page.waitForFunction(
-      `${card}._view.modelManifest()?.levels.some((l) => l.id === 'site')`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    fs.unlinkSync(legacy);
-    check(
-      "legacy copy: generated views ground / first / All",
-      JSON.stringify(await chipIds()) === '["ground","first","all"]',
-      JSON.stringify(await chipIds()),
-    );
-    check(
-      "legacy copy is not tagged",
-      !(await page.evaluate(`${card}._view.isTagged()`)),
-    );
-    await chip("ground");
-    await clickText("Views");
-    check(
-      'legacy copy: "Cut at storey height" present and on',
-      await page.evaluate(
-        `${sr}.querySelector('.panel [name=vw-cut]')?.checked === true`,
-      ),
-    );
-    const legacyTop = await page.evaluate(
-      `(() => { const f = ${card}._floors.find((x) => x.id === 'ground'); return f.elevation + (f.height || 2.7); })()`,
-    );
-    check(
-      "legacy copy: model cut at the top storey elevation + height (not + 1.0)",
-      legacyTop > 2 &&
-        Math.abs(
-          (await page.evaluate(`${card}._view.modelClip.constant`)) - legacyTop,
-        ) < 1e-6,
-      `${await page.evaluate(`${card}._view.modelClip.constant`)} vs ${legacyTop}`,
-    );
-    check(
-      "legacy copy: materials carry the model clipping plane",
-      await page.evaluate(
-        `(() => { let n = 0, c = 0; ${card}._view.model.root.traverse((o) => { if (o.isMesh) { n++; if ([].concat(o.material).every((m) => m.clippingPlanes && m.clippingPlanes.length === 1)) c++; } }); return n > 0 && n === c; })()`,
-      ),
-    );
-    await clickText("Rooms");
-    check(
-      "legacy copy: no elevation inputs in the Rooms tab",
-      await page.evaluate(
-        `!${sr}.querySelector('.panel [name=floor-elevation]')`,
-      ),
-    );
-    // drop the drawn kitchen again (the model has no rooms), then pick its floor: traced outline
-    await page.evaluate(
-      `(() => { const c = ${card}; c._edit.commit({ ...c._layout, rooms: c._layout.rooms.filter((r) => r.area_id !== 'kitchen') }); })()`,
-    );
-    await idle(page);
-    const kitchenArea = await page.evaluate(
-      `(() => { const p = ${JSON.stringify([
-        [7.5, 0],
-        [12, 0],
-        [12, 5],
-        [9.5, 5],
-        [9.5, 6.5],
-        [7.5, 6.5],
-      ])}; let a = 0; for (let i = 0; i < p.length; i++) { const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a / 2); })()`,
-    );
-    const pickAndTrace = async () => {
-      await pickBtn();
-      await idle(page);
-      await page.evaluate(`${card}._setMode('top')`);
-      await page.evaluate(`${card}._view.fit({ instant: true })`);
-      await idle(page);
-      const p = await freePoint(kitchenSpots, 0, "ground");
-      if (p) await page.mouse.click(p[0], p[1]);
-      await page
-        .waitForFunction(
-          `${card}._edit.picking && ${card}._edit.picking.poly`,
-          { timeout: 5000 },
-        )
-        .catch(() => {});
-      await idle(page);
-      return page.evaluate(
-        `(() => { const p = ${card}._edit.picking && ${card}._edit.picking.poly; if (!p) return null; let a = 0; for (let i = 0; i < p.length; i++) { const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a / 2); })()`,
-      );
-    };
-    let area = await pickAndTrace();
-    check(
-      "pick traces the kitchen floor (area within 0.5 m²)",
-      area !== null && Math.abs(area - kitchenArea) < 0.5,
-      `${area} vs ${kitchenArea}`,
-    );
-    check(
-      'preview offers "Use this outline" and "Draw instead"',
-      await page.evaluate(
-        `(() => { const t = [...${sr}.querySelectorAll('.panel button')].map((b) => b.textContent.trim()); return t.includes('Use this outline') && t.includes('Draw instead'); })()`,
-      ),
-    );
-    await clickText("Use this outline");
-    const made = await page.evaluate(
-      `${card}._layout.rooms.find((r) => r.area_id === 'kitchen')`,
-    );
-    check(
-      '"Use this outline" creates the room',
-      !!made && made.floor_id === "ground" && made.polygon.length >= 6,
-      JSON.stringify(made && { floor: made.floor_id, n: made.polygon.length }),
-    );
-    await page.evaluate(
-      `(() => { const c = ${card}; c._edit.selectRoom(null); c._edit.commit({ ...c._layout, rooms: c._layout.rooms.filter((r) => r.area_id !== 'kitchen') }); })()`,
-    );
-    // a traced outline is not reused after the model moved (cache keyed by the alignment)
-    const traceAt = (x) =>
-      page.evaluate(`(() => { const c = ${card}, v = c._view, V = v.persp.position.constructor;
-    v.modelGroup.updateMatrixWorld(true);
-    v.raycaster.set(new V(${x}, 1.2, -1), new V(0, -1, 0));
-    const hit = v.raycaster.intersectObject(v.model.root, true).find((h) => h.object.isMesh && h.point.y < 0.15);
-    if (!hit) return null;
-    const r = c._edit._traceOutline(hit.object, hit.point.toArray());
-    return Math.min(...r.poly.map((p) => p[0])); })()`);
-    const minX0 = await traceAt(8);
-    await page.evaluate(
-      `${card}._edit.setModelProps({ position: [0.5, 0, 0] }, false)`,
-    );
-    await idle(page);
-    const minX1 = await traceAt(8.5);
-    check(
-      "outline traced again after realigning the model (moved 0.5 m)",
-      minX0 !== null && minX1 !== null && Math.abs(minX1 - minX0 - 0.5) < 0.06,
-      `${minX0} -> ${minX1}`,
-    );
-    await page.evaluate(
-      `${card}._edit.setModelProps({ position: [0, 0, 0] }, false)`,
-    );
-    await idle(page);
-    await idle(page);
-    await pickAndTrace();
-    await clickText("Draw instead");
-    check(
-      '"Draw instead" starts drawing the area',
-      (await page.evaluate(
-        `${card}._edit.drawing && ${card}._edit.drawing.areaId`,
-      )) === "kitchen" && !(await page.evaluate(`${card}._edit.picking`)),
-    );
-    await page.keyboard.press("Escape");
-    await idle(page);
-    check(
-      "Esc cancels drawing",
-      !(await page.evaluate(`${card}._edit.drawing`)),
-    );
-    await pickBtn();
-    await idle(page);
-    await page.keyboard.press("Escape");
-    await idle(page);
-    check(
-      "Esc cancels picking",
-      !(await page.evaluate(`${card}._edit.picking`)),
-    );
-    await page.evaluate(`${card}._setMode('3d')`);
-
-    // Views tab: side section position slider (live while dragging, saved on release)
-    await clickText("Views");
-    await idle(page);
-    const secPos = `${sr}.querySelector('.panel [name=vw-sec-pos]')`;
-    check(
-      "Views tab: side section direction + position",
-      await page.evaluate(
-        `!!${secPos} && !!${sr}.querySelector('.panel [name=vw-sec-dir]')`,
-      ),
-    );
-    const live =
-      await page.evaluate(`(() => { const el = ${secPos}, c = ${card}, v = c._view; const pos = Math.round((Number(el.min) + 1) * 100) / 100;
-    el.value = String(pos); el.dispatchEvent(new Event('input', { bubbles: true }));
-    return { pos, planes: v.renderer.clippingPlanes.length, c: v.sectionClip && v.sectionClip.constant, n: v.sectionClip && v.sectionClip.normal.toArray(),
-      saved: ((c._layout.views || {})[c._viewId] || {}).section || null }; })()`);
-    check(
-      "Views tab: dragging the slider cuts live, nothing saved yet",
-      live.planes === 1 &&
-        Math.abs(live.c - live.pos) < 1e-6 &&
-        live.n[0] === -1 &&
-        !live.saved,
-      JSON.stringify(live),
-    );
-    await page.evaluate(
-      `${secPos}.dispatchEvent(new Event('change', { bubbles: true }))`,
-    );
-    await waitTrue(
-      page,
-      `!!((${card}._layout.views || {})[${card}._viewId] || {}).section`,
-      "the saved section",
-      10000,
-    );
-    await idle(page);
-    const secSaved =
-      await page.evaluate(`(() => { const c = ${card}; return { s: ((c._layout.views || {})[c._viewId] || {}).section, c: c._view.sectionClip && c._view.sectionClip.constant,
-    slider: Number(${secPos}.value) }; })()`);
-    check(
-      "Views tab: release saves layout.views[id].section, the cut stays",
-      !!secSaved.s &&
-        secSaved.s.constant === live.pos &&
-        secSaved.c === live.pos &&
-        secSaved.slider === live.pos,
-      JSON.stringify(secSaved),
-    );
-    await page.evaluate(`${sr}.querySelector('button.section').click()`);
-    await idle(page);
-    check(
-      "Section button off clears the cut",
-      await page.evaluate(`${card}._view.renderer.clippingPlanes.length === 0`),
-    );
-    check(
-      "Reset section clears the saved cut",
-      await clickText("Reset section"),
-    );
-    await idle(page);
-    check(
-      "Reset section: nothing saved",
-      await page.evaluate(
-        `(() => { const c = ${card}; return !((c._layout.views || {})[c._viewId] || {}).section; })()`,
-      ),
-    );
-
-    // Camera: rotation centre per view, zoom pivot, separate top-view camera
-    await page.evaluate(`${card}._setView('ground', { instant: true })`);
-    await idle(page);
-    check(
-      "zoom_to default center: controls.zoomToCursor false",
-      await page.evaluate(`${card}._view.controls.zoomToCursor === false`),
-    );
-    await page
-      .waitForFunction(
-        `!!${card}._view.pivotMarker && ${card}._view.pivotMarker.visible`,
-        { timeout: 10000 },
-      )
-      .catch(() => {});
-    check(
-      "Views tab shows the rotation centre cross",
-      await page.evaluate(
-        `!!${card}._view.pivotMarker && ${card}._view.pivotMarker.visible`,
-      ),
-    );
-    check("Set rotation centre button", await clickText("Set rotation centre"));
-    check(
-      "Set rotation centre arms a click",
-      await page.evaluate(`${card}._edit.pivoting === true`),
-    );
-    await page.keyboard.press("Escape");
-    await idle(page);
-    check(
-      "Esc cancels Set rotation centre",
-      await page.evaluate(`!${card}._edit.pivoting`),
-    );
-    await clickText("Set rotation centre");
-    // the screen point of a ground-floor room centre and what the model has under it
-    const aim =
-      await page.evaluate(`(() => { const c = ${card}, v = c._view, r = c._roomList.find((x) => x.floorId === 'ground' && !x.room.outdoor);
-    const p = r.room.polygon, cx = p.reduce((a, q) => a + q[0], 0) / p.length, cy = p.reduce((a, q) => a + q[1], 0) / p.length;
-    const w = v.controls.target.clone().set(cx, v.floorElevation('ground'), -cy).project(v.camera), b = v.renderer.domElement.getBoundingClientRect();
-    const x = b.left + (w.x + 1) / 2 * b.width, y = b.top + (1 - w.y) / 2 * b.height;
-    const hit = v.pivotPoint(x, y, v.floorElevation('ground'));
-    return { x, y, hit, cam: v.getCamera() }; })()`);
-    await page.evaluate(({ x, y }) => {
-      const e = document.querySelector("floorplan3d-card-impl")._edit;
-      e.canvasDown({ button: 0, clientX: x, clientY: y });
-      e.canvasUp({ clientX: x, clientY: y });
-    }, aim);
-    await settle(page, card);
-    const near = (a, b, tol = 0.05) =>
-      !!a && !!b && a.every((x, i) => Math.abs(x - b[i]) <= tol);
-    const piv =
-      await page.evaluate(`(() => { const c = ${card}, v = c._view; return { target: v.controls.target.toArray(), pos: v.persp.position.toArray(),
-    saved: ((c._layout.views || {}).ground || {}).camera || null, cross: v.pivotMarker && v.pivotMarker.position.toArray(), pivoting: c._edit.pivoting }; })()`);
-    check(
-      "Set rotation centre: controls.target is the clicked point (±0.05)",
-      !!aim.hit && near(piv.target, aim.hit),
-      JSON.stringify({ hit: aim.hit, t: piv.target }),
-    );
-    const d0 = aim.cam.position.map((x, i) => x - aim.cam.target[i]),
-      d1 = piv.pos.map((x, i) => x - piv.target[i]);
-    check(
-      "Set rotation centre: camera keeps its angle and distance",
-      near(d0, d1, 0.05),
-      JSON.stringify({ d0, d1 }),
-    );
-    check(
-      "Set rotation centre: saved as the view camera",
-      !!piv.saved && near(piv.saved.target, aim.hit) && !piv.pivoting,
-      JSON.stringify(piv.saved),
-    );
-    check(
-      "rotation centre cross follows the target",
-      near(piv.cross, piv.target, 0.01),
-      JSON.stringify(piv.cross),
-    );
-    await page.evaluate(`${card}._setView('first')`);
-    await settle(page, card);
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [25, 25, 25], target: [0, 0, 0] }, { instant: true })`,
-    );
-    await page.evaluate(`${card}._setView('ground')`);
-    await settle(page, card);
-    const pivBack = await page.evaluate(
-      `(() => { const v = ${card}._view; return { target: v.controls.target.toArray(), pos: v.persp.position.toArray() }; })()`,
-    );
-    check(
-      "switching views and back restores the rotation centre",
-      near(pivBack.target, piv.saved.target, 0.01) &&
-        near(pivBack.pos, piv.saved.position, 0.01),
-      JSON.stringify(pivBack),
-    );
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [25, 25, 25], target: [0, 0, 0] }, { instant: true })`,
-    );
-    await page.evaluate(`${sr}.querySelector('button.reset').click()`);
-    await settle(page, card);
-    check(
-      "Reset view honours the saved rotation centre",
-      near(
-        await page.evaluate(`${card}._view.controls.target.toArray()`),
-        piv.saved.target,
-        0.01,
-      ),
-    );
-    // per-view zoom pivot
-    await page.evaluate(
-      `(() => { const el = ${sr}.querySelector('.panel [name=vw-zoom-to]'); el.value = 'cursor'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    check(
-      "per-view zoom_to cursor: saved and applied",
-      await page.evaluate(
-        `${card}._layout.views.ground.zoom_to === 'cursor' && ${card}._view.controls.zoomToCursor === true`,
-      ),
-    );
-    await page.evaluate(`${card}._setView('first')`);
-    await idle(page);
-    check(
-      "other view keeps the default centre pivot",
-      await page.evaluate(`${card}._view.controls.zoomToCursor === false`),
-    );
-    await page.evaluate(`${card}._setView('ground')`);
-    await idle(page);
-    await page.evaluate(
-      `(() => { const el = ${sr}.querySelector('.panel [name=vw-zoom-to]'); el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    await idle(page);
-    check(
-      "zoom_to back to the card default",
-      await page.evaluate(
-        `!${card}._layout.views.ground.zoom_to && ${card}._view.controls.zoomToCursor === false`,
-      ),
-    );
-    // top view: its own camera
-    await page.evaluate(`${card}._setMode('top')`);
-    await idle(page);
-    check(
-      "top mode: zoom pivot kept on the rebuilt controls",
-      await page.evaluate(`${card}._view.controls.zoomToCursor === false`),
-    );
-    await page.evaluate(
-      `${card}._view.setTopCamera({ center: [3, 2], zoom: 1.6 }, { instant: true })`,
-    );
-    await clickText("Save current view as start");
-    await idle(page);
-    const top = await page.evaluate(
-      `(() => { const v = ${card}._layout.views.ground; return { top: v.camera_top, cam: v.camera }; })()`,
-    );
-    check(
-      "top mode: Save current view stores camera_top (3D camera untouched)",
-      JSON.stringify(top.top) === '{"center":[3,2],"zoom":1.6}' &&
-        near(top.cam.target, piv.saved.target, 0.01),
-      JSON.stringify(top),
-    );
-    await page.evaluate(`${card}._setView('first')`);
-    await settle(page, card);
-    check(
-      "top mode: a view without camera_top keeps the top camera",
-      JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)) ===
-        '{"center":[3,2],"zoom":1.6}',
-      JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)),
-    );
-    await page.evaluate(
-      `${card}._view.setTopCamera({ center: [-4, 7], zoom: 0.8 }, { instant: true })`,
-    );
-    await page.evaluate(`${card}._setView('ground')`);
-    await settle(page, card);
-    check(
-      "top mode: camera_top restored after switching views",
-      JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)) ===
-        '{"center":[3,2],"zoom":1.6}',
-      JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)),
-    );
-    await page.evaluate(
-      `${card}._view.setTopCamera({ center: [-4, 7], zoom: 0.8 }, { instant: true })`,
-    );
-    await page.evaluate(`${sr}.querySelector('button.reset').click()`);
-    await settle(page, card);
-    check(
-      "top mode: Reset view returns to camera_top",
-      JSON.stringify(await page.evaluate(`${card}._view.getTopCamera()`)) ===
-        '{"center":[3,2],"zoom":1.6}',
-    );
-    await page.screenshot({
-      path: path.join(root, "screenshots", "model-camera-top.png"),
-    });
-    await page.evaluate(`${card}._setMode('3d')`);
-    await idle(page);
-    const cam3 = await page.evaluate(
-      `(() => { const v = ${card}._view; return { target: v.controls.target.toArray(), pos: v.persp.position.toArray() }; })()`,
-    );
-    check(
-      "Top -> 3D restores the view camera (±0.1 m)",
-      near(cam3.target, piv.saved.target, 0.1) &&
-        near(cam3.pos, piv.saved.position, 0.1),
-      JSON.stringify({ cam3, saved: piv.saved }),
-    );
-    // no saved camera: back to the camera before Top
-    await page.evaluate(`${card}._setView('first', { instant: true })`);
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [21, 19, 23], target: [4, 0, -3] }, { instant: true })`,
-    );
-    await page.evaluate(`${card}._setMode('top')`);
-    await idle(page);
-    await page.evaluate(`${card}._setMode('3d')`);
-    await idle(page);
-    check(
-      "Top -> 3D without a saved camera returns to the previous 3D camera",
-      near(
-        await page.evaluate(`${card}._view.persp.position.toArray()`),
-        [21, 19, 23],
-        0.1,
-      ),
-    );
-    await page.evaluate(`${card}._setView('ground', { instant: true })`);
-    await idle(page);
-    // section on: Save / Set rotation centre leave the section first
-    await page.evaluate(`${card}.setSection(true)`);
-    await settle(page, card);
-    check(
-      "section on before save",
-      await page.evaluate(`${card}._section === true`),
-    );
-    await clickText("Save current view as start");
-    await idle(page);
-    const secCam = await page.evaluate(
-      `(() => { const c = ${card}; return { on: c._section, planes: c._view.renderer.clippingPlanes.length, cam: c._layout.views.ground.camera }; })()`,
-    );
-    check(
-      "Save current view with the section on: section off first, the view camera saved",
-      !secCam.on &&
-        secCam.planes === 0 &&
-        near(secCam.cam.target, piv.saved.target, 0.1) &&
-        near(secCam.cam.position, piv.saved.position, 0.1),
-      JSON.stringify(secCam),
-    );
-    await page.evaluate(`${card}.setSection(true)`);
-    await settle(page, card);
-    await clickText("Set rotation centre");
-    check(
-      "Set rotation centre with the section on: section off first",
-      await page.evaluate(
-        `!${card}._section && ${card}._view.renderer.clippingPlanes.length === 0 && ${card}._edit.pivoting === true`,
-      ),
-    );
-    await page.keyboard.press("Escape");
-    await idle(page);
-    await clickText("Reset this view");
-    await idle(page);
-    check(
-      "Reset this view drops camera and camera_top",
-      await page.evaluate(
-        `(() => { const v = ${card}._layout.views.ground || {}; return !v.camera && !v.camera_top; })()`,
-      ),
-    );
-    await clickText("Rooms");
-    check(
-      "rotation centre cross hidden outside the Views tab",
-      await page.evaluate(`!${card}._view.pivotMarker`),
-    );
-
-    // fully untagged copy (no extras, no legacy names): one generated "All" view, an overview
-    const untagged = path.join(root, "screenshots", "untagged-views.glb");
-    fs.writeFileSync(
-      untagged,
-      rewriteGlbJson(
-        fs.readFileSync(path.join(root, "demo", "house.glb")),
-        (json) => {
-          for (const n of json.nodes || []) {
-            delete n.extras;
-            if (n.name === "roof") n.name = "top";
-          }
-          return json;
-        },
-      ),
-    );
-    await upload(untagged);
-    await page.waitForFunction(
-      `${card}._view.model && ${card}._view.modelManifest().levels.length === 0`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    fs.unlinkSync(untagged);
-    check(
-      'untagged copy: a single generated "All" view (no chips)',
-      JSON.stringify(
-        await page.evaluate(`${card}._views.map((v) => v.id + ':' + v.source)`),
-      ) === '["all:generated"]' && (await chipIds()).length === 0,
-      JSON.stringify(await page.evaluate(`${card}._views.map((v) => v.id)`)),
-    );
-    await clickText("Views");
-    check(
-      'untagged copy: "Cut at storey height" present, off by default in "All"',
-      await page.evaluate(
-        `${sr}.querySelector('.panel [name=vw-cut]')?.checked === false`,
-      ),
-    );
-    await clickText("Rooms");
-    check(
-      "untagged copy: no elevation inputs in the Rooms tab",
-      await page.evaluate(
-        `!${sr}.querySelector('.panel [name=floor-elevation]')`,
-      ),
-    );
-    const ov = await page.evaluate(
-      `(() => { const c = ${card}; return { overview: c._viewState.overview, shown: [...c._view.markerObjects.values()].filter((m) => m.obj.visible).length, all: c._view.markerObjects.size }; })()`,
-    );
-    check(
-      "untagged copy is an overview: every device shown",
-      ov.overview === true && ov.shown === ov.all,
-      JSON.stringify(ov),
-    );
-    allErrors.push(...s.errors);
-  },
-);
-
-// 2g. magnetic drag (demo/house.glb uploaded): a marker sticks to a wall, attaches to a model object
-// (the living-room ceiling lamp), follows it when the model is realigned, Alt-drag never attaches, Detach keeps the spot
-sections.add(
-  "magnetic",
-  {
-    group: "views",
-    query: { view: "3d", height: "560px" },
-    viewport: { width: 1500, height: 680 },
-  },
-  async (s) => {
-    const { page } = s;
-    const sr = `${card}.shadowRoot`;
-    const clickText = async (t) => {
-      const ok = await page.evaluate((t) => {
-        const b = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel button"),
-        ].find((x) => x.textContent.trim() === t);
-        if (b) b.click();
-        return !!b;
-      }, t);
-      await idle(page);
-      return ok;
-    };
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await clickText("Model");
-    const input = await page.evaluateHandle(
-      `${sr}.querySelector('.panel [name=model-file]')`,
-    );
-    await input.uploadFile(path.join(root, "demo", "house.glb"));
-    await page.waitForFunction(
-      `${card}._view.model && ${card}._view.modelManifest().levels.length === 4`,
-      { timeout: 30000 },
-    );
-    await idle(page);
-    await page.evaluate(
-      `${sr}.querySelector('.chip[data-view=ground]').click()`,
-    );
-    await settle(page, card);
-    await clickText("Devices");
-    // closer to the living room: the ceiling lamp is a small disc, too small to hit from the default distance
-    // (the demo house's render recipe has fov 38: 0.92 x the distance frames it as fov 35 did from [8, 8.5, 8])
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [7.6, 7.9, 7.15], target: [3, 1, -2.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    // the demo model's living-room ceiling lamp (a real object, bound to light.demo_living)
-    const injected = await page.evaluate(
-      `(() => { const o = ${card}._objects.objectAt('lamp_living'); return o ? o.obj.node.name : null; })()`,
-    );
-    check(
-      "magnetic: the demo model has the living-room lamp object",
-      !!injected,
-      String(injected),
-    );
-    await idle(page);
-    // the lamp is small on screen: search around its projected anchor for a pixel whose model hit is the lamp
-    // (and that no marker covers)
-    const findLamp = () =>
-      page.evaluate(`(() => { const c = ${card}, v = c._view, a = c._objects.anchorOf('lamp_living');
-    const p = a && v.projectWorld(a);
-    if (!p) return null;
-    for (let rad = 0; rad <= 30; rad++) for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
-      const x = p[0] + dx, y = p[1] + dy, h = v.surfaceAt(x, y);
-      if (h && h.owner && h.owner.id === 'lamp_living' && !c._markerAt(x, y)) return { x, y };
-    }
-    return null; })()`);
-    // screen points: a wall face (vertical normal, 0.7–2.3 m up) and the lamp
-    const targets =
-      await page.evaluate(`(() => { const c = ${card}, v = c._view, r = v.renderer.domElement.getBoundingClientRect();
-    let wall = null;
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    for (let y = r.top + 20; y < r.bottom - 20; y += 12) for (let x = r.left + 20; x < r.right - 20; x += 12) {
-      const h = v.surfaceAt(x, y);
-      if (!h || h.owner && h.owner.kind === 'object') continue;
-      const d = Math.hypot(x - cx, y - cy);
-      if (Math.abs(h.normal.y) < 0.1 && h.point.y > 0.7 && h.point.y < 2.3 && (!wall || d < wall.d))
-        wall = { x, y, d, point: [h.point.x, -h.point.z], n: [h.normal.x, -h.normal.z] };
-    }
-    return { wall }; })()`);
-    targets.lamp = await findLamp();
-    check(
-      "magnetic: found a wall face and the lamp on screen",
-      !!targets.wall && !!targets.lamp,
-      JSON.stringify(targets),
-    );
-    // draggable markers: shown, not the mower, the pointer at their centre reaches them
-    const markers = await page.evaluate(`(() => { const c = ${card}, out = [];
-    for (const [id, o] of c._view.markerObjects) {
-      if (!o.obj.visible || id === c._mowerMarkerId) continue;
-      const b = c._markerRect(id);
-      if (!b) continue;
-      const x = b.x + b.width / 2, y = b.y + b.height / 2, hit = c._markerAt(x, y);
-      if (hit && hit.id === id) out.push({ id, x, y });
-    }
-    return out; })()`);
-    check(
-      "magnetic: three draggable markers",
-      markers.length >= 3,
-      String(markers.length),
-    );
-    const drag = async (m, to, alt = false) => {
-      await page.mouse.move(m.x, m.y);
-      if (alt) await page.keyboard.down("Alt");
-      await page.mouse.down();
-      await page.mouse.move((m.x + to.x) / 2, (m.y + to.y) / 2, { steps: 4 });
-      await page.mouse.move(to.x, to.y, { steps: 6 });
-      await idle(page);
-      await page.mouse.up();
-      if (alt) await page.keyboard.up("Alt");
-      await idle(page);
-    };
-    const pinOf = (id) =>
-      page
-        .evaluate(
-          `JSON.stringify((${card}._layout.pins || {})[${JSON.stringify(id)}] || null)`,
-        )
-        .then(JSON.parse);
-    if (targets.wall && targets.lamp && markers.length >= 3) {
-      const [a, b, c3] = markers;
-      // 1) wall
-      await drag(a, targets.wall);
-      let pin = await pinOf(a.id);
-      const w = targets.wall;
-      const dist = pin
-        ? Math.hypot(pin.x - w.point[0], pin.y - w.point[1])
-        : 99;
-      check(
-        "magnetic: marker dropped on a wall sticks to it (z 0.5–2.6, x/y on the wall ±0.1, on_model, not attached)",
-        !!pin &&
-          pin.z > 0.5 &&
-          pin.z < 2.6 &&
-          dist <= 0.1 &&
-          pin.on_model === true &&
-          !pin.attach,
-        JSON.stringify({ pin, wall: w, dist }),
-      );
-      check(
-        "magnetic: the wall marker sits off the wall towards the viewer",
-        !!pin &&
-          (pin.x - w.point[0]) * w.n[0] + (pin.y - w.point[1]) * w.n[1] > 0.02,
-        JSON.stringify(pin),
-      );
-      check(
-        "magnetic: highlight cleared after the drop",
-        await page.evaluate(`!${card}._view.pickHelper`),
-      );
-      // empty sky: the marker keeps its last snapped spot (no fling to a far plane hit)
-      const sky =
-        await page.evaluate(`(() => { const c = ${card}, v = c._view, r = v.renderer.domElement.getBoundingClientRect();
-      for (let y = r.top + 15; y < r.bottom - 15; y += 15) for (let x = r.left + 15; x < r.right - 15; x += 15)
-        if (!v.surfaceAt(x, y) && c.shadowRoot.elementFromPoint(x, y)?.tagName === 'CANVAS' && !c._markerAt(x, y)) return { x, y };
-      return null; })()`);
-      if (sky) {
-        const aNow = await page.evaluate(
-          `(() => { const el = ${card}._markerRect(${JSON.stringify(a.id)}); return { x: el.x + el.width / 2, y: el.y + el.height / 2 }; })()`,
-        );
-        await page.mouse.move(aNow.x, aNow.y);
-        await page.mouse.down();
-        await page.mouse.move(sky.x, sky.y, { steps: 8 });
-        await idle(page);
-        await page.mouse.up();
-        await idle(page);
-        const ps = await pinOf(a.id);
-        // the path crosses the model first: the marker stays at the last surface it stuck to, inside the model
-        const box = await page.evaluate(`${card}._view.modelBox()`);
-        const inBox =
-          !!ps &&
-          ps.x >= box.min[0] - 0.1 &&
-          ps.x <= box.max[0] + 0.1 &&
-          -ps.y >= box.min[2] - 0.1 &&
-          -ps.y <= box.max[2] + 0.1 &&
-          ps.z + 0 >= box.min[1] - 0.1 &&
-          ps.z <= box.max[1] + 0.1;
-        check(
-          "magnetic: dragging out over empty sky keeps the last snapped spot (inside the model)",
-          inBox,
-          JSON.stringify({ after: ps, box, sky }),
-        );
-      } else check("magnetic: found empty sky on screen", false);
-      // 2) lamp
-      await drag(b, targets.lamp);
-      pin = await pinOf(b.id);
-      check(
-        "magnetic: drop on the lamp attaches (attach + offset, on_model)",
-        !!pin &&
-          pin.attach === "lamp_living" &&
-          Array.isArray(pin.offset) &&
-          pin.on_model === true,
-        JSON.stringify(pin),
-      );
-      const where = (id) =>
-        page.evaluate(`(() => { const c = ${card}; const p = c._positions.get(${JSON.stringify(id)}); const o = c._view.markerObjects.get(${JSON.stringify(id)});
-      const a = c._objects.anchorOf('lamp_living');
-      return { pos: p, world: o && o.obj.position.toArray(), anchor: a && a.toArray() }; })()`);
-      const w0 = await where(b.id);
-      const off0 = w0.world.map((v, i) => v - w0.anchor[i]);
-      check(
-        "magnetic: attached marker = anchor + stored offset",
-        pin && off0.every((v, i) => Math.abs(v - pin.offset[i]) < 0.002),
-        JSON.stringify({ off0, offset: pin && pin.offset }),
-      );
-      // 3) realign the model: the attached marker follows the lamp, its pin is not realigned
-      await page.evaluate(
-        `${card}._edit.setModelProps({ position: [0.5, 0, 0] }, false)`,
-      );
-      await idle(page);
-      const w1 = await where(b.id);
-      const pin1 = await pinOf(b.id);
-      const off1 = w1.world.map((v, i) => v - w1.anchor[i]);
-      check(
-        "magnetic: realigned model -> the attached marker follows the lamp (+0.5 m east)",
-        Math.abs(w1.anchor[0] - w0.anchor[0] - 0.5) < 0.01 &&
-          Math.abs(w1.world[0] - w0.world[0] - 0.5) < 0.01 &&
-          off1.every((v, i) => Math.abs(v - off0[i]) < 0.002),
-        JSON.stringify({ w0, w1 }),
-      );
-      check(
-        "magnetic: realign keeps attach + offset, moves only the fallback position (+0.5 m)",
-        !!pin1 &&
-          pin1.attach === pin.attach &&
-          JSON.stringify(pin1.offset) === JSON.stringify(pin.offset) &&
-          Math.abs(pin1.x - pin.x - 0.5) < 0.002 &&
-          pin1.y === pin.y,
-        JSON.stringify(pin1),
-      );
-      // the object vanishes: the marker falls back to its stored position, then comes back with it
-      const gone =
-        await page.evaluate(`(() => { const c = ${card}, id = ${JSON.stringify(b.id)}, l = c._objects, part = l.parts.get('lamp_living');
-      l.parts.delete('lamp_living'); c._refreshAttached();
-      const p = c._positions.get(id), pin = c._layout.pins[id];
-      const out = { fell: !p.attached && Math.abs(p.x - pin.x) < 1e-6 && Math.abs(p.y - pin.y) < 1e-6 && Math.abs(p.z - pin.z) < 1e-6 };
-      l.parts.set('lamp_living', part); c._refreshAttached();
-      out.back = c._positions.get(id).attached === 'lamp_living';
-      return out; })()`);
-      check(
-        "magnetic: object gone -> stored fallback position, back -> follows it again",
-        gone.fell && gone.back,
-        JSON.stringify(gone),
-      );
-      // the lamp moved: find it on screen again
-      const lamp2 = await findLamp();
-      // 4) Alt-drag onto the lamp: free drag, no attach
-      if (lamp2) {
-        const z0 = await page.evaluate(
-          `${card}._positions.get(${JSON.stringify(c3.id)}).z`,
-        );
-        // the realign moved the room markers too: the marker's screen point again
-        const c3Now = await page.evaluate(
-          `(() => { const el = ${card}._markerRect(${JSON.stringify(c3.id)}); return { id: ${JSON.stringify(c3.id)}, x: el.x + el.width / 2, y: el.y + el.height / 2 }; })()`,
-        );
-        await drag(c3Now, lamp2, true);
-        const pc = await pinOf(c3.id);
-        check(
-          "magnetic: Alt-drag onto the lamp does not attach and keeps the height",
-          !!pc && !pc.attach && Math.abs(pc.z - z0) < 0.001,
-          JSON.stringify({ pc, z0 }),
-        );
-      } else check("magnetic: lamp found again after the realign", false);
-      // 5) Detach: select the attached marker, Detach keeps its spot as a normal pin on the model
-      const before = (await where(b.id)).pos;
-      await page.evaluate(
-        `${card}._edit.selectMarker(${JSON.stringify(b.id)})`,
-      );
-      await idle(page);
-      check(
-        'magnetic: selected attached marker shows "Attached to Living ceiling lamp" and Detach',
-        await page.evaluate(
-          `${sr}.querySelector('.panel').textContent.includes('Attached to Living ceiling lamp') && !!${sr}.querySelector('.panel [name=detach]')`,
-        ),
-      );
-      await page.evaluate(
-        `${sr}.querySelector('.panel [name=detach]').click()`,
-      );
-      await idle(page);
-      const pd = await pinOf(b.id);
-      check(
-        "magnetic: Detach -> normal pin (on_model) at the same spot",
-        !!pd &&
-          !pd.attach &&
-          !pd.offset &&
-          pd.on_model === true &&
-          Math.abs(pd.x - before.x) < 0.002 &&
-          Math.abs(pd.y - before.y) < 0.002 &&
-          Math.abs(pd.z - before.z) < 0.002,
-        JSON.stringify({ pd, before }),
-      );
-      await page.screenshot({
-        path: path.join(root, "screenshots", "magnetic-drag.png"),
-      });
-    }
-    allErrors.push(...s.errors);
-  },
-);
-
-// 2h. devices on model surfaces: auto-placed wall sensor on the wall, pins untouched, drag preview
-// ring over a wall, "Stick all to surfaces" moves a floating pin (demo/house.glb from the YAML)
+// 2h. devices on model surfaces: auto-placed wall sensor on the wall, ceiling light under the ceiling, pins untouched
 sections.add(
   "surfaces",
   {
@@ -5845,7 +3388,6 @@ sections.add(
   },
   async (s) => {
     const { page } = s;
-    const sr = `${card}.shadowRoot`;
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 30000 });
     await page
       .waitForFunction(
@@ -5904,145 +3446,11 @@ sections.add(
       JSON.stringify(again),
     );
 
-    // drag preview: edit mode, Devices tab, drag a marker over a wall
-    await page.evaluate(
-      `(async () => { ${sr}.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `${sr}.querySelector('.chip[data-view=ground]').click()`,
-    );
-    await settle(page, card);
-    const clickText = async (t) => {
-      const ok = await page.evaluate((t) => {
-        const b = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel button"),
-        ].find((x) => x.textContent.trim() === t);
-        if (b) b.click();
-        return !!b;
-      }, t);
-      await idle(page);
-      return ok;
-    };
-    await clickText("Devices");
-    await page.evaluate(
-      `${card}._view.setCamera({ position: [8, 8.5, 8], target: [3, 1, -2.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    const wall =
-      await page.evaluate(`(() => { const c = ${card}, v = c._view, r = v.renderer.domElement.getBoundingClientRect();
-    let best = null; const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    for (let y = r.top + 20; y < r.bottom - 20; y += 12) for (let x = r.left + 20; x < r.right - 20; x += 12) {
-      const h = v.surfaceAt(x, y);
-      if (!h || h.owner && h.owner.kind === 'object' || c._markerAt(x, y)) continue;
-      const d = Math.hypot(x - cx, y - cy);
-      if (Math.abs(h.normal.y) < 0.1 && h.point.y > 0.7 && h.point.y < 2.3 && (!best || d < best.d)) best = { x, y, d };
-    }
-    return best; })()`);
-    const mk = await page.evaluate(`(() => { const c = ${card};
-    for (const [id, o] of c._view.markerObjects) {
-      if (!o.obj.visible || id === c._mowerMarkerId) continue;
-      const b = c._markerRect(id);
-      if (!b) continue;
-      const x = b.x + b.width / 2, y = b.y + b.height / 2, hit = c._markerAt(x, y);
-      if (hit && hit.id === id) return { id, x, y };
-    }
-    return null; })()`);
-    check(
-      "surface: found a wall and a draggable marker on screen",
-      !!wall && !!mk,
-      JSON.stringify({ wall, mk }),
-    );
-    if (wall && mk) {
-      await page.mouse.move(mk.x, mk.y);
-      await page.mouse.down();
-      await page.mouse.move((mk.x + wall.x) / 2, (mk.y + wall.y) / 2, {
-        steps: 4,
-      });
-      await page.mouse.move(wall.x, wall.y, { steps: 6 });
-      await idle(page);
-      const pv =
-        await page.evaluate(`(() => { const v = ${card}._view, g = v._preview;
-      return { shown: !!g && g.visible && v._previewRing.visible, face: !!g && v._previewFace.visible, helper: !!g && g.userData.helper && v._previewRing.userData.helper,
-        ringN: g && new v._previewRing.position.constructor(0, 0, 1).applyQuaternion(v._previewRing.quaternion).toArray() }; })()`);
-      check(
-        "surface: drag over a wall shows the preview ring (helper) and the tinted face, ring facing out of the wall",
-        pv.shown && pv.face && pv.helper && Math.abs(pv.ringN[1]) < 0.3,
-        JSON.stringify(pv),
-      );
-      await page.screenshot({
-        path: path.join(root, "screenshots", "surface-preview.png"),
-      });
-      await page.mouse.up();
-      await idle(page);
-      check(
-        "surface: preview hidden after the drop",
-        await page.evaluate(`!${card}._view._preview.visible`),
-      );
-    }
-
-    // Stick all: a pin floating in the middle of the living room moves onto a surface; on-surface pins stay
-    await page.evaluate(`${card}._edit.selectMarker(null)`);
-    await page.evaluate(`(() => { const c = ${card}; const pins = { ...(c._layout.pins || {}) };
-    pins['device:living_climate'] = { x: 2.5, y: 3.6, z: 1.5, floor_id: 'ground' };
-    c._edit.commit({ ...c._layout, pins }); })()`);
-    await idle(page);
-    const pinsBefore = await page
-      .evaluate(`JSON.stringify(${card}._layout.pins)`)
-      .then(JSON.parse);
-    await clickText("Stick all to surfaces");
-    const txt = await page.evaluate(
-      `${sr}.querySelector('.panel .stick')?.textContent || ''`,
-    );
-    const nMoves = await page.evaluate(
-      `${card}._edit.stick && ${card}._edit.stick.moves.length`,
-    );
-    check(
-      "surface: Stick all previews the count with Apply / Cancel",
-      /\d+ markers? will move/.test(txt) &&
-        nMoves >= 1 &&
-        (await page.evaluate(
-          `!!${sr}.querySelector('.panel [name=stick-apply]') && !!${sr}.querySelector('.panel [name=stick-cancel]')`,
-        )),
-      txt.trim(),
-    );
-    check(
-      "surface: nothing saved before Apply",
-      (await page.evaluate(`JSON.stringify(${card}._layout.pins)`)) ===
-        JSON.stringify(pinsBefore),
-    );
-    await clickText("Apply");
-    await idle(page);
-    const after =
-      await page.evaluate(`(() => { const c = ${card}, v = c._view, pin = c._layout.pins['device:living_climate'];
-    const w = [pin.x, v.floorElevation('ground') + pin.z, -pin.y];
-    const dirs = [[0, 1, 0], [0, -1, 0]]; for (let i = 0; i < 8; i++) dirs.push([Math.cos(i * Math.PI / 4), 0, Math.sin(i * Math.PI / 4)]);
-    return { pin, d: Math.min(...v.surfaceRays(w, dirs, 4).map((h) => h.distance)), panel: !!c.shadowRoot.querySelector('.panel .stick') }; })()`);
-    check(
-      "surface: Apply moved the floating pin onto a surface (≤ 0.1 m, on_model) and closed the preview",
-      after.d <= 0.1 &&
-        after.pin.on_model === true &&
-        (after.pin.x !== 2.5 || after.pin.y !== 3.6 || after.pin.z !== 1.5) &&
-        !after.panel,
-      JSON.stringify(after),
-    );
-    await clickText("Stick all to surfaces");
-    const txt2 = await page.evaluate(
-      `${sr}.querySelector('.panel .stick')?.textContent || ''`,
-    );
-    check(
-      "surface: Stick all again -> nothing left to move",
-      /already sits on a surface/.test(txt2),
-      txt2.trim(),
-    );
     allErrors.push(...s.errors);
   },
 );
 
-// 2i. mower on the lawn: map, marker and model at the model's ground (any HA floor elevation),
-// shown with the outdoors, align by points (Cancel restores, Done keeps), edit-only
+// 2i. mower on the lawn: marker and model at the model's ground (any HA floor elevation), shown with the outdoors
 sections.add(
   "mower-lawn",
   {
@@ -6062,55 +3470,17 @@ sections.add(
         },
       );
     const ev = (expr) => page.evaluate(expr);
-    const panelBtn = (t) =>
-      ev(
-        `(() => { const b = [...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === ${JSON.stringify(t)}); if (b) b.click(); return !!b; })()`,
-      );
-    const commitMower = (patch, ov = null) =>
-      ev(
-        `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, ...${JSON.stringify(patch)}${ov ? `, overlay: { ...l.mower.overlay, ...${JSON.stringify(ov)} }` : ""} } }); })()`,
-      );
-    const ovSig = `${card}._view.mapPlane && ${card}._view.mapPlane.userData.sig`;
-    check(
-      "map overlay loaded",
-      await until(
-        `!!${card}._view.model && !!${card}._view.mapPlane && !!${card}._view.mapPlane.material.map`,
-        "the map overlay",
-        15000,
-      ),
+    await until(
+      `!!${card}._view.model && !!${card}._objects.model`,
+      "the model",
+      15000,
     );
-    const planeY = () => ev(`${card}._view.mapPlane.position.y`);
-    const lawn = await ev(`${card}._view.groundAt(16.5, 1.5)`);
-    let y = await planeY();
-    check(
-      "map overlay lies on the demo lawn",
-      lawn !== null &&
-        Math.abs(lawn) < 0.02 &&
-        y - lawn >= 0 &&
-        y - lawn <= 0.05,
-      `lawn ${lawn}, plane ${y}`,
-    );
-
     // the user's case: the garden's HA floor at 7 m
-    await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, floors: [...(l.floors || []), { id: 'garden_f', name: 'Garden', elevation: 7, height: 2.7 }],
+    await ev(`(() => { const c = ${card}, l = c._layout; c._layout = ({ ...l, floors: [...(l.floors || []), { id: 'garden_f', name: 'Garden', elevation: 7, height: 2.7 }],
     mower: { ...l.mower, floor_id: 'garden_f' } }); })()`);
     check(
       "mower floor at 7 m",
-      await until(
-        `${card}._mowerFloor() === 'garden_f' && ${card}._view.mapPlane.userData.floorId === 'garden_f'`,
-        "the 7 m floor",
-      ),
-    );
-    y = await planeY();
-    const elev = await ev(`${card}._view.floorElevation('garden_f')`);
-    check(
-      "map overlay stays on the lawn with the floor at 7 m",
-      elev === 7 && y - lawn >= 0 && y - lawn <= 0.05,
-      `elevation ${elev}, plane ${y}`,
-    );
-    check(
-      "map shown in the ground view (exterior visible), whatever the HA floor",
-      await ev(`${card}._view.mapPlane.visible`),
+      await until(`${card}._mowerFloor() === 'garden_f'`, "the 7 m floor"),
     );
     // the demo model's mower object stands on the lawn
     const mowerY = `(() => { const o = ${card}._objects.objectAt('mower'); return o && o.obj.node ? o.obj.node.getWorldPosition(o.obj.node.position.clone()).y : null; })()`;
@@ -6124,7 +3494,7 @@ sections.add(
     );
     // without the model's mower object: the live marker, on the lawn too
     await ev(
-      `(() => { const c = ${card}; c._commit({ ...c._layout, objects: { ...(c._layout.objects || {}), mower: { hidden: true } } }); })()`,
+      `(() => { const c = ${card}; c._layout = ({ ...c._layout, objects: { ...(c._layout.objects || {}), mower: { hidden: true } } }); })()`,
     );
     const markerY = `(() => { const c = ${card}, o = c._mowerMarkerId && c._view.markerObjects.get(c._mowerMarkerId); return o ? o.obj.position.y : null; })()`;
     check(
@@ -6135,15 +3505,11 @@ sections.add(
       ),
       String(await ev(markerY)),
     );
-    check(
-      "mower marker shown with the exterior",
-      await ev(
-        `(() => { const c = ${card}; const o = c._view.cssObjects.find((x) => x.kind === 'marker' && x.id === c._mowerMarkerId); return !!o && o.obj.visible; })()`,
-      ),
-    );
-    // a view without the exterior hides map and marker
+    const markerShown = `(() => { const c = ${card}; const o = c._view.cssObjects.find((x) => x.kind === 'marker' && x.id === c._mowerMarkerId); return !!o && o.obj.visible; })()`;
+    check("mower marker shown with the exterior", await ev(markerShown));
+    // a view without the exterior hides the marker
     await ev(
-      `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, views: { ...(l.views || {}), indoor: { added: true, label: 'Indoor', rules: [{ hide: 'all' }, { show: 'level:level0' }] } } }); })()`,
+      `(() => { const c = ${card}, l = c._layout; c._layout = ({ ...l, views: { ...(l.views || {}), indoor: { added: true, label: 'Indoor', rules: [{ hide: 'all' }, { show: 'level:level0' }] } } }); })()`,
     );
     await until(
       `!!${card}._views && ${card}._views.some((v) => v.id === 'indoor')`,
@@ -6151,398 +3517,22 @@ sections.add(
     );
     await ev(`${card}._setView('indoor', { instant: true })`);
     check(
-      "indoor view hides map and marker",
-      await until(
-        `(() => { const c = ${card}, v = c._view; const m = v.cssObjects.find((x) => x.kind === 'marker' && x.id === c._mowerMarkerId);
-    return !v.mapPlane.visible && (!m || !m.obj.visible); })()`,
-        "the indoor view to hide the mower",
-      ),
+      "indoor view hides the mower marker",
+      await until(`!${markerShown}`, "the indoor view to hide the mower"),
     );
     await ev(`${card}._setView('ground', { instant: true })`);
     check(
-      "ground view shows them again",
-      await until(
-        `${card}._view.mapPlane.visible`,
-        "the map in the ground view",
-      ),
+      "ground view shows it again",
+      await until(markerShown, "the marker in the ground view"),
     );
-    await commitMower({}, { height_offset: 0.3 });
-    check(
-      "height offset raises the map",
-      await until(
-        `Math.abs(${card}._view.mapPlane.position.y - ${y} - 0.3) < 1e-6`,
-        "the offset",
-      ),
-      String(await planeY()),
-    );
-
-    // align by points: start from a wrong overlay, click 2 image spots and where they really are on the lawn
-    const truth = { x: 16.5, y: 1.5, rotation: 0, width: 9 };
-    const wrong = {
-      x: 15.2,
-      y: 2.6,
-      rotation: 17,
-      width: 11.5,
-      height_offset: 0,
-    };
-    await commitMower({}, wrong);
-    await until(
-      `${card}._layout.mower.overlay.x === 15.2 && (${ovSig} || '').includes('|15.2|')`,
-      "the wrong overlay",
-    );
-    await ev(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await until(
-      `${card}._editing && !!${card}.shadowRoot.querySelector('.panel button')`,
-      "edit mode",
-    );
-    await ev(
-      `[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`,
-    );
-    await until(`${card}._edit.tab === 'mower'`, "the Mower tab");
-    await ev(
-      `${card}._view.setCamera({ position: [16.5, 16, 4.5], target: [16.5, 0, -1.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    const W = 450,
-      H = 850;
-    const alignTwo = async () => {
-      for (const [px, py] of [
-        [75, 125],
-        [375, 725],
-      ]) {
-        const n = await ev(`${card}._edit.aligning.pairs.length`);
-        // the image point in the 2D picker on the original picture
-        await until(`!!${card}._edit.picker`, "the align picker");
-        await idle(page); // the picker has its size (fit) before the click
-        const a = await ev(`${card}._edit.picker.clientOf(${px}, ${py})`);
-        await page.mouse.click(a[0], a[1]);
-        await until(
-          `!!${card}._edit.aligning && !!${card}._edit.aligning.pending`,
-          "the image point",
-        );
-        const real = pixelToPlan(px, py, W, H, truth);
-        const b = await ev(
-          `(() => { const v = ${card}._view; return v.projectWorld(v.camera.position.clone().set(${real.x}, 0, ${-real.y})); })()`,
-        );
-        await page.mouse.click(b[0], b[1]);
-        await until(
-          `!!${card}._edit.aligning && ${card}._edit.aligning.pairs.length === ${n + 1}`,
-          "the model point",
-        );
-      }
-      check(
-        "align: image points picked in the picker",
-        await ev(
-          `${card}._edit.aligning.pairs.every((p, i) => Math.abs(p.px - [75, 375][i]) <= 1 && Math.abs(p.py - [125, 725][i]) <= 1)`,
-        ),
-      );
-    };
-    check(
-      "Align by points armed",
-      (await panelBtn("Align by points")) &&
-        !!(await ev(`${card}._edit.aligning`)),
-    );
-    await alignTwo();
-    const fit0 = await ev(`${card}._layout.mower.overlay`);
-    check(
-      "aligning moves the overlay",
-      Math.abs(fit0.x - truth.x) <= 0.05,
-      JSON.stringify(fit0),
-    );
-    check(
-      "Cancel restores the starting overlay",
-      (await panelBtn("Cancel")) &&
-        (await until(
-          `(() => { const o = ${card}._layout.mower.overlay; return !${card}._edit.aligning && o.x === 15.2 && o.y === 2.6 && o.rotation === 17 && o.width === 11.5; })()`,
-          "the restored overlay",
-        )),
-      JSON.stringify(await ev(`${card}._layout.mower.overlay`)),
-    );
-    check(
-      "Align by points again",
-      (await panelBtn("Align by points")) &&
-        !!(await ev(`${card}._edit.aligning`)),
-    );
-    await alignTwo();
-    const fit = await ev(`${card}._layout.mower.overlay`);
-    check(
-      "align by 2 points reproduces the overlay",
-      Math.abs(fit.x - truth.x) <= 0.05 &&
-        Math.abs(fit.y - truth.y) <= 0.05 &&
-        Math.abs(fit.rotation - truth.rotation) <= 0.5 &&
-        Math.abs(fit.width - truth.width) <= 0.1,
-      JSON.stringify(fit),
-    );
-    check(
-      "Done keeps the fit",
-      (await panelBtn("Done")) &&
-        (await until(`!${card}._edit.aligning`, "Done")) &&
-        (await ev(`${card}._layout.mower.overlay.x`)) === fit.x,
-    );
-
-    // edit-only: hidden in view mode (still loaded for detection), shown again in edit mode
-    await ev(
-      `(() => { const el = ${card}.shadowRoot.querySelector('[name=ov-edit-only]'); el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    check(
-      "edit-only stored, map shown while editing",
-      await until(
-        `${card}._layout.mower.overlay.edit_only === true && ${card}._view.mapPlane.visible`,
-        "edit-only while editing",
-      ),
-    );
-    await ev(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    check(
-      "edit-only: map hidden in view mode, image still loaded",
-      await until(
-        `(() => { const p = ${card}._view.mapPlane; return !${card}._editing && !!p && !p.visible && !!p.material.map && !!p.userData.loaded; })()`,
-        "the hidden map",
-      ),
-    );
-    await ev(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    check(
-      "edit-only: map back in edit mode",
-      await until(
-        `${card}._editing && ${card}._view.mapPlane.visible`,
-        "the map in edit mode",
-      ),
-    );
-    await ev(
-      `${card}._view.setCamera({ position: [16.5, 9, 8], target: [16.5, 0, -1.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    await page.screenshot({
-      path: path.join(root, "screenshots", "mower-map-aligned.png"),
-    });
-
-    // map picture processing on the live map: background transparent, mowed stripes light, no-mow shaded,
-    // the icon hidden (or not), clipped to the garden zone; stripes / mowed share; a size change keeps it right
-    await ev("window.__demoMowerPaused = true");
-    await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, objects: { ...(l.objects || {}), mower: {} }, mower: { ...l.mower, source: 'image', calibration: [],
-    image: { colors: [[255, 59, 48]], tolerance: 40, min_pixels: 4 },
-    overlay: { entity: 'image.sunseeker_live_map', x: 17.5, y: 1.5, rotation: 0, width: 9, opacity: 0.55, refresh: 10, height_offset: 0,
-      bg_colors: [[47, 93, 44]], mowed_colors: [[127, 194, 111]], nomow_colors: [[140, 140, 140]] } } }); })()`);
-    // exactly one new map picture (a timed unpause let one or two through, racing the processing)
-    const tick = async (at) => {
-      await ev(`window.__demoMowerStep(${at ?? ""})`);
-      await idle(page);
-    };
-    // start at the top of the circle: where the earlier sections left it, the icon could sit past the
-    // garden zone's east edge and be clipped away
-    await tick(Math.PI / 2);
-    const processed = (w) =>
-      until(
-        `(() => { const c = ${card}, p = c._view.mapPlane; const t = p && p.material.map, im = p && p.userData.loaded && p.userData.loaded.image;
-    return !!t && t.isCanvasTexture && !!im && (im.naturalWidth || im.width) === ${w} && t.image.width === ${w} && !!c._imageBlob && c._imageBlob.imgW === ${w} && !!c._mapStats; })()`,
-        `the processed ${w} px map`,
-        15000,
-      );
-    check("map processed into a canvas texture", await processed(450));
-    // 3D picks read the clicked map pixel (overlay on the lawn, mower floor at 7 m): the ray hits the map plane
-    await ev(
-      `${card}._view.setCamera({ position: [17.5, 9, 6], target: [17.5, 0, -1.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    const pickAt = async (kind, px, py) => {
-      const ov = await ev(`${card}._layout.mower.overlay`);
-      const q = pixelToPlan(px, py, 450, 850, ov);
-      await ev(
-        `${card}._view.setCamera({ position: [${q.x}, 8, ${-q.y + 5}], target: [${q.x}, 0, ${-q.y}] }, { instant: true })`,
-      ); // the point mid-stage, clear of the toolbar
-      await settle(page, card);
-      const sp = await ev(
-        `(() => { const v = ${card}._view; return v.projectWorld(v.camera.position.clone().set(${q.x}, v.mapPlane.position.y, ${-q.y})); })()`,
-      );
-      await ev(
-        `(() => { const e = ${card}._edit; e.colorPick = ${JSON.stringify(kind)}; e._syncStageClasses(); })()`,
-      );
-      await page.mouse.click(sp[0], sp[1]);
-      await idle(page);
-    };
-    const dot = await ev(
-      `(() => { const b = ${card}._imageBlob; return b && [b.px, b.py]; })()`,
-    );
-    await ev(
-      `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, colors: [] } } }); })()`,
-    );
-    await pickAt(true, dot[0], dot[1]);
-    const pc = await ev(`(${card}._layout.mower.image.colors || [])[0]`);
-    check(
-      "3D pick on the mower dot stores the dot colour (floor at 7 m, map on the lawn)",
-      !!pc && pc[0] > 200 && pc[1] < 120 && pc[2] < 120,
-      JSON.stringify({ dot, pc }),
-    );
-    await pickAt("bg", 8, 8);
-    const bgc = await ev(
-      `(${card}._layout.mower.overlay.bg_colors || []).slice(-1)[0]`,
-    );
-    check(
-      "3D pick on the background stores the background colour (the darker margin shade)",
-      !!bgc &&
-        Math.abs(bgc[0] - 40) < 6 &&
-        Math.abs(bgc[1] - 79) < 6 &&
-        Math.abs(bgc[2] - 38) < 6,
-      JSON.stringify(bgc),
-    );
-    await ev(
-      `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, image: { ...l.mower.image, colors: [[255, 59, 48]] }, overlay: { ...l.mower.overlay, bg_colors: [[47, 93, 44]] } } }); })()`,
-    );
-    const mapCheck = () =>
-      ev(`(() => {
-    const c = ${card}, p = c._view.mapPlane, img = p.userData.loaded.image, o = c._layout.mower.overlay;
-    const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height, cv = p.material.map.image, w = cv.width, h = cv.height;
-    const out = cv.getContext('2d').getImageData(0, 0, w, h).data;
-    const tmp = Object.assign(document.createElement('canvas'), { width: w, height: h }), g = tmp.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, w, h);
-    const raw = g.getImageData(0, 0, w, h).data;
-    const near = (k, col, tol) => Math.max(Math.abs(raw[k] - col[0]), Math.abs(raw[k + 1] - col[1]), Math.abs(raw[k + 2] - col[2])) <= tol;
-    const n = { bg: [0, 0], mowed: [0, 0], nomow: [0, 0], outside: [0, 0] };
-    const b = c._imageBlob, bx = b.px * w / W, by = b.py * h / H, r = 16 * w / 450;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const k = (y * w + x) * 4, a = out[k + 3], px = o.x + ((x + 0.5) / w - 0.5) * o.width;
-      if (Math.hypot(x + 0.5 - bx, y + 0.5 - by) < r) continue; // the icon
-      if (px > 21.05) { n.outside[0]++; if (a === 0) n.outside[1]++; continue; }
-      if (px > 20.95) continue;
-      if (near(k, o.bg_colors[0], 6)) { n.bg[0]++; if (a === 0) n.bg[1]++; }
-      else if (near(k, o.mowed_colors[0], 6)) { n.mowed[0]++; if (a > 0 && a < 255 && out[k] >= raw[k]) n.mowed[1]++; }
-      else if (near(k, o.nomow_colors[0], 6)) { n.nomow[0]++; if (a > 0 && a < 255 && out[k] < 80) n.nomow[1]++; }
-    }
-    const ki = (Math.floor(by) * w + Math.floor(bx)) * 4;
-    return { w, h, W, H, n, iconRaw: [raw[ki], raw[ki + 1], raw[ki + 2]], iconOut: [out[ki], out[ki + 1], out[ki + 2], out[ki + 3]],
-      info: c.mapInfo(), zone: c._mapStats && c._mapStats.zone, aspect: p.userData.aspect, sz: p.scale.z,
-      // the demo stripes run at 30° on the image; the bearing is against true north (model north + alignment)
-      want: (() => { const m = c._view.model, b = Math.round(90 - 30 - (m ? m.north || 0 : 0) + (m ? c._modelAlign().rotation || 0 : 0)); return ((b % 180) + 180) % 180; })() }; })()`);
-    const mapOk = (m, label) => {
-      const all = (k, min) => m.n[k][0] >= min && m.n[k][1] === m.n[k][0];
-      check(
-        `${label}: background pixels transparent`,
-        all("bg", 1000),
-        JSON.stringify(m.n.bg),
-      );
-      check(
-        `${label}: mowed stripes light and translucent`,
-        all("mowed", 1000),
-        JSON.stringify(m.n.mowed),
-      );
-      check(
-        `${label}: no-mow pixels shaded`,
-        all("nomow", 100),
-        JSON.stringify(m.n.nomow),
-      );
-      check(
-        `${label}: outside the garden zone transparent`,
-        m.zone === "garden" && all("outside", 100),
-        JSON.stringify({ zone: m.zone, outside: m.n.outside }),
-      );
-      check(
-        `${label}: mower icon hidden`,
-        m.iconRaw[0] > 200 && m.iconRaw[1] < 120 && m.iconOut[3] === 0,
-        JSON.stringify([m.iconRaw, m.iconOut]),
-      );
-      const deg = Number(
-        (/^(\d+)° \(.+\)$/.exec(m.info.stripes || "") || [])[1],
-      );
-      const off = Math.abs(deg - m.want) % 180;
-      check(
-        `${label}: stripes against true north and mowed share`,
-        Math.min(off, 180 - off) <= 3 && /^\d+ %$/.test(m.info.mowed || ""),
-        JSON.stringify({ ...m.info, want: m.want }),
-      );
-    };
-    const m1 = await mapCheck();
-    mapOk(m1, "live map");
-    check(
-      "processing runs in a worker",
-      await ev(`!!${card}._mapProc._worker && !${card}._mapProc._workerDead`),
-    );
-    const blob0 = await ev(`JSON.stringify(${card}._imageBlob)`);
-    await ev(
-      `(() => { const v = ${card}._view; v.reprocessMap(); v.reprocessMap(); v.reprocessMap(); })()`,
-    );
-    await idle(page);
-    check(
-      "reprocessing the same picture does not step the tracker",
-      (await ev(`JSON.stringify(${card}._imageBlob)`)) === blob0,
-    );
-    await commitMower({}, { hide_icon: false });
-    check(
-      'icon shown when "Hide mower icon" is off',
-      await until(
-        `(() => { const c = ${card}, p = c._view.mapPlane, b = c._imageBlob, cv = p.material.map.image;
-    const d = cv.getContext('2d').getImageData(Math.floor(b.px * cv.width / b.imgW), Math.floor(b.py * cv.height / b.imgH), 1, 1).data; return d[0] > 200 && d[1] < 120 && d[3] === 255; })()`,
-        "the icon",
-      ),
-    );
-    await commitMower({}, { hide_icon: true });
-    await ev(`${card}._edit.render()`);
-    check(
-      "Mower tab shows stripes and mowed share",
-      /Stripes: \d+° \(.+\) · Mowed: \d+ %/.test(
-        await ev(`${card}.shadowRoot.querySelector('.mower-live').textContent`),
-      ),
-      await ev(`${card}.shadowRoot.querySelector('.mower-live').textContent`),
-    );
-    check(
-      "Mower tab has the map picture controls",
-      await ev(`(() => { const s = ${card}.shadowRoot; const t = [...s.querySelectorAll('.panel button')].map((b) => b.textContent.trim());
-    return ['Pick background colour', 'Pick mowed colour', 'Pick no-mow colour'].every((x) => t.includes(x)) && !!s.querySelector('[name=ov-hide-icon]') && !!s.querySelector('[name=ov-zone]'); })()`),
-    );
-    const popRows =
-      await ev(`(() => { const c = ${card}, o = c._objects.objectAt('mower'); if (!o) return null; c._popup.open(o.obj, null);
-    const t = [...c.shadowRoot.querySelectorAll('.fp-popup .fp-pop-row')].map((r) => r.textContent.trim()); c._popup.close(); return t; })()`);
-    check(
-      "mower popup shows Stripes and Mowed",
-      !!popRows &&
-        popRows.some((t) => /^Stripes\s*\d+°/.test(t)) &&
-        popRows.some((t) => /^Mowed\s*\d+ %/.test(t)),
-      JSON.stringify(popRows),
-    );
-    // the camera image changes size between refreshes: same alignment, masks follow
-    await ev("window.__demoMapScale = 2");
-    await tick();
-    check("map processed at the new size", await processed(900));
-    const m2 = await mapCheck();
-    check(
-      "size change keeps the aspect and the plane size",
-      Math.abs(m2.aspect - m1.aspect) < 1e-9 &&
-        Math.abs(m2.sz - m1.sz) < 1e-9 &&
-        m2.w === 900,
-      JSON.stringify([m1.aspect, m2.aspect, m2.w]),
-    );
-    mapOk(m2, "resized live map");
-    await ev("window.__demoMapScale = 1");
-    await tick();
-    await processed(450);
-    const tex1 = await ev(`${card}._view.mapPlane.material.map.uuid`);
-    await tick();
-    await processed(450);
-    check(
-      "same-size refreshes reuse the canvas texture",
-      (await ev(`${card}._view.mapPlane.material.map.uuid`)) === tex1,
-    );
-    await ev(
-      `${card}._view.setCamera({ position: [17.5, 24, 6], target: [17.5, 0, -1.5] }, { instant: true })`,
-    );
-    await settle(page, card);
-    await page.screenshot({
-      path: path.join(root, "screenshots", "mower-map-processed.png"),
-    });
-    await ev("window.__demoMowerPaused = false");
     allErrors.push(...s.errors);
   },
 );
 
-// 2j. auto mode: the live map (camera) against the static map of the same device, the mower found by
-// its picture (position and heading), the dock ignored; mowed share from the progress sensor; device
-// rows in the popup; offline / rain chips
+// 2j. the mower's device (lawn_mower.robo bound to the model's mower object, the position from the demo's gps
+// tracker): mowed share from the progress sensor, device rows in the popup, offline / rain chips, error code
 sections.add(
-  "mower-auto",
+  "mower-device",
   {
     group: "mower",
     query: { model: "1", view: "3d" },
@@ -6561,89 +3551,15 @@ sections.add(
       );
     await until(`!!${card}._view.model`, "the model", 20000);
     await ev("window.__demoMowerPaused = true");
-    await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, objects: { ...(l.objects || {}), mower: { entity: 'lawn_mower.robo' } }, mower: { entity: 'lawn_mower.robo', source: 'image', floor_id: l.mower.floor_id, calibration: [],
-    overlay: { entity: 'camera.robo_live_map', x: 16.5, y: 1.5, rotation: 0, width: 9, opacity: 0.6, refresh: 2 } } }); })()`);
-    check(
-      "auto mode: static map and mower picture detected",
-      await until(
-        `(() => { const a = ${card}.mowerAuto(); return !!a && a.static === 'image.robo_map' && a.picture === 'image.robo_mower_image'; })()`,
-        "auto mode",
-      ),
-    );
-    const T = 0.7;
-    await ev(`window.__setRobot(${T})`);
-    const want = { x: 225 + 150 * Math.cos(T), y: 425 - 150 * Math.sin(T) };
-    const near = `(() => { const b = ${card}._imageBlob; return !!b && Math.hypot(b.px - ${want.x}, b.py - ${want.y}) < 2 && !!${card}._iconHead; })()`;
-    check(
-      "auto mode: the mower found by its picture (within 2 px)",
-      await until(near, "the mower in the live map", 15000),
-      JSON.stringify({
-        blob: await ev(`${card}._imageBlob`),
-        want,
-        res: await ev(`${card}._imageResult`),
-      }),
-    );
-    const head = async () =>
-      ev(
-        `(() => { const c = ${card}, p = c._objects._pose; return { pose: p && p.heading, src: c._headingSource, icon: c._iconHead }; })()`,
-      );
-    const diff = (a, b) => {
-      const d = ((((a - b) % 360) + 540) % 360) - 180;
-      return Math.abs(d);
-    };
-    let hd = await head();
-    check(
-      "auto mode: heading from the picture (model within 10°)",
-      hd.src === "picture" &&
-        hd.pose !== null &&
-        diff((hd.pose * 180) / Math.PI, (T * 180) / Math.PI + 90) <= 10,
-      JSON.stringify(hd),
-    );
-    const T2 = 2.6;
-    await ev(`window.__setRobot(${T2})`);
+    await ev(`(() => { const c = ${card}, l = c._layout; const { error_entity, stuck_minutes, ...m } = l.mower;
+    c._layout = ({ ...l, objects: { ...(l.objects || {}), mower: { entity: 'lawn_mower.robo' } }, mower: m }); })()`);
     await until(
-      `(() => { const b = ${card}._imageBlob; return !!b && Math.hypot(b.px - ${225 + 150 * Math.cos(T2)}, b.py - ${425 - 150 * Math.sin(T2)}) < 2; })()`,
-      "the moved mower",
-      15000,
-    );
-    await ev(`window.__setRobot(${T2 + 0.002})`); // a second frame: a jump > 120° needs two
-    // until the model has turned (the second frame processed); the check below reads the same pose
-    await until(
-      `(() => { const p = ${card}._objects._pose; if (!p || p.heading === null || p.heading === undefined) return false;
-      const d = ((((p.heading * 180) / Math.PI - ${(T2 * 180) / Math.PI + 90}) % 360) + 540) % 360 - 180; return Math.abs(d) <= 10; })()`,
-      "the model turned with the icon",
-      15000,
-    );
-    hd = await head();
-    check(
-      "auto mode: the model turns with the icon",
-      diff((hd.pose * 180) / Math.PI, (T2 * 180) / Math.PI + 90) <= 10,
-      JSON.stringify(hd),
-    );
-    check(
-      "auto mode: the dock is not the mower",
-      await ev(
-        `(() => { const d = ${card}._dockPx; return !!d && Math.hypot(d.px - 391, d.py - 786) < 6; })()`,
-      ),
-      JSON.stringify(await ev(`${card}._dockPx`)),
-    );
-    const mapPx =
-      await ev(`(() => { const t = ${card}._view.mapPlane.material.map; if (!t || !t.isCanvasTexture) return null; const g = t.image.getContext('2d');
-    const a = (x, y) => Array.from(g.getImageData(x, y, 1, 1).data); return { bg: a(5, 5), lawnS: a(100, 600), mowed: a(250, 90), nomow: a(225, 395) }; })()`);
-    check(
-      "auto mode: unchanged transparent, mowed light, no-mow shaded",
-      !!mapPx &&
-        mapPx.bg[3] === 0 &&
-        mapPx.lawnS[3] === 0 &&
-        mapPx.nomow[3] > 0 &&
-        mapPx.nomow[0] < 40 &&
-        (mapPx.mowed[3] > 0 || (await ev(`${card}._mapStats.share`)) > 0.2),
-      JSON.stringify(mapPx),
+      `${card}._mowerStateEntity() === 'lawn_mower.robo' && !!${card}._mowerLive && ${card}._mowerLive.x !== undefined`,
+      "the bound mower with a position",
     );
     check(
       "mowed share from the progress sensor",
-      /^39 %$/.test((await ev(`${card}.mapInfo()`)).mowed) &&
-        (await ev(`${card}.mapInfo().mowedSource`)) === "progress sensor",
+      /^39 %$/.test((await ev(`${card}.mapInfo()`)).mowed),
     );
     // popup rows of the device (the model's mower object)
     const rows =
@@ -6738,300 +3654,6 @@ sections.add(
         "the undimmed mower",
       ),
     );
-    // main-thread time per refresh: auto pass in the worker vs on the main thread (no worker)
-    // each of 4 refreshes waited for (its perf record), not slept for: { main, pass, worker } per refresh
-    const timing = async () => {
-      const out = [];
-      for (let i = 0; i < 4; i++) {
-        const at0 = await ev(
-          `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
-        );
-        await ev(`window.__setRobot(${1 + i * 0.05})`);
-        await until(
-          `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at0}; })()`,
-          "the map refresh",
-          15000,
-        );
-        out.push(
-          await ev(
-            `(() => { const c = ${card}, p = c._perf && c._perf.last, m = c._mapProc; return { main: p ? p.main : 0, pass: p ? p.pass : null, worker: !!(m && m._worker) }; })()`,
-          ),
-        );
-      }
-      return out;
-    };
-    const med = (xs) => xs.map((x) => x.main).sort((a, b) => a - b)[1];
-    const wRuns = await timing();
-    await ev(`(() => { const p = ${card}._mapProc; p._killWorker(); })()`);
-    const mRuns = await timing();
-    const inWorker = med(wRuns),
-      onMain = med(mRuns);
-    console.log(
-      `     auto pass main-thread time per refresh: worker ${inWorker.toFixed(1)} ms, main thread ${onMain.toFixed(1)} ms`,
-    );
-    // where the pass ran, by state: the worker up for every refresh; without it the pass is part of the main-thread
-    // time of each refresh (main >= pass)
-    check(
-      "auto mode: the pass runs in the worker, on the main thread once it is gone",
-      wRuns.every((r) => r.worker && typeof r.pass === "number") &&
-        mRuns.every(
-          (r) => !r.worker && typeof r.pass === "number" && r.main >= r.pass,
-        ),
-      JSON.stringify({ wRuns, mRuns }),
-    );
-    check(
-      "auto mode in the worker keeps the main thread light",
-      inWorker < onMain,
-      `${inWorker} vs ${onMain}`,
-    );
-    // a static map that does not match the live map (another aspect): flagged, no auto detection
-    await ev(
-      `(() => { const c = ${card}, l = c._layout; c._commit({ ...l, mower: { ...l.mower, static_entity: 'image.robo_mower_image' } }); })()`,
-    );
-    await ev(`window.__setRobot(1.4)`);
-    check(
-      "mismatching static map flagged",
-      await until(`${card}._autoMismatch === true`, "the mismatch"),
-    );
-    await ev(
-      `(() => { const c = ${card}, l = c._layout; const m = { ...l.mower }; delete m.static_entity; c._commit({ ...l, mower: m }); })()`,
-    );
-    await ev(`window.__setRobot(1.45)`);
-    check(
-      "matching static map again",
-      await until(`${card}._autoMismatch === false`, "no mismatch"),
-    );
-    // edit mode: the Mower tab shows auto mode, the checklist rows and the heading
-    await ev(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await until(`${card}._editing`, "edit mode");
-    await ev(
-      `[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`,
-    );
-    await until(`${card}._edit.tab === 'mower'`, "the Mower tab");
-    const tab = await ev(
-      `${card}.shadowRoot.querySelector('.panel').textContent.replace(/\\s+/g, ' ')`,
-    );
-    check(
-      "Mower tab: auto mode, entities and heading",
-      /Auto \(static map \+ mower picture\)/.test(tab) &&
-        tab.includes("image.robo_map") &&
-        /Heading \d+° \(mower picture\)/.test(tab),
-      tab.slice(0, 400),
-    );
-    const rowsIds = await ev(
-      `[...${card}.shadowRoot.querySelectorAll('.mower-setup .setup-row')].map((b) => b.textContent.replace(/\\s+/g, ' ').trim())`,
-    );
-    check(
-      "checklist: static map and mower picture rows",
-      rowsIds.some((t) => t.includes("Static map")) &&
-        rowsIds.some((t) => t.includes("Mower picture")) &&
-        !rowsIds.some((t) => t.includes("Mower colour")),
-      JSON.stringify(rowsIds),
-    );
-    await ev(
-      `(() => { const el = ${card}.shadowRoot.querySelector('[name=mower-auto-off]'); el.click(); })()`,
-    );
-    check(
-      '"Use colour picks instead" turns auto mode off',
-      await until(
-        `${card}._layout.mower.auto === false && !${card}.mowerAuto()`,
-        "auto off",
-      ),
-    );
-    await ev(
-      `${card}._view.setCamera({ position: [16.5, 16, 6], target: [16.5, 0, -1.5] }, { instant: true })`,
-    );
-    await ev(
-      `(() => { const el = ${card}.shadowRoot.querySelector('[name=mower-auto-off]'); el.click(); })()`,
-    );
-    // auto mode back on and a map refresh through it (its perf record), then idle: the screenshot shows it
-    const at1 = await ev(
-      `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
-    );
-    await until(`!!${card}.mowerAuto()`, "auto on", 10000);
-    await until(
-      `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at1}; })()`,
-      "a map refresh in auto mode",
-      15000,
-    );
-    await idle(page);
-    await page.screenshot({
-      path: path.join(root, "screenshots", "mower-auto.png"),
-    });
-    await ev("window.__demoMowerPaused = false");
-    allErrors.push(...s.errors);
-  },
-);
-
-// 2k. docked: the mower at the dock object (its orientation), no detection; undocking tracks from the
-// dock (the icon over the dock icon is not dropped as the dock); the Mower tab status line
-sections.add(
-  "mower-docked",
-  {
-    group: "mower",
-    query: { model: "1", view: "3d" },
-    viewport: { width: 1400, height: 700 },
-  },
-  async (s) => {
-    const { page } = s;
-    const ev = (expr) => page.evaluate(expr);
-    const until = (expr, label, timeout = 10000) =>
-      page.waitForFunction(expr, { timeout }).then(
-        () => true,
-        () => {
-          console.log(`     (timed out waiting for ${label})`);
-          return false;
-        },
-      );
-    await until(`!!${card}._view.model`, "the model", 20000);
-    await ev("window.__demoMowerPaused = true");
-    // mowing first (the map's dock icon and the icon size are learned), then home to the dock
-    await ev(`window.__setRobotAt(300, 600, 0.3)`);
-    await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, objects: { ...(l.objects || {}), mower: { entity: 'lawn_mower.robo' }, dock: { entity: 'lawn_mower.robo' } },
-    mower: { entity: 'lawn_mower.robo', source: 'image', floor_id: l.mower.floor_id, calibration: [],
-    overlay: { entity: 'camera.robo_live_map', x: 16.5, y: 1.5, rotation: 0, width: 9, opacity: 0.6, refresh: 2 } } }); })()`);
-    const near = (x, y, r = 4) =>
-      `(() => { const b = ${card}._imageBlob; return !!b && Math.hypot(b.px - ${x}, b.py - ${y}) < ${r}; })()`;
-    check(
-      "mowing: found by its picture",
-      await until(
-        `${near(300, 600)} && ${card}._imageBlob.matched`,
-        "the mowing mower",
-        20000,
-      ),
-      JSON.stringify(await ev(`${card}._imageBlob`)),
-    );
-    check(
-      "the map dock icon learned",
-      await until(
-        `(() => { const d = ${card}._dockPx; return !!d && Math.hypot(d.px - 391, d.py - 786) < 6; })()`,
-        "the dock icon",
-      ),
-      JSON.stringify(await ev(`${card}._dockPx`)),
-    );
-    await ev(
-      `window.__setDemoStates({ 'lawn_mower.robo': 'docked', 'sensor.robo_mower_status': 'Charging' })`,
-    );
-    await ev(`window.__setRobotAt(391, 786, 0)`); // the mower icon over the dock icon
-    const atDock = `(() => { const c = ${card}, d = c._objects.dockPose(), p = c._objects._pose; return !!d && !!p && Math.hypot(p.x - d.x, p.y - d.y) < 1e-6 && Math.abs(p.heading - d.heading) < 1e-6; })()`;
-    check(
-      "docked: the mower stands at the dock object, turned as the dock",
-      await until(atDock, "the mower at the dock"),
-      JSON.stringify(
-        await ev(
-          `(() => { const c = ${card}; return { dock: c._objects.dockPose(), pose: c._objects._pose }; })()`,
-        ),
-      ),
-    );
-    // two map refreshes (perf records; the camera refreshes every 2 s), not a fixed 2.5 s
-    for (let i = 0; i < 2; i++) {
-      const at0 = await ev(
-        `(() => { const p = ${card}._perf && ${card}._perf.last; return p ? p.at : 0; })()`,
-      );
-      await until(
-        `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at0}; })()`,
-        "a map refresh while docked",
-        10000,
-      );
-    }
-    check(
-      "docked: still at the dock after map refreshes (not the map centre)",
-      await ev(atDock),
-    );
-    check(
-      "status line: At dock (charging)",
-      (await ev(`${card}.mowerStatusText()`)) === "At dock (charging)",
-      await ev(`${card}.mowerStatusText()`),
-    );
-    check(
-      "docked: no detection while docked",
-      await ev(
-        `!${card}._lastFrame || !${card}._trk.docked || ${card}._imageBlob.px === 300 || Math.hypot(${card}._imageBlob.px - 300, ${card}._imageBlob.py - 600) < 4`,
-      ),
-    );
-    // undock: the icon still over the dock icon, then driving away
-    await ev(
-      `window.__setDemoStates({ 'lawn_mower.robo': 'mowing', 'sensor.robo_mower_status': 'Working' })`,
-    );
-    await ev(`window.__setRobotAt(392, 782, 0.1)`);
-    check(
-      "undocking: found over the dock icon (not dropped as the dock)",
-      await until(near(392, 782, 5), "the mower over the dock", 15000),
-      JSON.stringify({
-        b: await ev(`${card}._imageBlob`),
-        r: await ev(`${card}._imageResult`),
-        trk: await ev(`${card}._trk`),
-      }),
-    );
-    await ev(`window.__setRobotAt(380, 735, 0.4)`);
-    check(
-      "driving away: tracked",
-      await until(near(380, 735), "the mower leaving", 15000),
-      JSON.stringify(await ev(`${card}._imageBlob`)),
-    );
-    await ev(`window.__setRobotAt(360, 690, 0.6)`);
-    check(
-      "further: tracked, no longer leaving the dock",
-      await until(
-        `${near(360, 690)} && !${card}._trk.leaving`,
-        "the mower away from the dock",
-        15000,
-      ),
-      JSON.stringify(await ev(`${card}._trk`)),
-    );
-    check(
-      "status line: Tracked on map (score …)",
-      /^Tracked on map \(score 0\.\d\d\)$/.test(
-        await ev(`${card}.mowerStatusText()`),
-      ),
-      await ev(`${card}.mowerStatusText()`),
-    );
-    // tracking window: the next refreshes do not search the whole picture
-    const fullAt = await ev(`${card}._trk.lastFull`);
-    await ev(`window.__setRobotAt(350, 670, 0.6)`);
-    await until(near(350, 670), "the next position", 15000);
-    check(
-      "tracking window: no full search for a small move",
-      (await ev(`${card}._trk.lastFull`)) === fullAt,
-      JSON.stringify(await ev(`${card}._lastFrame`)),
-    );
-    check(
-      "the map never read on the page (worker)",
-      await ev(`!!${card}._mapProc._worker`),
-    );
-    const tab = await (async () => {
-      await ev(
-        `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-      );
-      await until(`${card}._editing`, "edit mode");
-      await ev(
-        `[...${card}.shadowRoot.querySelectorAll('.panel button')].find((x) => x.textContent.trim() === 'Mower').click()`,
-      );
-      await until(`${card}._edit.tab === 'mower'`, "the Mower tab");
-      return ev(
-        `${card}.shadowRoot.querySelector('.panel').textContent.replace(/\\s+/g, ' ')`,
-      );
-    })();
-    check(
-      "Mower tab: the status line",
-      /Tracked on map \(score 0\.\d\d\)/.test(tab),
-      tab.slice(0, 300),
-    );
-    await ev(`window.__setDemoStates({ 'lawn_mower.robo': 'docked' })`);
-    check(
-      "docked again: back at the dock",
-      await until(atDock, "the mower back at the dock"),
-    );
-    check(
-      "Mower tab: At dock (docked)",
-      await until(
-        `${card}.shadowRoot.querySelector('.panel').textContent.includes('At dock (docked)')`,
-        "the dock status",
-      ),
-    );
-    await ev("window.__demoMowerPaused = false");
     allErrors.push(...s.errors);
   },
 );
@@ -7039,7 +3661,7 @@ sections.add(
 // 2c. no model: today's look
 sections.add(
   "no-model",
-  { group: "upload", query: { view: "3d" } },
+  { group: "load", query: { view: "3d" } },
   async (s) => {
     const { page } = s;
     const r =
@@ -7067,75 +3689,8 @@ sections.add(
   },
 );
 
-// 2e. edit panel keeps its scroll position and the slider being dragged
-sections.add(
-  "panel-scroll",
-  {
-    group: "upload",
-    query: { view: "3d", height: "560px" },
-    viewport: { width: 1500, height: 680 },
-  },
-  async (s) => {
-    const { page } = s;
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector("button.edit").click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(
-      `[...${card}.shadowRoot.querySelectorAll(".panel button")].find((b) => b.textContent.trim() === "Model").click()`,
-    );
-    const inp = await page.evaluateHandle(
-      `${card}.shadowRoot.querySelector("[name=model-file]")`,
-    );
-    await inp.uploadFile(path.join(root, "demo/house.glb"));
-    await page.waitForFunction(`!!${card}._view.model`, { timeout: 20000 });
-    await idle(page);
-    const body = `${card}.shadowRoot.querySelector(".panel .tab-body")`;
-    const keeps = async (label, act) => {
-      await page.evaluate(
-        `(() => { const b = ${body}; b.scrollTop = b.scrollHeight; })()`,
-      );
-      const before = await page.evaluate(`${body}.scrollTop`);
-      await page.evaluate(act);
-      await idle(page);
-      const after = await page.evaluate(`${body}.scrollTop`);
-      check(
-        `panel scroll kept after ${label}`,
-        before > 100 && Math.abs(after - before) < 2,
-        `${before} -> ${after}`,
-      );
-    };
-    await keeps(
-      "rotation slider",
-      `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-rotation]'); s.value = '10'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
-    );
-    await keeps(
-      "opacity slider",
-      `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-opacity]'); s.value = '0.8'; s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
-    );
-    await keeps(
-      "room select",
-      `(() => { const s = ${card}.shadowRoot.querySelector('[name=md-room]'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
-    );
-    // a slider being dragged must stay the same element (pointer down, several input ticks)
-    const same = await page.evaluate(`(async () => {
-    const root = ${card}.shadowRoot; const s = root.querySelector('[name=md-rotation]');
-    s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    // after each input tick the panel render it queued has run (where the element would be replaced)
-    const rendered = () => new Promise((r) => { const f = () => (${card}._edit._renderQueued ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); });
-    for (const v of ['20', '30', '40']) { s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); await rendered(); }
-    const stillThere = root.querySelector('[name=md-rotation]') === s;
-    s.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-    s.dispatchEvent(new Event('change', { bubbles: true }));
-    return stillThere;
-  })()`);
-    check("dragged slider is not replaced while dragging", same);
-    allErrors.push(...s.errors);
-  },
-);
-
 // 3. export snippet round trip
-sections.add("export", { group: "upload", query: null }, async (s) => {
+sections.add("export", { group: "load", query: null }, async (s) => {
   const { page, errors } = await newPage(s.browser);
   await page.goto(`${s.base}/scripts/fixtures/export-test.html`);
   await page.waitForFunction("window.ready === true");
@@ -7217,7 +3772,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await settle(page, card);
         // these checks are about the live mower marker: hide the model's mower object, so the marker is back
         await page.evaluate(
-          `(() => { const c = ${card}; c._commit({ ...c._layout, objects: { ...(c._layout.objects || {}), mower: { hidden: true } } }); })()`,
+          `(() => { const c = ${card}; c._layout = ({ ...c._layout, objects: { ...(c._layout.objects || {}), mower: { hidden: true } } }); })()`,
         );
         await page
           .waitForFunction(`!!${card}._mowerMarkerId`, { timeout: 5000 })
@@ -7297,7 +3852,7 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
 
         // I2: an added Garden view (hide all, show role:exterior) shows the mower and a pin in the garden zone
         await page.evaluate(`(() => { const c = ${card}, l = c._layout;
-      c._commit({ ...l, views: { ...(l.views || {}), garden: { added: true, label: 'Garden', rules: [{ hide: 'all' }, { show: 'role:exterior' }] } },
+      c._layout = ({ ...l, views: { ...(l.views || {}), garden: { added: true, label: 'Garden', rules: [{ hide: 'all' }, { show: 'role:exterior' }] } },
         pins: { ...l.pins, 'device:kettle_plug': { x: 14, y: -5, z: 1, floor_id: 'ground' }, 'device:tv': { x: 9, y: 2, z: 1, floor_id: 'ground' } } }); })()`);
         await idle(page);
         await page.evaluate(`${card}._setView('garden')`);
@@ -7369,57 +3924,6 @@ sections.add("export", { group: "upload", query: null }, async (s) => {
         await page.evaluate(`${card}._setMode('3d')`);
         await idle(page);
 
-        // edit mode on / off keeps the camera exactly (no re-framing)
-        await page.evaluate(
-          `${card}._view.setCamera({ position: [30, 20, 25], target: [4, 0, -3] }, { instant: true })`,
-        );
-        await idle(page);
-        const before = await camNow();
-        await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
-        await idle(page);
-        const inEdit = await camNow();
-        // one floor on its own in edit mode (no view linked to just it), then Done: the view's chip is lit again
-        await page.evaluate(`${card}.saveViewPatch('ground', { floors: [] })`);
-        await idle(page);
-        await page.evaluate(`${card}._setFloor('ground')`);
-        const floorOnly = await page.evaluate(`${card}._floorOnly`);
-        await page.evaluate(
-          `${card}._view.setCamera(${JSON.stringify(before)}, { instant: true })`,
-        );
-        await page.evaluate(`(async () => { await ${card}._toggleEdit(); })()`);
-        await idle(page);
-        const after = await camNow();
-        check(
-          "edit mode on / off keeps the camera",
-          near(before.position, inEdit.position) &&
-            near(before.position, after.position) &&
-            near(before.target, after.target),
-          JSON.stringify([before, inEdit, after]),
-        );
-        check(
-          "Done after a single-floor pick: back to the view, its chip lit",
-          floorOnly === "ground" &&
-            (await page.evaluate(
-              `!${card}._floorOnly && !!${card}.shadowRoot.querySelector('.chip.on')`,
-            )),
-        );
-        // detached while editing: window listeners (keys, pick menu) removed
-        const detached =
-          await page.evaluate(`(() => { const c = ${card}, removed = [];
-      const orig = window.removeEventListener;
-      window.removeEventListener = function (t, fn, o) { removed.push([t, fn]); return orig.call(this, t, fn, o); };
-      c._toggleEdit();
-      const parent = c.parentNode, next = c.nextSibling;
-      c.remove();
-      window.removeEventListener = orig;
-      const ok = removed.some(([t, fn]) => t === 'keydown' && fn === c._edit._onKey);
-      parent.insertBefore(c, next);
-      c._toggleEdit();
-      return ok; })()`);
-        check(
-          "disconnect while editing removes the window keydown listener",
-          detached,
-        );
         allErrors.push(...s.errors);
       } finally {
         fs.rmSync(cams, { force: true });
@@ -7468,11 +3972,11 @@ sections.add(
         JSON.stringify(gets),
       );
       const outline = await page.evaluate(
-        `localStorage.getItem('fp3d-outline:default')`,
+        `localStorage.getItem('fp3d-outline:/demo/house.glb')`,
       );
       const stored = outline && JSON.parse(outline);
       check(
-        "after a load the room outlines are remembered per layout key",
+        "after a load the room outlines are remembered per model",
         Array.isArray(stored) &&
           stored.length > 2 &&
           stored.every((p) => p.length >= 3) &&
@@ -7617,7 +4121,7 @@ sections.add(
       let n = 0;
       const buf = new Uint8Array([103, 108, 84, 70, 2, 0, 0, 0]).buffer;
       const fetchFn = async () => { n++; return new Response(buf, { headers: { 'content-length': '8' } }); };
-      const base = location.origin + '/api/floorplan3d/model/idb-test';
+      const base = location.origin + '/models/idb-test.glb';
       const a = await c._modelBytes(base, 'v1::', fetchFn), c1 = c._modelFromCache;
       const b = await c._modelBytes(base, 'v1::', fetchFn), c2 = c._modelFromCache;
       await c._modelBytes(base, 'v2::', fetchFn); // a new version: fetched again
@@ -7652,7 +4156,7 @@ sections.add(
       // a cached copy that does not parse: evicted and fetched once more
       const bad = await page.evaluate(`(async () => {
       const c = ${card}, v = c._view;
-      const base = location.origin + '/api/floorplan3d/model/bad-test';
+      const base = location.origin + '/models/bad-test.glb';
       await c._modelBytes(base, 'b1', async () => new Response(new Uint8Array([1, 2, 3, 4]))); // junk stored in the cache
       let n = 0;
       const good = async () => { n++; return fetch('/demo/house.glb'); };
@@ -7676,16 +4180,14 @@ sections.add(
   },
 );
 
-// CI runs one group per shard (--shard k/8): 45-75 s each on a GitHub runner (measured; model 75 s and look 61 s
-// were one 136 s group before the split). Locally (3 shards): lamps + views + mower | objects + look + review |
-// model + upload
+// CI runs one group per shard (--shard k/7). Locally (3 shards): lamps + look + review | objects + load |
+// model + mower
 sections.order([
   "lamps",
   "objects",
   "model",
-  "views",
   "look",
-  "upload",
+  "load",
   "mower",
   "review",
 ]);
@@ -7707,36 +4209,25 @@ await sections.run(selectGroups(sections.groups, args), {
 });
 const optional = !args.only && (!args.shard || args.shard[0] === 1);
 
+// The optional runs load a local file through the demo server (copied under screenshots/, served as /screenshots/...).
+const served = (file, name) => {
+  fs.copyFileSync(file, path.join(root, "screenshots", name));
+  return `/screenshots/${name}`;
+};
+
 // 4. optional: a real model, screenshots only (REAL_MODEL=/path/to/house.glb)
 if (optional && process.env.REAL_MODEL) {
   s = await openDemo(
-    { view: "3d", height: "700px" },
+    {
+      view: "3d",
+      height: "700px",
+      model: served(process.env.REAL_MODEL, "real-model.glb"),
+    },
     { width: 1500, height: 820 },
   );
   try {
     const { page } = s;
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    );
-    await idle(page);
-    await page.evaluate(() => {
-      const b = [
-        ...document
-          .querySelector("floorplan3d-card-impl")
-          .shadowRoot.querySelectorAll(".panel button"),
-      ].find((x) => x.textContent.trim() === "Model");
-      if (b) b.click();
-    });
-    await idle(page);
-    const input = await page.evaluateHandle(
-      `${card}.shadowRoot.querySelector('.panel [name=model-file]')`,
-    );
-    await input.uploadFile(process.env.REAL_MODEL);
     await page.waitForFunction(`!!${card}._view.model`, { timeout: 60000 });
-    await idle(page);
-    await page.evaluate(
-      `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-    ); // leave edit mode
     await idle(page);
     const ids = await page.evaluate(
       `${card}._floors.map((f) => f.id).concat('all')`,
@@ -7772,32 +4263,21 @@ if (optional && process.env.REAL_MODEL) {
 
 // 5. optional: the user's own model (USER_MODEL=/path/to/house.glb): merge stats printed, never fails
 if (optional && process.env.USER_MODEL) {
+  const url = served(process.env.USER_MODEL, "user-model.glb");
   for (const merge of [true, false]) {
     let u;
     try {
+      const t0 = Date.now();
       u = await openDemo(
-        { view: "3d", height: "700px", ...(merge ? {} : { merge: "0" }) },
+        {
+          view: "3d",
+          height: "700px",
+          model: url,
+          ...(merge ? {} : { merge: "0" }),
+        },
         { width: 1500, height: 820 },
       );
       const { page } = u;
-      await page.evaluate(
-        `(async () => { ${card}.shadowRoot.querySelector('button.edit').click(); await ${card}._editLoad; })()`,
-      );
-      await idle(page);
-      await page.evaluate(() => {
-        const b = [
-          ...document
-            .querySelector("floorplan3d-card-impl")
-            .shadowRoot.querySelectorAll(".panel button"),
-        ].find((x) => x.textContent.trim() === "Model");
-        if (b) b.click();
-      });
-      await idle(page);
-      const input = await page.evaluateHandle(
-        `${card}.shadowRoot.querySelector('.panel [name=model-file]')`,
-      );
-      const t0 = Date.now();
-      await input.uploadFile(process.env.USER_MODEL);
       await page.waitForFunction(
         `!!${card}._view.model && !!${card}._view.mergeStats`,
         { timeout: 120000 },
@@ -7807,13 +4287,11 @@ if (optional && process.env.USER_MODEL) {
       const st = await page
         .evaluate(`JSON.stringify(${card}._view.mergeStats)`)
         .then(JSON.parse);
-      const info =
-        await page.evaluate(`(() => { const sr = ${card}.shadowRoot, v = ${card}._view;
-        v.dirty = true; return { text: (sr.querySelector('[data-info=merge-stats]') || {}).textContent || null, nodes: ${card}._index ? ${card}._index.nodes.length : null,
-          frameCalls: v.renderer.info.render.calls }; })()`);
+      const info = await page.evaluate(`(() => { const v = ${card}._view;
+        v.dirty = true; return { nodes: ${card}._index ? ${card}._index.nodes.length : null, frameCalls: v.renderer.info.render.calls }; })()`);
       console.log(
         `user model (merge ${merge ? "on" : "off"}): meshes ${st.before.meshes} -> ${st.after.meshes}, draw calls ${st.before.calls} -> ${st.after.calls},` +
-          ` triangles ${st.before.triangles} -> ${st.after.triangles}, groups ${st.groups}, merged ${st.merged}; load ${ms} ms; index nodes ${info.nodes}; tab "${info.text}"`,
+          ` triangles ${st.before.triangles} -> ${st.after.triangles}, groups ${st.groups}, merged ${st.merged}; load ${ms} ms (page included); index nodes ${info.nodes}`,
       );
       if (u.errors.length)
         console.log("user model page errors:\n" + u.errors.join("\n"));

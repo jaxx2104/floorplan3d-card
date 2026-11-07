@@ -86,22 +86,22 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
 
-  # the model checks, one shard per section group (8 today; --shard k/8 takes every 8th group, so a new
+  # the model checks, one shard per section group (7 today; --shard k/7 takes every 7th group, so a new
   # group still runs, in a shard with another)
   model-check:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
       # bun as pinned in mise.toml (a dated canary from npm, which setup-bun cannot pin)
       - uses: jdx/mise-action@v5
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - name: Model checks (shard ${{ matrix.shard }} of 8)
-        run: bun scripts/model-check.mjs --shard ${{ matrix.shard }}/8
+      - name: Model checks (shard ${{ matrix.shard }} of 7)
+        run: bun scripts/model-check.mjs --shard ${{ matrix.shard }}/7
         env:
           CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4
