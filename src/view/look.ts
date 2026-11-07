@@ -385,7 +385,6 @@ export class RenderLook {
       });
     }
     this.indirect.sync();
-    this.view.still.sync(); // the path tracer (quality still) freed in the other tiers and without a model
   }
 
   _skyEnv(): void {

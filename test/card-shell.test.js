@@ -47,8 +47,7 @@ describe("floorplan3d-card shell", () => {
     expect(() => s.setConfig(null)).toThrow();
     await settle();
     expect(s.querySelector("floorplan3d-card-impl")).toBeNull(); // not connected: nothing loaded
-    const ed = await C.getConfigElement();
-    expect(ed.localName).toBe("floorplan3d-card-editor");
+    expect(C.getConfigElement).toBeUndefined(); // YAML only: no visual editor
   });
   it("keeps the configured height while loading, then hosts the card with config and hass", async () => {
     const s = shell();

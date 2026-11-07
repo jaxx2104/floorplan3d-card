@@ -44,50 +44,16 @@ describe("entry size guard", () => {
       "src/floorplan3d-card.ts",
     ]);
   });
-  it("the card and the visual editor are dynamic chunks", () => {
-    const impl = chunkOf("src/card-impl.ts"),
-      editor = chunkOf("src/card-editor.ts");
-    for (const f of [impl, editor])
-      expect(f, "chunk").toMatch(/^dist\/chunks\/[\w-]+-[a-z0-9]+\.js$/);
+  it("the card is a dynamic chunk with three", () => {
+    const impl = chunkOf("src/card-impl.ts");
+    expect(impl, "chunk").toMatch(/^dist\/chunks\/[\w-]+-[a-z0-9]+\.js$/);
     const dyn = outputs[ENTRY].imports
       .filter((i) => i.kind === "dynamic-import")
-      .map((i) => i.path)
-      .sort();
-    expect(dyn).toEqual([impl, editor].sort());
-    // three loads with the card
+      .map((i) => i.path);
+    expect(dyn).toEqual([impl]);
     expect(
       inputsOf(staticClosure(impl)).some((k) =>
         k.includes("node_modules/three/"),
-      ),
-    ).toBe(true);
-  });
-  it("the path tracer (quality still) is its own chunk, in neither the entry nor the card chunk", () => {
-    const impl = chunkOf("src/card-impl.ts"),
-      tracer = chunkOf("src/path-tracer.ts");
-    expect(tracer, "chunk").toMatch(
-      /^dist\/chunks\/path-tracer-[a-z0-9]+\.js$/,
-    );
-    const isLib = (k) =>
-      /node_modules\/(three-gpu-pathtracer|three-mesh-bvh)\//.test(k);
-    for (const f of [staticClosure(ENTRY), staticClosure(impl)]) {
-      expect(inputsOf(f).filter(isLib)).toEqual([]);
-      expect(inputsOf(f)).not.toContain("src/path-tracer.ts");
-      expect(f.has(tracer)).toBe(false);
-    }
-    expect(
-      Object.keys(outputs[tracer].inputs).some((k) =>
-        k.includes("node_modules/three-gpu-pathtracer/"),
-      ),
-    ).toBe(true);
-    expect(
-      Object.keys(outputs[tracer].inputs).some((k) =>
-        k.includes("node_modules/three-mesh-bvh/"),
-      ),
-    ).toBe(true);
-    // the card imports it on demand
-    expect(
-      outputs[impl].imports.some(
-        (i) => i.kind === "dynamic-import" && i.path === tracer,
       ),
     ).toBe(true);
   });

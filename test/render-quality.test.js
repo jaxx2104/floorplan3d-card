@@ -73,7 +73,7 @@ describe("normRenderOption", () => {
     expect(r.option).toEqual(RENDER_OPTION_DEFAULTS);
     expect(r.warnings).toHaveLength(4);
     expect(r.warnings.join("\n")).toMatch(
-      /render.quality: "ultra" is not one of auto, standard, high, still/,
+      /render.quality: "ultra" is not one of auto, standard, high/,
     );
     expect(r.warnings.join("\n")).toMatch(/render.tone_mapping: "filmic"/);
     expect(r.warnings.join("\n")).toMatch(/render.recipe/);
@@ -83,13 +83,12 @@ describe("normRenderOption", () => {
     );
   });
   it("tiers: the same light in each, only cost knobs differ", () => {
-    expect(QUALITIES).toEqual(["standard", "high", "still"]);
+    expect(QUALITIES).toEqual(["standard", "high"]);
     // no tier switches a light or a fake effect on or off: sky environment, probes, lightmaps, contact shadows,
     // physical lamps and the tone mapping are in every tier (and no hemisphere light with a model)
     for (const q of QUALITIES)
       expect(Object.keys(QUALITY_TIERS[q]).sort()).toEqual([
         "bloom",
-        "pathTrace",
         "probeSpacing",
         "sunShadowRadius",
       ]);
@@ -97,24 +96,17 @@ describe("normRenderOption", () => {
       bloom: false,
       sunShadowRadius: 1.5,
       probeSpacing: 1,
-      pathTrace: false,
     });
     expect(QUALITY_TIERS.high).toEqual({
       bloom: true,
       sunShadowRadius: 3,
       probeSpacing: 0.5,
-      pathTrace: false,
     });
     // standard: about a quarter of high's probes per pass
     expect(QUALITY_TIERS.standard.probeSpacing).toBe(
       2 * QUALITY_TIERS.high.probeSpacing,
     );
-    // 'still' is 'high' plus idle path tracing
-    expect({ ...QUALITY_TIERS.still, pathTrace: false }).toEqual({
-      ...QUALITY_TIERS.high,
-    });
-    expect(QUALITY_TIERS.still.pathTrace).toBe(true);
-    expect(normRenderOption({ quality: "still" }).option.quality).toBe("still");
+    expect(normRenderOption({ quality: "still" }).option.quality).toBe("auto"); // removed: the default
   });
   it("sun shadow: every tier on three's PCF map, the tiers differ by the tap spread only", () => {
     for (const q of QUALITIES) {
@@ -126,15 +118,12 @@ describe("normRenderOption", () => {
     expect(QUALITY_TIERS.high.sunShadowRadius).toBeGreaterThan(
       QUALITY_TIERS.standard.sunShadowRadius,
     );
-    expect(QUALITY_TIERS.still.sunShadowRadius).toBe(
-      QUALITY_TIERS.high.sunShadowRadius,
-    );
   });
 });
 
 describe("tone mapping and exposure", () => {
   it("every tier: AgX with the exposure that keeps the recipe's mid grey", () => {
-    for (const quality of ["standard", "high", "still", "auto"])
+    for (const quality of ["standard", "high", "auto"])
       expect(
         renderTone(RENDER_DEFAULTS, { ...RENDER_OPTION_DEFAULTS, quality }),
       ).toEqual({

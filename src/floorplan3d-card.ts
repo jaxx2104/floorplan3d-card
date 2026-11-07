@@ -1,6 +1,6 @@
 // floorplan3d-card: Home Assistant Lovelace card showing a 3D floorplan with auto-placed devices.
 // This entry is a thin shell, loaded on every HA page: it answers HA's card API (config, size, grid,
-// editor, picker entry) itself and imports the real card (./card-impl.ts, three.js and all) only when
+// picker entry) itself and imports the real card (./card-impl.ts, three.js and all) only when
 // a card is first shown, then hosts it as a floorplan3d-card-impl child and forwards config and hass.
 // Keep it free of three and of the card's modules: test/entry-size.test.js guards the size.
 
@@ -64,11 +64,6 @@ export class Floorplan3dCardShell extends HTMLElement {
 
   static getStubConfig(): Partial<CardConfig> {
     return {};
-  }
-
-  static async getConfigElement(): Promise<HTMLElement> {
-    await import("./card-editor.ts");
-    return document.createElement("floorplan3d-card-editor");
   }
 
   // sections view: span the whole section, rows from `height` (resizable there; the card fills them)

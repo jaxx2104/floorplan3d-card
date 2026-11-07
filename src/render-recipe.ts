@@ -508,7 +508,7 @@ export const cityLightsOn = (night: unknown): number => {
  * the sky environment (view/env-light.ts) as the fill outdoors, the light probe grids (light-probes.ts) indoors, baked
  * lightmaps (lightmap.ts), contact shadows (contact-shadow.ts), physical lamps (photometry.ts) and AgX tone mapping
  * (LOOK_TONE_MAPPING). A tier only sets how much that costs. */
-export type Quality = "standard" | "high" | "still";
+export type Quality = "standard" | "high";
 /** The cost knobs of a tier. A new effect is on in every tier; only what it costs may differ here. */
 export interface QualityTier {
   /** Bloom of emissive things only (lamp glows, screens), skipped while none is in view (bloom.ts): a blur chain
@@ -520,8 +520,6 @@ export interface QualityTier {
   /** Light probe spacing (m) across the plan (light-probes.ts): a probe bake is six cube renders, so twice the
    * spacing bakes about a quarter of the probes per pass (load, sun steps, lamps). A tier change regrids. */
   probeSpacing: number;
-  /** Idle progressive path tracing: the view traced and faded in once the camera has been still (still.ts). */
-  pathTrace: boolean;
 }
 /** Tone mapping of every tier when the card sets none (render.tone_mapping); the recipe's tone mapping and exposure
  * only set the exposure (matchExposure keeps its mid grey). */
@@ -532,20 +530,11 @@ export const QUALITY_TIERS: Readonly<Record<Quality, Readonly<QualityTier>>> =
       bloom: false,
       sunShadowRadius: 1.5,
       probeSpacing: 1,
-      pathTrace: false,
     }),
     high: Object.freeze({
       bloom: true,
       sunShadowRadius: 3,
       probeSpacing: 0.5,
-      pathTrace: false,
-    }),
-    // experimental (desktop GPUs): 'high' while the camera moves; path traced once the view is idle (still.ts)
-    still: Object.freeze({
-      bloom: true,
-      sunShadowRadius: 3,
-      probeSpacing: 0.5,
-      pathTrace: true,
     }),
   });
 export const QUALITIES = Object.keys(QUALITY_TIERS) as Quality[];
@@ -585,7 +574,7 @@ export const RENDER_OPTION_DEFAULTS: Readonly<RenderOption> = Object.freeze({
 });
 
 // Card option render: 'model' | 'default' (the recipe only, as before), or { recipe: 'model' | 'default',
-// quality: 'auto' (default: high, adapting to the frame times; auto-quality.ts) | 'high' | 'standard' (cheaper: no bloom, coarser probes, harder sun shadow) | 'still' (experimental: idle path tracing, for desktop GPUs; still.ts), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
+// quality: 'auto' (default: high, adapting to the frame times; auto-quality.ts) | 'high' | 'standard' (cheaper: no bloom, coarser probes, harder sun shadow), tone_mapping: 'aces' | 'agx' | 'neutral' | 'reinhard' | 'cineon' | 'linear' | 'none',
 // materials: { '<selector>': glass | floor | fabric | none } }
 // -> { option, warnings }. An invalid value keeps its default and adds a warning; unknown keys add one too.
 export function normRenderOption(opt: unknown): {

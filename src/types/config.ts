@@ -8,7 +8,7 @@ import type { ResolvedCardConfig } from "../schema/config.ts";
 export interface RenderCardOptions {
   recipe?: "model" | "default";
   /** Default 'auto' (high, stepping down to standard when frames are slow). */
-  quality?: "auto" | "standard" | "high" | "still";
+  quality?: "auto" | "standard" | "high";
   tone_mapping?:
     "aces" | "agx" | "neutral" | "reinhard" | "cineon" | "linear" | "none";
   /** Physical material rules (quality high): { '<selector>': 'glass' | 'floor' | 'fabric' | 'none' }. */

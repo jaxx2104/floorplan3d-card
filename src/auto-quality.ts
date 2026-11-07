@@ -14,7 +14,7 @@
 // within probeMs doubles the wait for the next. Never more than one change per cooldownMs.
 
 /** What 'auto' chooses from, best first. 'reduced' is 'standard' at pixel ratio 1 (only offered where the
- * device's pixel ratio is above 1). 'still' is never chosen automatically. */
+ * device's pixel ratio is above 1). */
 export type AutoLevel = "high" | "standard" | "reduced";
 export const AUTO_LEVELS: readonly AutoLevel[] = Object.freeze([
   "high",

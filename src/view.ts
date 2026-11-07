@@ -39,7 +39,6 @@ import { MarkerOcclusion } from "./view/occlusion.ts";
 import { ViewSprites, type MarkerMode } from "./view/sprites.ts";
 import { isBillboard } from "./view/billboards.ts";
 import type { SpriteSpec } from "./sprite-atlas.ts";
-import { StillTrace } from "./view/still.ts";
 import { AutoQualityView } from "./view/auto-quality.ts";
 import type { ObjectLayer } from "./objects/layer.ts";
 import type { Floor, Vec3 } from "./types/layout.ts";
@@ -58,13 +57,9 @@ export interface ViewStats {
   shadowLights: number; // per-light shadow map redraws requested
   cloudFrames: number;
   envBuilds: number; // environment maps built from the sky (with a model)
-  bloomPasses: number; // frames with a selective bloom pass (render quality high / still, an emissive surface in view)
+  bloomPasses: number; // frames with a selective bloom pass (render quality high, an emissive surface in view)
   contactBuilds: number; // contact shadow rebuilds (the shadow casters changed)
   probeCaptures: number; // light probes baked (up to PROBE_BUDGET_MS a frame while a pass runs)
-  stillSessions: number; // idle path tracing sessions started (render quality 'still')
-  stillSteps: number; // path traced tiles drawn (render quality 'still', one an idle frame while a session traces)
-  stillDraws: number; // traced images drawn over the raster frame (render quality 'still', from the fade's start)
-  stillBuilds: number; // path tracer scene builds (render quality 'still', the model or its visible geometry changed)
   autoSwitches: number; // level changes of render quality 'auto' (view/auto-quality.ts)
   mapUploads?: number;
 }
@@ -94,8 +89,6 @@ export class FloorplanView {
   occlusion: MarkerOcclusion;
   /** GPU markers, labels and the mower chip */
   sprites: ViewSprites;
-  /** idle path tracing (render quality 'still') */
-  still: StillTrace;
   /** render quality 'auto': measured frames -> the level in use */
   auto: AutoQualityView;
   persp: THREE.PerspectiveCamera;
@@ -161,7 +154,6 @@ export class FloorplanView {
     this.mower = new MowerLayer(this);
     this.occlusion = new MarkerOcclusion(this);
     this.sprites = new ViewSprites(this);
-    this.still = new StillTrace(this);
     this.auto = new AutoQualityView(this);
     this.auto.sync(this.look.renderOpt.quality === "auto");
     this.renderer.setPixelRatio(this.look._pixelRatio());
@@ -223,10 +215,6 @@ export class FloorplanView {
       bloomPasses: 0,
       contactBuilds: 0,
       probeCaptures: 0,
-      stillSessions: 0,
-      stillSteps: 0,
-      stillDraws: 0,
-      stillBuilds: 0,
       autoSwitches: 0,
     }; // counters for the headless checks (shadowLights: per-light map redraws requested)
 
@@ -886,9 +874,8 @@ export class FloorplanView {
     if (this.onObjectsInvalidate && this.model) this.onObjectsInvalidate();
   }
 
-  // The frame into the drawing buffer: depth pre-pass (finish), the scene, bloom, finish. count: a frame of the
-  // loop (false: the 'still' tier drawing the frame on screen again to keep it under the trace).
-  _drawGl(count: boolean): void {
+  // The frame into the drawing buffer: depth pre-pass (finish), the scene, bloom, finish.
+  _drawGl(): void {
     const look = this.look;
     const fin = this.model ? look._finish : null;
     if (fin && fin.needsDepth) {
@@ -901,7 +888,7 @@ export class FloorplanView {
     }
     this.renderer.render(this.scene, this.camera);
     const bloom = this.model ? look._bloom : null;
-    if (bloom && bloom.render(this.scene, this.camera) && count)
+    if (bloom && bloom.render(this.scene, this.camera))
       this.stats.bloomPasses++; // before the finish: it grades the bloom too
     if (fin) fin.apply();
   }
@@ -921,13 +908,11 @@ export class FloorplanView {
       look._stepSway();
       cam._stepOrbit();
       if (!this.dirty) {
-        // render quality 'still': trace once idle; 'auto': a level change waits for this
+        // render quality 'auto': a level change waits for this
         this.auto.frame(ts, false, 0);
-        this.still.idle(performance.now());
         return;
       }
       this.dirty = false;
-      this.still.frameDrawn(performance.now()); // a traced image is replaced by this frame
       this.stats.frames++;
       const t0 = performance.now();
       cam._updateDepth();
@@ -936,7 +921,7 @@ export class FloorplanView {
       if (look._env && look._env.flush()) this.stats.envBuilds++; // a due sky environment (never more than one per ENV_THROTTLE_MS)
       sky._placeSkyBodies();
       if (look._updateContact()) this.stats.contactBuilds++; // the casters changed since the last frame (quality high)
-      this._drawGl(true);
+      this._drawGl();
       if (this.model) this.stats.probeCaptures += look.indirect.step(); // a slice of the probe grids, after the frame drew its shadow maps
       this._drawOverlay();
       if (this.onRender) this.onRender(); // e.g. the object popup follows its anchor
@@ -948,10 +933,8 @@ export class FloorplanView {
     this._raf = requestAnimationFrame(loop);
   }
 
-  // Over the frame in the drawing buffer: the GPU sprites (markers, labels, the mower chip), then the DOM
-  // overlay of edit mode (handles) when there is one. The sprites read the scene's depth at their anchor:
-  // the depth pre-pass of the frame (drawn for the finish already, or here; the 'still' tier's trace draws
-  // reuse the one of the frame they show).
+  // Over the frame in the drawing buffer: the GPU sprites (markers, labels, the mower chip). They read the
+  // scene's depth at their anchor: the depth pre-pass of the frame (drawn for the finish already, or here).
   _drawOverlay(): void {
     let depth: THREE.Texture | null = null;
     if (this.occlusion.active() && this.markerObjects.size) {
@@ -1005,7 +988,6 @@ export class FloorplanView {
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
     this.look.dispose(); // finish, depth pass
-    this.still.dispose(); // the path tracer
     this.mower.setMowerWarning(null);
     this.skyLayer.dispose(); // sprites, room mask, rain / snow, compass ring
     this.markerObjects.clear();

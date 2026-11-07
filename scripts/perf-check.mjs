@@ -1,5 +1,5 @@
 // Headless checks of the render loop's work, by counters (frames, shadow requests, environment / contact builds,
-// probes baked, bloom passes, model material ids, shader programs, path tracer sessions / steps, auto switches),
+// probes baked, bloom passes, model material ids, shader programs, auto switches),
 // state flags and condition waits; no frame-time budget blocks. Section groups (scripts/lib/sections.mjs):
 // - quality-standard, quality-high: the same light in both tiers (sky environment light, physical lamps, contact
 //   shadows, physical materials, light probe grids, AgX); 'high' adds the selective bloom and a finer probe grid
@@ -7,7 +7,6 @@
 //   environment rebuild only for a sun step over ENV_ANGLE_DEG, bloom only with an emissive surface in view,
 //   contact shadows rebuilt only when the casters change, probes rebaked once (at most twice) per input
 //   change (a lamp: its storey's grid only), physical materials made by the loader in both tiers and never replaced (idle, tier change).
-// - still: render quality 'still' (idle progressive path tracing).
 // - auto: render quality 'auto' (the default): steps down under an artificial frame cost once the view is idle,
 //   back up with fast frames after the (shortened) wait, no oscillation.
 // - bench (only with --only bench; CI runs it as a non-blocking job): the timing numbers. Frame time of
@@ -220,11 +219,6 @@ async function qualityRun(page, quality) {
       surfHigh = await surfaces(page);
     roundTrip = { sameStd, sameHigh, surfStd, surfHigh, errStd, errHigh };
   }
-  const still = await page
-    .evaluate(
-      `JSON.stringify({ sessions: ${card}._view.stats.stillSessions, steps: ${card}._view.stats.stillSteps, session: !!${card}._view.still.session, chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) })`,
-    )
-    .then(JSON.parse);
   const r = {
     ...env,
     sky,
@@ -241,7 +235,6 @@ async function qualityRun(page, quality) {
     storey,
     surf,
     roundTrip,
-    still,
     final: s8, // totals since the load began
     steady: s8.mats - load.mats, // material objects replaced since the load: idle, sun steps, forced and camera frames, lamp, look, storey change
   };
@@ -279,14 +272,6 @@ function commonChecks(name, r) {
     `${name}: no shader program compiled on forced frames`,
     r.fwd.programs === 0 && r.fwd.frames >= 12,
     JSON.stringify(r.fwd),
-  );
-  check(
-    `${name}: no path tracing, its chunk never loaded`,
-    r.still.sessions === 0 &&
-      r.still.steps === 0 &&
-      !r.still.session &&
-      !r.still.chunk,
-    JSON.stringify(r.still),
   );
 }
 
@@ -440,162 +425,6 @@ sections.add(
       );
   },
 );
-
-// ---------- still ----------
-
-// Render quality 'still': idle progressive path tracing (test mode: a few samples a session).
-sections.add(
-  "still",
-  {
-    group: "still",
-    query: { model: "1", view: "3d", cards: "1", quality: "still" },
-    viewport: { width: 1200, height: 700 },
-  },
-  async ({ page, errors }) => {
-    const ev = (expr) => page.evaluate(expr);
-    await until(page, `!!${card}._view.model`, "the model");
-    await ev("window.__demoMowerPaused = true");
-    const st = () =>
-      ev(`JSON.stringify((() => { const v = ${card}._view, s = v.still; return { sessions: v.stats.stillSessions, steps: v.stats.stillSteps, draws: v.stats.stillDraws, builds: v.stats.stillBuilds, frames: v.stats.frames,
-      active: s.active, done: s.done, hold: s.hold, spp: s.samples, after: Math.round(s.startedAfter), idleMs: s.idleMs, gl: v.renderer.getContext().getError(),
-      chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) }; })())`).then(
-        JSON.parse,
-      );
-    // the card settled first (surface search, pending updates): late load work draws a raster frame, which ends
-    // a session; then a session that finished after it
-    await until(
-      page,
-      `(() => { const c = ${card}; return !c._pending && !c._surfJob; })()`,
-      "the card settled",
-      120000,
-    );
-    await rafs(page, 2); // the frame the settling work asked for, if any
-    const traced = await until(
-      page,
-      `${card}._view.still.done && !${card}._view.dirty`,
-      "the first session",
-      120000,
-    );
-    const a = await st();
-    console.log(`     still: first session ${JSON.stringify(a)}`);
-    // Per session, not by count: a late raster frame from the load (any frame ends a session) may have ended a
-    // first session, and the next one is the one that finished. The 3 s idle rule itself (startedAfter >= idleMs)
-    // is unit-tested on StillTrace (test/still.test.js), not read off real-time waits here.
-    check(
-      "still: traces once idle, its chunk loaded, drawn only from the fade threshold, done at the test cap, no GL error",
-      traced &&
-        a.sessions >= 1 &&
-        a.builds >= 1 &&
-        a.draws > 0 &&
-        a.draws < a.steps &&
-        a.chunk &&
-        a.spp >= 2 &&
-        a.done &&
-        a.gl === 0,
-      JSON.stringify(a),
-    );
-    // from here no new session can start by the clock (idleMs Infinity holds 'idle'); the done session runs on
-    const idleMs = await ev(`${card}._view.still.idleMs`);
-    await ev(`${card}._view.still.idleMs = Infinity`);
-    await rafs(page, 60);
-    const b = await st();
-    check(
-      "still: nothing runs once the budget is spent (no tile, no frame over 60 animation frames)",
-      b.steps === a.steps &&
-        b.frames === a.frames &&
-        b.sessions === a.sessions &&
-        b.active &&
-        b.done,
-      JSON.stringify(b),
-    );
-    // a camera move: the very next frame is the raster frame, the session ended
-    const moved =
-      await ev(`new Promise((done) => { const v = ${card}._view, s0 = v.stats.stillSteps, f0 = v.stats.frames; v.persp.position.x += 0.3; v.persp.position.z += 0.3; v.controls.update();
-      requestAnimationFrame(() => requestAnimationFrame(() => done(JSON.stringify({ active: v.still.active, done: v.still.done, steps: v.stats.stillSteps - s0, frames: v.stats.frames - f0 })))); })`).then(
-        JSON.parse,
-      );
-    check(
-      "still: a camera move ends the session at once (the next frame is raster)",
-      !moved.active && !moved.done && moved.frames >= 1 && moved.steps === 0,
-      JSON.stringify(moved),
-    );
-    await until(
-      page,
-      `!${card}._view.dirty && ${card}._view.cam.controls.update() === false`,
-      "the camera still",
-      10000,
-    );
-    await until(
-      page,
-      `${card}._view.still.hold === 'idle'`,
-      "the idle hold after the move",
-      10000,
-    );
-    const c = await st();
-    check(
-      "still: after the move no session runs, the idle time counts again",
-      c.sessions === a.sessions && !c.active && c.hold === "idle",
-      JSON.stringify(c),
-    );
-    // the idle time back to the card's own: the next session starts by it (a product timer, waited for)
-    await ev(`${card}._view.still.idleMs = ${idleMs}`);
-    const again = await until(
-      page,
-      `${card}._view.still.done && ${card}._view.stats.stillSessions > ${a.sessions}`,
-      "the second session",
-      120000,
-    );
-    const d = await st();
-    check(
-      "still: a second idle session after the move reuses the traced scene (no rebuild)",
-      again && d.sessions > a.sessions && d.builds === a.builds && d.gl === 0,
-      JSON.stringify(d),
-    );
-    // held off: off screen. The idle time is set to 0 meanwhile, so without the hold a session would start
-    // on the next idle animation frame: a window of animation frames proves the hold.
-    await ev(
-      `(() => { const v = ${card}._view; v.still.idleMs = 0; v.setOnScreen(false); v.dirty = true; })()`,
-    );
-    await until(
-      page,
-      `${card}._view.still.hold === 'offscreen'`,
-      "the off-screen hold",
-    );
-    await rafs(page, 30);
-    const f = await st();
-    check(
-      "still: no trace off screen (idle time 0, 30 animation frames)",
-      f.sessions === d.sessions && f.hold === "offscreen" && !f.active,
-      JSON.stringify({ off: f }),
-    );
-    // the tier changed to high: the path tracer freed, nothing traced (idle time still 0)
-    await ev(
-      `(() => { const v = ${card}._view; v.setRenderOption({ quality: 'high' }); v.setOnScreen(true); })()`,
-    );
-    await until(page, `${card}._view.still.hold === 'tier'`, "the tier hold");
-    await rafs(page, 30);
-    const g = await ev(
-      `JSON.stringify({ session: !!${card}._view.still.session, sessions: ${card}._view.stats.stillSessions, hold: ${card}._view.still.hold })`,
-    ).then(JSON.parse);
-    check(
-      "still -> high: the path tracer freed, no session",
-      !g.session && g.sessions === d.sessions && g.hold === "tier",
-      JSON.stringify(g),
-    );
-    // SwiftShader has no parallel shader compile: three warns once when the path tracer compiles (it then compiles at once)
-    const errs = errors.filter(
-      (m) => !m.includes("KHR_parallel_shader_compile extension not supported"),
-    );
-    if (errs.length)
-      check(
-        "still demo without page errors",
-        false,
-        errs.slice(0, 3).join(" | "),
-      );
-  },
-);
-
-// ---------- auto ----------
 
 // Render quality 'auto' (the default, no ?quality): the controller fed by the real render loop. Test mode holds it
 // (no adapting, nothing remembered) until the check turns it on with shorter waits; view.auto.testCostMs adds a busy
@@ -801,9 +630,7 @@ for (const quality of ["standard", "high"])
   );
 
 // group order: what a plain run does first
-// still runs after another group in its shard (--shard 1/3: quality-standard, then still), as it did before the
-// mower-map group went: alone and first on a cold CI runner its first session stalled or was ended by a late frame
-sections.order(["quality-standard", "quality-high", "auto", "still", "bench"]);
+sections.order(["quality-standard", "quality-high", "auto", "bench"]);
 const args = parseArgs(process.argv.slice(2));
 if (args.list) {
   for (const g of sections.groups)
