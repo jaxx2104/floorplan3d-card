@@ -1081,6 +1081,7 @@ export class ModelLayer {
     index: ModelIndex | null | undefined,
     flags: Visibility | null | undefined,
   ): void {
+    this.view.cutaway.release(); // the rules write every node; the cutaway hides its variants again after
     this._restoreModelVisibility();
     if (flags && index) {
       index.nodes.forEach((n: { node: THREE.Object3D }, i: number) => {
@@ -1101,6 +1102,7 @@ export class ModelLayer {
     } else {
       this.view._modelVisibility = null;
     }
+    this.view.cutaway.reapply();
     this.view._applyFloorVisibility();
     this.view.dirty = true;
   }

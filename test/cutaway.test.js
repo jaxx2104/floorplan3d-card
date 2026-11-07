@@ -7,6 +7,8 @@ import {
   LOW_OFF,
 } from "../src/cutaway.ts";
 import { buildManifest } from "../src/manifest.ts";
+import { ModelCutaway } from "../src/view/cutaway.ts";
+import * as THREE from "three";
 
 describe("normCutaway", () => {
   it("accepts a variant and normalises facing", () => {
@@ -98,5 +100,56 @@ describe("manifest cutaways", () => {
     expect(m.cutaways.map((c) => c.node)).toEqual([good]);
     expect(m.cutaways[0].variant).toBe("low");
     expect(m.warnings.some((w) => w.includes("x: cutaway"))).toBe(true);
+  });
+});
+
+describe("ModelCutaway", () => {
+  const setup = () => {
+    const root = new THREE.Group();
+    const full = new THREE.Group(),
+      low = new THREE.Group();
+    root.add(full, low);
+    root.updateMatrixWorld(true);
+    const cut = new ModelCutaway();
+    const tag = { side: "south", facing: [0, 1] };
+    cut.setModel(root, [
+      { ...tag, variant: "full", clip: null, node: full },
+      { ...tag, variant: "low", clip: null, node: low },
+    ]);
+    const cam = new THREE.PerspectiveCamera();
+    const target = new THREE.Vector3();
+    return { root, full, low, cut, cam, target };
+  };
+  it("shows the full variant until the camera faces the side", () => {
+    const { full, low, cut, cam, target } = setup();
+    expect([full.visible, low.visible]).toEqual([true, false]);
+    cam.position.set(0, 10, 10);
+    expect(cut.update(cam, target)).toBe(true);
+    expect([full.visible, low.visible]).toEqual([false, true]);
+    expect(cut.sig).toBe("south");
+    cam.position.set(0, 10, -10);
+    expect(cut.update(cam, target)).toBe(true);
+    expect([full.visible, low.visible]).toEqual([true, false]);
+  });
+  it("keeps its variants through a visibility pass that shows every node", () => {
+    const { full, low, cut, cam, target } = setup();
+    cam.position.set(0, 10, 10);
+    cut.update(cam, target);
+    cut.release();
+    full.visible = low.visible = true; // the view rules restore every node
+    cut.reapply();
+    expect([full.visible, low.visible]).toEqual([false, true]);
+  });
+  it("leaves a node a view rule hid hidden when its side switches", () => {
+    const { full, low, cut, cam, target } = setup();
+    cut.release();
+    low.visible = false; // hidden by a view rule
+    cut.reapply();
+    cam.position.set(0, 10, 10);
+    cut.update(cam, target);
+    expect([full.visible, low.visible]).toEqual([false, false]);
+    cam.position.set(0, 10, -10);
+    cut.update(cam, target);
+    expect([full.visible, low.visible]).toEqual([true, false]);
   });
 });
