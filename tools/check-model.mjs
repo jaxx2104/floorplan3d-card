@@ -218,6 +218,18 @@ function checkLightmaps(json, bin, errors, warnings) {
   return out;
 }
 
+// fp.cutaway sides (src/cutaway.ts): how many full / low variants and clipped thin parts each has
+function cutawaySides(cutaways) {
+  const sides = new Map();
+  for (const c of cutaways) {
+    const s = sides.get(c.side) || { side: c.side, full: 0, low: 0, clip: 0 };
+    if (c.variant) s[c.variant]++;
+    else s.clip++;
+    sides.set(c.side, s);
+  }
+  return [...sides.values()];
+}
+
 export function checkGlb(buffer) {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   let parsed;
@@ -387,6 +399,7 @@ export function checkGlb(buffer) {
     materials,
     lamps,
     render: m.render ? { keys: m.renderKeys, recipe: m.render } : null,
+    cutaway: cutawaySides(m.cutaways),
     lightmaps,
     levels: m.levels.map((l) => ({
       id: l.id,
@@ -449,6 +462,10 @@ function main(argv) {
     if (r.render)
       console.log(
         `  render recipe: ${r.render.keys} key(s) (${Object.keys(r.render.recipe).join(", ")})`,
+      );
+    if (r.cutaway.length)
+      console.log(
+        `  cutaway: ${r.cutaway.map((c) => `${c.side} (${c.full} full, ${c.low} low, ${c.clip} clipped)`).join(", ")}`,
       );
     if (r.materials) {
       const c = r.materials.classes,

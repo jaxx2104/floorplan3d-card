@@ -31,6 +31,7 @@ import {
   type ModelVisibility,
 } from "./view/model.ts";
 import { RenderLook } from "./view/look.ts";
+import { ModelCutaway } from "./view/cutaway.ts";
 import { SkyLayer } from "./view/sky.ts";
 import { PlanStructure } from "./view/structure.ts";
 import { MowerLayer } from "./view/mower-layer.ts";
@@ -86,6 +87,7 @@ export class FloorplanView {
   look: RenderLook;
   cam: CameraRig;
   modelLayer: ModelLayer;
+  cutaway: ModelCutaway;
   skyLayer: SkyLayer;
   structure: PlanStructure;
   mower: MowerLayer;
@@ -153,6 +155,7 @@ export class FloorplanView {
     this.look = new RenderLook(this);
     this.cam = new CameraRig(this);
     this.modelLayer = new ModelLayer(this);
+    this.cutaway = new ModelCutaway(); // fp.cutaway: lower the sides of the model facing the camera
     this.skyLayer = new SkyLayer(this);
     this.structure = new PlanStructure(this);
     this.mower = new MowerLayer(this);
@@ -859,6 +862,7 @@ export class FloorplanView {
       this.model.id,
       vis,
       this.modelClip.constant,
+      this.cutaway.sig,
       s
         ? [...s.normal.toArray(), s.constant].map((v) => v.toFixed(4)).join()
         : "",
@@ -927,6 +931,8 @@ export class FloorplanView {
       this.stats.frames++;
       const t0 = performance.now();
       cam._updateDepth();
+      if (this.model && this.cutaway.update(this.camera, cam.controls.target))
+        this.look._shadowDirty(); // a side switched
       if (look._env && look._env.flush()) this.stats.envBuilds++; // a due sky environment (never more than one per ENV_THROTTLE_MS)
       sky._placeSkyBodies();
       if (look._updateContact()) this.stats.contactBuilds++; // the casters changed since the last frame (quality high)

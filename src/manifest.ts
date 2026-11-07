@@ -3,6 +3,7 @@
 import { normSection, normTopCamera } from "./views.ts";
 import { badTargets, aimWarning, aimsUp } from "./objects/aim.ts";
 import { normRender } from "./render-recipe.ts";
+import { normCutaway } from "./cutaway.ts";
 
 import type {
   LevelRole,
@@ -100,6 +101,7 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
     ownerOf: () => null,
     render: null,
     renderKeys: 0,
+    cutaways: [],
   };
   const seen: Record<"level" | "room" | "object", Set<unknown>> = {
     level: new Set(),
@@ -321,6 +323,13 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
     const name = adapter.name(node);
     const path = parentPath ? `${parentPath}/${name}` : name;
     const tag = tagOf(node, topLevel);
+    const fp = (adapter.extras(node) || {}).fp as
+      { cutaway?: unknown } | undefined;
+    if (fp && typeof fp === "object" && fp.cutaway !== undefined) {
+      const c = normCutaway(fp.cutaway);
+      if (typeof c === "string") m.warnings.push(`${path}: ${c}`);
+      else m.cutaways.push({ ...c, node });
+    }
     let next = ctx;
     if (tag) {
       const e = add(node, tag, ctx, path);

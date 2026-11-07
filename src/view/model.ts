@@ -276,7 +276,11 @@ export function mergeStaticMeshes(
     isOwner: (n: THREE.Object3D) =>
       listed.has(n) ||
       named.has(n) ||
-      !!(n.userData && n.userData.fp && n.userData.fp.layer),
+      !!(
+        n.userData &&
+        n.userData.fp &&
+        (n.userData.fp.layer || n.userData.fp.cutaway)
+      ),
     boxOf: (m: THREE.Mesh) => {
       if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
       box
@@ -616,6 +620,10 @@ export class ModelLayer {
                 if (this.view.model !== model) return;
                 this._mergeModel(sels, unitScale);
                 this._afterMerge();
+                this.view.cutaway.setModel(
+                  model!.root,
+                  model!.manifest.cutaways,
+                );
                 if (opts.onMerged) opts.onMerged();
               },
               () => {},
@@ -625,6 +633,7 @@ export class ModelLayer {
           }
         }
         place();
+        this.view.cutaway.setModel(root, manifest.cutaways); // fp.cutaway: the sides facing the camera are lowered
         resolve(null);
       };
       // glass, floors and fabric become physical materials as the loader builds them (physical-materials.ts): the
@@ -1048,6 +1057,7 @@ export class ModelLayer {
       this.view.objectLayer.setModel(null, { keepLights: keepLook }); // restores cloned materials before they are disposed
     this.view._clearGroup(this.view.modelGroup);
     this.view.model = null;
+    this.view.cutaway.setModel(null, []);
     this.mergeStats = null;
     this.view.occlusion._occBoxes = null;
     this._surfMeshes = null;

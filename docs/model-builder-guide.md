@@ -314,6 +314,28 @@ so a view or the user can hide them in one go. Use these names where they fit (o
 A layer-only `fp` (`{ layer: 'furniture' }`) is not a tag: the node stays scenery of its room
 or level. Tag the group of a piece (the sofa group, not each cushion) so a click picks the piece.
 
+## Cutaway (walls lowered toward the camera)
+
+A dollhouse view: the walls on the sides of the house that face the camera are lowered, the far
+walls stay full height, and this follows the camera as it orbits. Split the outer walls into
+sides (south, east, ...) and tag the parts of each side with `fp.cutaway`:
+
+- `side`: an id shared by the parts of one side (`a-z 0-9 _ -`).
+- `facing`: the side's outward horizontal direction `[x, z]` in the glTF frame (plan `[x, -y]`),
+  any length.
+- Thick parts (walls, columns, facade bands) come twice: `variant: 'full'` (the full height) and
+  `variant: 'low'` (cut lower, its cut tops modelled as caps). The card shows one of them. A part
+  that only belongs to the full side (a dropped ceiling resting on the wall) has only `full`.
+- Thin parts (windows, doors, curtains) carry `clip: <height>` instead: while the side is low the
+  card cuts them off above that height (model units, from the model origin). Their materials are
+  cloned per part, so they may be shared.
+
+A side is low while its facing is within about 70° of the camera's horizontal direction; from
+straight above every side is full. Put each tag on a group node of its own (an empty), so the
+card keeps it apart when it merges meshes. `bun tools/check-model.mjs` lists the sides with their
+full, low and clipped parts and warns about invalid tags. Interior walls that should always be
+low are simply modelled low.
+
 ## Objects
 
 Tag anything that should react to Home Assistant or be controllable. The card binds each object

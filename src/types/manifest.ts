@@ -1,3 +1,4 @@
+import type { CutawayTag } from "../cutaway.ts";
 // The fp-tag manifest of a house model (manifest buildManifest): levels, rooms / zones, objects and
 // views read from node names / glTF extras. Generic over the node type N: three.js nodes in the card,
 // glTF JSON nodes in tools/check-model.mjs.
@@ -99,4 +100,10 @@ export interface Manifest<N = unknown> {
   render: RenderRecipe | null;
   /** Number of render recipe keys found. */
   renderKeys: number;
+  /** Nodes with a valid fp.cutaway (cutaway.ts): lowered with their side while it faces the camera. */
+  cutaways: ManifestCutaway<N>[];
+}
+
+export interface ManifestCutaway<N = unknown> extends CutawayTag {
+  node: N;
 }
