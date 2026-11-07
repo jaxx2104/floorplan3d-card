@@ -546,16 +546,10 @@ sections.add(
       again && d.sessions > a.sessions && d.builds === a.builds && d.gl === 0,
       JSON.stringify(d),
     );
-    // held off: edit mode, off screen. The idle time is set to 0 meanwhile, so without the hold a session would start
+    // held off: off screen. The idle time is set to 0 meanwhile, so without the hold a session would start
     // on the next idle animation frame: a window of animation frames proves the hold.
     await ev(
-      `(() => { const v = ${card}._view; v.still.idleMs = 0; v.setEditing(true); v.dirty = true; })()`,
-    );
-    await until(page, `${card}._view.still.hold === 'edit'`, "the edit hold");
-    await rafs(page, 30);
-    const e = await st();
-    await ev(
-      `(() => { const v = ${card}._view; v.setEditing(false); v.setOnScreen(false); v.dirty = true; })()`,
+      `(() => { const v = ${card}._view; v.still.idleMs = 0; v.setOnScreen(false); v.dirty = true; })()`,
     );
     await until(
       page,
@@ -565,14 +559,9 @@ sections.add(
     await rafs(page, 30);
     const f = await st();
     check(
-      "still: no trace while editing or off screen (idle time 0, 30 animation frames each)",
-      e.sessions === d.sessions &&
-        e.hold === "edit" &&
-        !e.active &&
-        f.sessions === d.sessions &&
-        f.hold === "offscreen" &&
-        !f.active,
-      JSON.stringify({ edit: e, off: f }),
+      "still: no trace off screen (idle time 0, 30 animation frames)",
+      f.sessions === d.sessions && f.hold === "offscreen" && !f.active,
+      JSON.stringify({ off: f }),
     );
     // the tier changed to high: the path tracer freed, nothing traced (idle time still 0)
     await ev(

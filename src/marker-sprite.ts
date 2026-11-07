@@ -560,9 +560,6 @@ export interface MarkerDrawState {
   quiet: boolean;
   /** an alert marker that is on (stays at night) */
   alert: boolean;
-  editing: boolean;
-  /** edit tools that dim the markers and let clicks through: drawing a room (0.4), picking (0.45) */
-  tool: "draw" | "pick" | "move" | null;
   hover: boolean;
 }
 
@@ -573,28 +570,16 @@ export interface MarkerDraw {
   hiddenAlpha: number;
   scale: number;
   pickable: boolean;
-  /** a hidden (occluded) marker still takes taps (edit mode) */
-  pickHidden: boolean;
 }
 
 export function markerDraw(s: MarkerDrawState): MarkerDraw {
-  if (!s.editing && s.quiet && !s.alert)
-    return {
-      alpha: 0,
-      hiddenAlpha: 0,
-      scale: 1,
-      pickable: false,
-      pickHidden: false,
-    };
-  let alpha = s.faded ? 0.3 : 1;
-  if (s.tool === "draw") alpha = Math.min(alpha, 0.4);
-  if (s.tool === "pick") alpha = Math.min(alpha, 0.45);
-  const hidden = s.editing ? 0.5 : 0.25;
+  if (s.quiet && !s.alert)
+    return { alpha: 0, hiddenAlpha: 0, scale: 1, pickable: false };
+  const alpha = s.faded ? 0.3 : 1;
   return {
     alpha,
-    hiddenAlpha: Math.min(alpha, hidden),
-    scale: s.hover && !s.tool ? 1.12 : 1,
-    pickable: !s.tool,
-    pickHidden: s.editing,
+    hiddenAlpha: Math.min(alpha, 0.25),
+    scale: s.hover ? 1.12 : 1,
+    pickable: true,
   };
 }

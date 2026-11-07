@@ -13,13 +13,6 @@ import { actionTarget, popupRows } from "../src/objects/popup.ts";
 import { resolveActions } from "../src/actions.ts";
 import { parseSelector, matches } from "../src/views.ts";
 import { parseLayout } from "../src/schema/layout.ts";
-import {
-  mergeImport,
-  setTag,
-  setObjectTags,
-  addTagToObjects,
-  removeTagFromObjects,
-} from "../src/editor.ts";
 import { st } from "./helpers/hass.js";
 
 describe("objectTags", () => {
@@ -77,17 +70,6 @@ describe("layoutTags (v1 layout.groups migrated on load)", () => {
     });
     expect("groups" in l).toBe(false);
     expect(parseLayout({ tags: "x" }).value.tags).toBeUndefined();
-  });
-  it("import keeps the current tags when the file has none, takes old groups from the file", () => {
-    const cur = { tags: { t: { entity: "switch.t" } } };
-    expect(mergeImport({ rooms: [] }, {}, cur).tags).toBe(cur.tags);
-    expect(
-      mergeImport(
-        { rooms: [], tags: { g: { entity: "switch.g" } } },
-        { groups: { g: { entity: "switch.g" } } },
-        cur,
-      ).tags,
-    ).toEqual({ g: { entity: "switch.g" } });
   });
 });
 
@@ -280,44 +262,5 @@ describe("tag: selectors and actions", () => {
       tags: ["facade"],
     });
     expect(b.tap.action).toBe("popup");
-  });
-});
-
-describe("editor: tags", () => {
-  it("setTag writes layout.tags (controller, label; none / empty dropped)", () => {
-    expect(setTag({}, "facade", { entity: " switch.f " }).tags).toEqual({
-      facade: { entity: "switch.f" },
-    });
-    expect(
-      setTag({ tags: { facade: { entity: "switch.f" } } }, "facade", {
-        entity: "none",
-      }).tags,
-    ).toEqual({});
-    expect(
-      setTag({ tags: { old: { entity: "switch.o" } } }, "facade", {
-        label: "F",
-      }).tags,
-    ).toEqual({ old: { entity: "switch.o" }, facade: { label: "F" } });
-  });
-  it("setObjectTags stores a list, or nothing when it equals the defaults", () => {
-    expect(setObjectTags({}, "a", ["x", "y"], ["x"]).objects.a).toEqual({
-      tags: ["x", "y"],
-    });
-    expect(
-      setObjectTags({ objects: { a: { tags: ["x", "y"] } } }, "a", ["x"], ["x"])
-        .objects,
-    ).toEqual({});
-    expect(setObjectTags({}, "a", [], ["x"]).objects.a).toEqual({ tags: [] });
-  });
-  it("add / remove a tag on several objects", () => {
-    const tagsOf = (id) => ({ a: ["facade"], b: [] })[id] || [];
-    let l = addTagToObjects({}, ["a", "b"], "outdoor", tagsOf, tagsOf);
-    expect(l.objects).toEqual({
-      a: { tags: ["facade", "outdoor"] },
-      b: { tags: ["outdoor"] },
-    });
-    const cur = (id) => l.objects[id].tags;
-    l = removeTagFromObjects(l, ["a", "b"], "outdoor", cur, tagsOf);
-    expect(l.objects).toEqual({});
   });
 });

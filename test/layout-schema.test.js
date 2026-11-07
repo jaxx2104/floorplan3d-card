@@ -3,14 +3,13 @@
 // The expected results live in test/fixtures/layouts/golden; UPDATE_GOLDEN=1 rewrites them.
 import fs from "node:fs";
 import path from "node:path";
-import { describe, it, expect, vi } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import {
   LAYOUT_VERSION,
   parseLayout,
   serializeLayout,
   emptyLayout,
 } from "../src/schema/layout.ts";
-import { parseImport } from "../src/editor.ts";
 import { DEMO_LAYOUT } from "../demo/layout.js";
 
 const dir = path.join(import.meta.dirname, "fixtures", "layouts");
@@ -251,31 +250,6 @@ describe("what the fixtures pin down", () => {
       model: null,
     });
     expect("objects" in s).toBe(false);
-  });
-
-  it("every file the card can export, it can import again", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    for (const f of [
-      "demo-v1.json",
-      "claude-md-v1.json",
-      "edited-v1.json",
-      "legacy-v1.json",
-    ]) {
-      const once = parseImport(JSON.stringify(read(f)));
-      const twice = parseImport(JSON.stringify(serializeLayout(once)));
-      expect(twice).toEqual(once);
-    }
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
-  });
-
-  it("the importer reports what it dropped", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    parseImport(JSON.stringify({ rooms: [], hidden: [1] }));
-    expect(warn).toHaveBeenCalledWith(
-      "floorplan3d: import hidden[0]: expected a string, got 1",
-    );
-    warn.mockRestore();
   });
 });
 

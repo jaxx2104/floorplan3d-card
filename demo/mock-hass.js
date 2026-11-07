@@ -1,5 +1,4 @@
 // A small fake Home Assistant: registries, states, services, websocket, a mower driving circles.
-import { DEMO_LAYOUT } from "./layout.js";
 
 const floors = {
   ground: { floor_id: "ground", name: "Ground floor", level: 0 },
@@ -495,55 +494,14 @@ states["weather.demo"] = {
   attributes: { friendly_name: "Demo weather", cloud_coverage: demoClouds },
 };
 
-// In-memory stand-in for the integration's /api/floorplan3d/model/<key> endpoint.
-const models = new Map();
-async function fetchWithAuth(url, init = {}) {
-  const key = decodeURIComponent(
-    new URL(url, location.href).pathname.split("/").pop(),
-  );
-  const json = (status, body) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  const method = (init.method || "GET").toUpperCase();
-  if (method === "GET")
-    return models.has(key)
-      ? new Response(models.get(key), {
-          headers: { "content-length": String(models.get(key).byteLength) },
-        })
-      : json(404, { message: "No model uploaded" });
-  if (method === "DELETE") {
-    models.delete(key);
-    return json(200, { deleted: true });
-  }
-  const file = init.body && init.body.get("file");
-  if (!file) return json(400, { message: "Missing file field" });
-  const buf = await file.arrayBuffer();
-  const head = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
-  if (String.fromCharCode(...head.slice(0, 4)) !== "glTF" || head[4] !== 2)
-    return json(400, { message: "Not a binary glTF 2.0 (.glb) file" });
-  models.set(key, buf);
-  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return json(200, {
-    size: buf.byteLength,
-    version: digest.slice(0, 12),
-    name: file.name,
-  });
-}
-
-// Headless checks reuse one page: stop the previous mock (its timer, uploaded models) before a new one.
+// Headless checks reuse one page: stop the previous mock (its timer) before a new one.
 let mockTimer = null;
 export function resetMockHass() {
   clearInterval(mockTimer);
   mockTimer = null;
-  models.clear();
 }
 
 export function createMockHass({ onChange }) {
-  let layoutStore = JSON.parse(JSON.stringify(DEMO_LAYOUT));
   let current;
   const make = (st) => ({
     states: st,
@@ -556,7 +514,6 @@ export function createMockHass({ onChange }) {
     config: { latitude: 52.0, longitude: 5.0, time_zone: "UTC" }, // generic location (moon position)
     language: "en",
     hassUrl: (p) => p,
-    fetchWithAuth,
     callService: async (domain, service, data = {}, target) => {
       (window.__serviceCalls = window.__serviceCalls || []).push(
         target ? [domain, service, data, target] : [domain, service, data],
@@ -592,13 +549,7 @@ export function createMockHass({ onChange }) {
         [s.entity_id]: { ...s, state: on ? "on" : "off", attributes: attrs },
       });
     },
-    callWS: async (msg) => {
-      if (msg.type === "floorplan3d/layout/get") return { layout: layoutStore };
-      if (msg.type === "floorplan3d/layout/set") {
-        layoutStore = msg.layout;
-        window.__savedLayout = msg.layout;
-        return null;
-      }
+    callWS: async () => {
       throw { code: "unknown_command", message: "Unknown command." };
     },
   });

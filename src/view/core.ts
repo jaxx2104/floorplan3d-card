@@ -75,8 +75,6 @@ export interface MarkerEntry {
   /** an alert that is on (shown at night) */
   alert?: boolean;
   pickable?: boolean;
-  /** takes taps while the model hides it (edit mode) */
-  pickHidden?: boolean;
 }
 /** view.glows value: the glow under a light that is on. */
 export interface GlowEntry {

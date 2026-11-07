@@ -213,7 +213,7 @@ export class ViewController {
       // the next load draws these while it waits
       const polys = pickOutline(this._modelRooms);
       if (polys.length) {
-        saveOutline(this.card._config.layout_key, polys);
+        saveOutline(this.card._config.model || "default", polys);
         this._outlineModel = this.card._view.model;
       }
     }
@@ -277,9 +277,9 @@ export class ViewController {
     this._applyZoomTo();
     this._pushStructure();
     if (!this._floorOnly) this._applyViewVisibility();
-    this.card._empty.hidden = roomList.length > 0 || !!this.card._editing;
+    this.card._empty.hidden = roomList.length > 0;
     this.card._empty.textContent =
-      "No rooms drawn yet. Open edit mode to draw rooms for your areas.";
+      "No rooms yet: set model: (rooms come from its fp tags) or layout: rooms in the card YAML.";
     this.card._syncToolbar();
     // frame once per load / model; later rebuilds (edits, registry changes) keep the user's camera
     if (fresh) {
@@ -335,7 +335,6 @@ export class ViewController {
     this._labelKey = this._labelKeyNow();
     const labelled = (r: RoomEntry): boolean =>
       !hasModel ||
-      !!this.card._editing ||
       (!!st && !st.overview && !!st.primary && r.levelId === st.primary);
     const rooms = (this._roomList || []).map((r) => ({
       room: r.room,
@@ -347,7 +346,7 @@ export class ViewController {
       wallHeight: this.card._config.wall_height,
       walls: !hasModel,
       fills: !hasModel,
-      outlines: !hasModel || !!this.card._editing,
+      outlines: !hasModel,
       labels: true,
     });
     this.card._stage.classList.toggle("has-model", hasModel);
@@ -360,7 +359,7 @@ export class ViewController {
 
   _labelKeyNow(): string {
     const st = this._viewState;
-    if (!this.card._view.model || this.card._editing) return "*";
+    if (!this.card._view.model) return "*";
     return st && !st.overview && st.primary ? "p:" + st.primary : "";
   }
 
@@ -645,7 +644,6 @@ export class ViewController {
     else if (!this.card._view.model || wasSection)
       this.card._view.fit({ instant });
     this.card._syncToolbar();
-    if (this.card._editing) this.card._edit?.onViewChanged();
   }
 
   // First view after load / model change: its saved camera, else frame it.
@@ -678,10 +676,6 @@ export class ViewController {
   _idleReset(): void {
     this._idleTimer = null;
     if (!this.card._view || !this._views) return;
-    if (this.card._editing) {
-      this._armIdleReset();
-      return;
-    }
     this.card._popup.close();
     if (this.card._sunTime !== null) this.card.setSunTime(null);
     const startId = defaultViewId(
@@ -819,15 +813,15 @@ export class ViewController {
     if (aim && box) this.card._view.setCamera(sectionCamera(plane, box));
   }
 
-  // Merge a patch into layout.views[id] and save (rules replace the stored list).
+  // Merge a patch into layout.views[id] (rules replace the list); the headless checks use it.
   saveViewPatch(id: string, patch: Record<string, unknown>): void {
     if ("section" in patch && id === this._viewId) this._sectionPreview = null; // the saved plane takes over
-    const l = this.card._layout!; // the Views tab edits a loaded layout
+    const l = this.card._layout!; // set with the config
     const views = l.views || {};
-    this.card._commit({
+    this.card._layout = {
       ...l,
       views: { ...views, [id]: { ...views[id], ...patch } },
-    });
+    };
   }
 
   // One HA floor (edit mode): the view linked to just that floor, else that floor on its own
@@ -878,7 +872,5 @@ export class ViewController {
       if (cam) this.card._view.setCamera(cam, { instant: true });
     }
     this.card._syncToolbar();
-    if (this.card._editing && this.card._edit?.tab === "views")
-      this.card._edit.render();
   }
 }

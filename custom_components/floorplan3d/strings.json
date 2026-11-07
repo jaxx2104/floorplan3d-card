@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Floorplan 3D",
-        "description": "Stores floorplan3d-card layouts in Home Assistant so every user and device sees the same plan, and loads the card on all dashboards."
+        "description": "Loads floorplan3d-card on all dashboards (no manual resource needed)."
       }
     },
     "abort": {

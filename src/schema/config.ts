@@ -44,8 +44,6 @@ const removed = (why: string): Schema<never> => ({
   },
 });
 
-/** A string; a number in YAML (`layout_key: 2`) is read as its text. */
-const text = (): Schema<string> => union(string(), map(numeric(), String));
 /** CSS length: a number means pixels. */
 const cssLength = (): Schema<string> =>
   union(
@@ -57,10 +55,10 @@ export const DEFAULT_HEIGHT = "520px";
 
 export const cardConfigSchema = object({
   type: withDefault(string(), () => "custom:floorplan3d-card"),
-  /** The layout itself (same shape as the stored JSON, see src/schema/layout.ts); wins over layout_key. */
+  /** The layout: rooms, pins, hidden devices, mower ... (src/schema/layout.ts parses it). */
   layout: opt(owned()),
-  /** Storage key of the layout (several cards can share one, or keep their own). */
-  layout_key: withDefault(text(), () => "default"),
+  /** Removed: the layout is written in the YAML (layout:), nothing is stored. */
+  layout_key: opt(removed("the layout is the YAML's layout: now")),
   height: withDefault(cssLength(), () => DEFAULT_HEIGHT),
   group_by: withDefault(literal("device", "entity"), () => "device" as const),
   /** Cut-away display height of the walls (metres). */

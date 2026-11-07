@@ -85,6 +85,7 @@ import type {
 } from "../types/layout.ts";
 
 const MOWER_Z = 0.15;
+const LAST_KEY = "default"; // the last known position, remembered in this browser
 const MATCH_MIN = 0.5; // mower picture match score (NCC) trusted for position and heading
 
 type Rgb = number[];
@@ -396,7 +397,7 @@ export class MowerController {
     // never some default spot
     const dk = this._dockedNow();
     const dock = this.card._objects ? this.card._objects.dockPose() : null;
-    const key = this.card._config.layout_key;
+    const key = LAST_KEY;
     let fixed: { heading?: number | null } | null = null;
     this._mowerAt = p ? "live" : null;
     if (dk.docked && dock) {
@@ -1039,7 +1040,7 @@ export class MowerController {
       trk.docked === null &&
       !dk.docked &&
       !this._imageBlob &&
-      !lastPosition(this.card._config.layout_key)
+      !lastPosition(LAST_KEY)
     ) {
       trk.leaving = true;
       trk.leavingSince = now;
@@ -1064,7 +1065,7 @@ export class MowerController {
     trk.tplKey = tplKey;
     const b = this._imageBlob;
     let prev: number[] | null = b && b.imgW === W ? [b.px / k, b.py / k] : null;
-    const last = lastPosition(this.card._config.layout_key);
+    const last = lastPosition(LAST_KEY);
     const expected: number | null =
       b && b.count && b.matched
         ? b.count / (k * k)
@@ -1208,9 +1209,9 @@ export class MowerController {
       this.card._view.mapPlane.material.map.image !== c;
     const ld =
       this.card._view.mapPlane && this.card._view.mapPlane.userData.loaded;
-    if (r.patches || showsOther || !ld || (this.card._editing && !ld.image)) {
+    if (r.patches || showsOther || !ld || (false && !ld.image)) {
       // edit mode: the raw picture for the pickers
-      if (this.card._editing)
+      if (false)
         createImageBitmap(blob).then(
           (img) => {
             if (this.card._view)
@@ -1260,7 +1261,6 @@ export class MowerController {
       before.misses !== b.misses
     )
       this._queueMowerRefresh();
-    else if (this.card._editing && this.card._edit) this.card._edit.onStates();
   }
 
   _queueMowerRefresh(): void {
@@ -1271,7 +1271,6 @@ export class MowerController {
       if (!this.card._view || !this.card._layout || !this.card._layout.mower)
         return;
       this._refreshMower();
-      if (this.card._editing && this.card._edit) this.card._edit.onStates();
     });
   }
 
@@ -1298,7 +1297,7 @@ export class MowerController {
     const plane = this.card._view.mapPlane;
     if (r && r.canvas)
       this.card._view.setMapCanvas(r.canvas, W, H, {
-        image: this.card._editing ? bmp : null,
+        image: false ? bmp : null,
       });
     else if (r === null) {
       // as loaded
@@ -1313,11 +1312,11 @@ export class MowerController {
       g.clearRect(0, 0, w, h);
       g.drawImage(bmp, 0, 0, w, h);
       this.card._view.setMapCanvas(c, W, H, {
-        image: this.card._editing ? bmp : null,
+        image: false ? bmp : null,
       });
     }
     if (
-      !this.card._editing &&
+      !false &&
       bmp.close &&
       !(plane && plane.userData.loaded && plane.userData.loaded.image === bmp)
     )
@@ -1371,7 +1370,6 @@ export class MowerController {
   _setAutoMismatch(on: boolean): void {
     if (!!this._autoMismatch === on) return;
     this._autoMismatch = on;
-    if (this.card._editing && this.card._edit) this.card._edit.onStates();
   }
 
   // An auto pass's mower pose (working pixels) -> the tracked blob, heading and dock (image pixels).
@@ -1581,7 +1579,6 @@ export class MowerController {
     if (!now || now.source !== "image") return;
     this._imageResult = result;
     if (this.card._view) this._refreshMower();
-    if (this.card._editing && this.card._edit) this.card._edit.onStates();
     if (this._imageAgain) {
       this._imageAgain = false;
       this._detectMower();
@@ -1738,7 +1735,6 @@ export class MowerController {
 
   _mapStatsChanged(): void {
     if (this.card._popup) this.card._popup.update();
-    if (this.card._editing && this.card._edit) this.card._edit.onStates();
   }
 
   // Processing settings of the overlay (null: none set, the picture is drawn as loaded).
@@ -1888,7 +1884,7 @@ export class MowerController {
       opacity: o.opacity,
       floorId: this._mowerFloor(),
       heightOffset: o.height_offset || 0,
-      hidden: !!o.edit_only && !this.card._editing, // detection keeps reading the loaded image
+      hidden: !!o.edit_only && !false, // detection keeps reading the loaded image
     });
     if (!external) this._extUrl = null;
     else if (url !== this._extUrl) {

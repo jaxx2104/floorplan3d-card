@@ -1,13 +1,11 @@
 // floorplan3d-card-impl: the real card behind the floorplan3d-card shell (./floorplan3d-card.ts), which
 // imports this module (and three.js with it) on first connect and forwards config and hass here.
 // The element is a facade: lifecycle, render and the update diff live here, the rest in the parts
-// under ./card/ (mower, model, views, markers, object input, actions, sky). Every member that edit
-// mode, the debug overlay or the headless checks use keeps its name on the card (delegates below).
+// under ./card/ (mower, model, views, markers, object input, actions, sky). Every member that the
+// debug overlay or the headless checks use keeps its name on the card (delegates below).
 
 import { Color } from "three";
 import { FloorplanView } from "./view.ts";
-import type { EditMode } from "./edit-mode.ts"; // loaded with import() on the first Edit (its own chunk)
-import { LayoutStore } from "./storage.ts";
 import { logLayoutWarnings, parseLayout } from "./schema/layout.ts";
 import "./mower-auto.ts"; // registers the auto-mode kernel with the map worker
 import { ObjectLayer } from "./objects/layer.ts";
@@ -206,7 +204,6 @@ const OBJECT_METHODS = [
   "_syncBindings",
   "_tagIndex",
   "_updateObjects",
-  "_objectTapsOn",
   "_objectHit",
   "_endGesture",
   "testObject",
@@ -280,26 +277,20 @@ export class Floorplan3dCard extends HTMLElement {
   _theme: CardTheme | undefined;
   _taps: TapSequencer;
   _objects: ObjectLayer | null;
-  // Set later (declare: no own field until then). setConfig sets _config / _mode / _store before the
+  // Set later (declare: no own field until then). setConfig sets _config / _mode / _layout before the
   // card renders, _render the DOM parts and the view, the hass setter _hass: the members that use them
   // run after that (the ones that may run earlier check them).
   declare _layoutLoaded: () => void;
-  declare _store: LayoutStore;
   declare _view: FloorplanView;
-  _edit: EditMode | null; // null until the first Edit has loaded it (_editing implies it is there)
-  _editLoad: Promise<void> | null; // the running _toggleEdit while edit mode loads (headless checks await it)
   declare _stage: HTMLDivElement;
   declare _body: HTMLDivElement;
   declare _chips: HTMLDivElement;
   declare _empty: HTMLDivElement;
   declare _notice: HTMLDivElement;
   declare _sectionBtn: HTMLButtonElement;
-  declare _editBtn: HTMLButtonElement;
   declare _loadUI: ModelLoadUI;
   declare _popup: ObjectPopup;
   declare _hints: TapHints;
-  declare _loading: boolean | undefined;
-  declare _saveSeq: number | undefined;
   declare _labelsTried: boolean | undefined;
   declare _debug: DebugOverlay | null | undefined;
   declare _ltObs: PerformanceObserver | null | undefined;
@@ -325,11 +316,9 @@ export class Floorplan3dCard extends HTMLElement {
     this._theme = undefined;
     this._layoutReady = new Promise<void>((r) => {
       this._layoutLoaded = r;
-    }); // resolves once the stored layout has loaded (or failed)
+    }); // resolves once the first config has given the layout
     this._taps = new TapSequencer(); // single vs double tap, per target
     this._objects = null; // ObjectLayer: model lamps and the real light pool
-    this._edit = null;
-    this._editLoad = null;
   }
 
   // The inputs of the state flow: reads are untracked (the card's own code), writes notify the graph.
@@ -350,12 +339,6 @@ export class Floorplan3dCard extends HTMLElement {
   }
   set _layout(l: Layout | null) {
     this._state.layout.value = l;
-  }
-  get _editing(): boolean {
-    return this._state.editing.peek();
-  }
-  set _editing(on: boolean) {
-    this._state.editing.value = !!on;
   }
   get _labels(): Record<string, { name: string }> | undefined {
     return this._state.labels.peek();
@@ -392,13 +375,9 @@ export class Floorplan3dCard extends HTMLElement {
         this._refreshStates();
         this._refreshMower();
       },
-      tail: (rebuilt) => {
+      tail: () => {
         this._updateObjects();
         this._popup.update();
-        if (this._editing) {
-          if (rebuilt) this._edit?.afterUpdate();
-          else this._edit?.onStates();
-        }
       },
     };
   }
@@ -408,17 +387,12 @@ export class Floorplan3dCard extends HTMLElement {
     logConfigWarnings(parsed);
     this._config = parsed.value;
     this._mode = this._config.view === "top" ? "top" : "3d";
-    // the same key keeps its store: a fresh one has no backend until a load, so its saves would be dropped
-    // (a config change on a running card does not load the layout again)
-    if (
-      !this._store ||
-      this._store.key !== (this._config.layout_key || "default")
-    )
-      this._store = new LayoutStore(this._config.layout_key);
     this._applyHeight();
-    // a YAML layout replaced on a running card (the first one is read by _load)
-    if (this._layout && this._config.layout !== undefined)
-      this._layout = this._inlineLayout(this._config.layout);
+    // the layout is part of the YAML: a new config gives a new one
+    const p = parseLayout(this._config.layout);
+    logLayoutWarnings("card YAML layout:", p);
+    this._layout = p.value;
+    this._layoutLoaded();
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
       this._view.setOcclusion(this._config.occlusion !== false);
@@ -513,7 +487,6 @@ export class Floorplan3dCard extends HTMLElement {
       this._applySky(false);
     this._applyWeather();
     if (this._view) this._view.setScreenStates(hass.states); // fp_anim screens follow their entities
-    if (!this._layout && !this._loading) this._load();
   }
 
   get hass(): Hass {
@@ -541,7 +514,6 @@ export class Floorplan3dCard extends HTMLElement {
   connectedCallback(): void {
     if (!this._config) return; // setConfig renders once it arrives
     if (!this._view) this._render();
-    else if (this._editing) this._edit?.attach();
     this._view.start();
     this._skyCtl.resume(); // moon timer, back-on-the-tab listener
     this._ro = new ResizeObserver(() => this._resize());
@@ -586,7 +558,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._objectInput.dispose(); // gesture, hint touch timer, hover frame
     this._taps.cancel();
     if (this._popup) this._popup.close(); // window listeners
-    if (this._editing && this._edit) this._edit.detach(); // window listeners (keys, pick menu)
     if (this._ro) this._ro.disconnect();
     if (this._io) {
       this._io.disconnect();
@@ -605,26 +576,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._markerLayer.dispose(); // surface job
   }
 
-  async _load(): Promise<void> {
-    this._loading = true;
-    try {
-      this._layout =
-        this._config.layout !== undefined
-          ? this._inlineLayout(this._config.layout)
-          : await this._store.load(this._hass);
-    } finally {
-      this._loading = false;
-      this._layoutLoaded();
-    }
-  }
-
-  // The card YAML's layout: -> the current layout version (problems go to the console).
-  _inlineLayout(raw: unknown): Layout {
-    const p = parseLayout(raw);
-    logLayoutWarnings("card YAML layout:", p);
-    return p.value;
-  }
-
   _render(): void {
     const root = this.shadowRoot!; // attached in the constructor
     root.innerHTML = `<style>${STYLE}${LOAD_STYLE}</style>
@@ -638,7 +589,6 @@ export class Floorplan3dCard extends HTMLElement {
               <button class="section" hidden title="Side section"><ha-icon icon="mdi:box-cutter"></ha-icon></button>
               <button class="daynight" hidden title="Day / night: auto"><ha-icon icon="mdi:theme-light-dark"></ha-icon></button>
               <button class="suntime" hidden title="Sun time (today)"><ha-icon icon="mdi:clock-outline"></ha-icon><span class="t"></span></button>
-              <button class="edit" hidden title="Edit floorplan"><ha-icon icon="mdi:pencil"></ha-icon><span>Edit</span></button>
             </div>
             <div class="fp-suntime" hidden><input type="range" min="0" max="1440" step="15" aria-label="Sun time"><span class="time"></span><button class="now">Now</button></div>
             <div class="empty" hidden></div>
@@ -672,9 +622,7 @@ export class Floorplan3dCard extends HTMLElement {
     this._sectionBtn.addEventListener("click", () =>
       this.setSection(!this._section),
     );
-    this._editBtn = q<HTMLButtonElement>("button.edit");
     this._skyCtl.wire(root); // Day / night button, sun time scrubber
-    this._editBtn.addEventListener("click", () => this._toggleEdit());
     this._view = new FloorplanView(this._stage);
     this._loadUI = new ModelLoadUI({
       stage: this._stage,
@@ -682,7 +630,7 @@ export class Floorplan3dCard extends HTMLElement {
       // the last loaded model's rooms of this layout, else the drawn rooms (null: the house fallback)
       outline: () => {
         if (!this._config) return null;
-        const saved = loadOutline(this._config.layout_key);
+        const saved = loadOutline(this._config.model || "default");
         if (saved) return saved;
         const drawn = pickOutline((this._layout && this._layout.rooms) || []);
         return drawn.length ? drawn : null;
@@ -722,28 +670,8 @@ export class Floorplan3dCard extends HTMLElement {
     this._view.setMode(this._mode);
     this._loadModel();
     const canvas = this._view.renderer.domElement;
-    this._stage.addEventListener(
-      "pointerdown",
-      (e) => {
-        if (this._editing && e.target === canvas)
-          this._edit?.canvasDownCapture(e);
-      },
-      true,
-    );
-    canvas.addEventListener(
-      "pointerdown",
-      (e) => this._editing && this._edit?.canvasDown(e),
-    );
-    canvas.addEventListener(
-      "pointermove",
-      (e) => this._editing && this._edit?.canvasMove(e),
-    );
-    canvas.addEventListener(
-      "pointerup",
-      (e) => this._editing && this._edit?.canvasUp(e),
-    );
     this._objectInput.wire(this._stage, canvas); // object taps, tap hints, hover
-    this._markerLayer.wire(this._stage, canvas); // marker taps / holds / edit drags, hover (after the objects)
+    this._markerLayer.wire(this._stage, canvas); // marker taps / holds, hover (after the objects)
     this._syncToolbar();
     this._state.rendered.value = true;
   }
@@ -784,80 +712,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._schedule();
     if (this._layout && this._layout.mower && this._hass)
       this._refreshMapOverlay(); // the map lies on the model's lawn
-    if (this._editing)
-      this._edit?.onModelLoaded(this._view.model !== prevModel);
-  }
-
-  // The Edit button. The first time edit mode is entered its module loads (an own chunk, admins only
-  // ever fetch it); the toggle runs once it is there, while loading further clicks are ignored.
-  // -> the pending load, or null when the toggle ran at once
-  _toggleEdit(): Promise<void> | null {
-    if (this._editLoad) return this._editLoad;
-    if (!this._editing && !this._edit) {
-      this._editBtn.disabled = true;
-      const load = import("./edit-mode.ts").then(
-        ({ EditMode }) => {
-          if (!this._edit) {
-            this._edit = new EditMode(this);
-            this._body.append(this._edit.panel);
-          }
-          this._editLoad = null;
-          this._editBtn.disabled = false;
-          if (this.isConnected && this._view) this._applyToggle(); // left the page while loading: stay in view mode
-        },
-        (e: unknown) => {
-          this._editLoad = null;
-          this._editBtn.disabled = false;
-          this._notify(
-            `Edit mode failed to load: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        },
-      );
-      this._editLoad = load;
-      return load;
-    }
-    this._applyToggle();
-    return null;
-  }
-
-  _applyToggle(): void {
-    const edit = this._edit!; // _toggleEdit loads it before the first entry
-    this._objectInput.clearHover();
-    this._endGesture();
-    this._endMarkerGesture();
-    this._taps.cancel();
-    this._popup.close();
-    this._editing = !this._editing;
-    this._body.classList.toggle("editing", this._editing);
-    this._view.setEditing(this._editing); // no idle path tracing (quality still) while editing
-    if (this._editing) {
-      const first = this._floors && this._floors[0];
-      if (!this._view.model && this._floor === "all" && first)
-        this._setFloor(first.id);
-      edit.enter();
-    } else {
-      edit.exit();
-      this._viewCtl.clearFloorOnly(); // back to the view the chips show (camera kept)
-    }
-    this._syncMarkerMode(); // marker opacity / taps of edit mode
-    this._syncHints(); // no tap hints while editing
-    if (this._layout && this._layout.mower && this._hass)
-      this._refreshMapOverlay(); // "map only in edit mode"
-    this._syncToolbar();
-    // the panel changes the canvas size: resize once the layout has settled; the camera stays
-    requestAnimationFrame(() => this._resize());
-  }
-
-  // Apply an edited layout: rebuild the plan and save it.
-  _commit(layout: Layout): void {
-    this._layout = layout; // the state flow rebuilds what the edit touched
-    const seq = (this._saveSeq = (this._saveSeq || 0) + 1);
-    const writable = this._store.writable;
-    this._edit?.setSaveState(writable ? "saving" : "readonly");
-    this._store.save(this._hass, layout).then((ok: boolean) => {
-      if (seq === this._saveSeq && writable)
-        this._edit?.setSaveState(ok ? "saved" : "failed");
-    });
   }
 
   _resize(): void {
@@ -893,10 +747,8 @@ export class Floorplan3dCard extends HTMLElement {
 
   _syncToolbar(): void {
     const hasModel = !!(this._view && this._view.model);
-    // without a model: one chip per floor plus All (not while editing), shown with 2+ floors
-    const views = this._views.filter(
-      (v) => !v.hidden && (hasModel || !this._editing || v.id !== "all"),
-    );
+    // without a model: one chip per floor plus All, shown with 2+ floors
+    const views = this._views.filter((v) => !v.hidden);
     const show = hasModel
       ? views.length > 1
       : this._views.filter((v) => !v.hidden && v.id !== "all").length > 1;
@@ -928,19 +780,10 @@ export class Floorplan3dCard extends HTMLElement {
     }
     this._paintDayBtn();
     this._paintSunBtn();
-    this._editBtn.hidden = !(
-      this._hass &&
-      this._hass.user &&
-      this._hass.user.is_admin
-    );
-    this._editBtn.querySelector("span")!.textContent = this._editing
-      ? "Done"
-      : "Edit";
-    if (this._empty && this._editing) this._empty.hidden = true;
   }
 }
 
-// The facade: members used outside their part (edit mode, the debug overlay, headless checks, the other
+// The facade: members used outside their part (the debug overlay, headless checks, the other
 // parts) keep their names on the card. Fields forward get / set, so the same objects come back.
 const proto = Floorplan3dCard.prototype;
 defineDelegates<MowerController>(proto, "_mowerCtl", {

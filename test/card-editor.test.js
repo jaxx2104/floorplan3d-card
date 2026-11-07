@@ -84,7 +84,6 @@ describe("card editor", () => {
     expect(form.data).toMatchObject({
       view: "top",
       height: "520px",
-      layout_key: "default",
     });
     expect(form.schema).toBe(mod.SCHEMA);
     expect(form.hass).toEqual({ states: {} });

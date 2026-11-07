@@ -1,4 +1,4 @@
-// The card's shadow DOM styles (markers, popup, toolbar, edit panel).
+// The card's shadow DOM styles (markers, popup, toolbar).
 export const STYLE: string = `
   :host { display: block; }
   /* sections view (HA's layout = "grid"): fill the grid cell */
@@ -75,78 +75,7 @@ export const STYLE: string = `
     border: 1px solid var(--divider-color, rgba(0,0,0,.12)); border-radius: 6px; padding: 4px 6px; }
   .body { display: flex; }
   .body .stage { flex: 1; min-width: 0; }
-  .panel { display: none; width: 300px; flex: none; box-sizing: border-box; flex-direction: column; max-height: var(--fp-height);
-    border-left: 1px solid var(--divider-color, rgba(0,0,0,.12)); font-size: 13px; }
-  .editing .panel { display: flex; }
-  /* narrow cards (e.g. a sections-view column): plan on top, panel below */
-  @container (max-width: 640px) {
-    .body.editing { flex-direction: column; }
-    .body.editing .stage { flex: none; width: 100%; }
-    .editing .panel { width: auto; max-height: 420px; border-left: none; border-top: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
-    :host([grid]) .body.editing .stage { flex: 1 1 0; min-height: 160px; }
-    :host([grid]) .editing .panel { max-height: 55%; }
-  }
-  .tabs { display: flex; border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
-  .panel .tabs button { flex: 1; border-radius: 0; font: inherit; padding: 10px 4px; background: none; border: none; cursor: pointer;
-    color: var(--secondary-text-color); border-bottom: 2px solid transparent; }
-  .panel .tabs button.on { color: var(--primary-color); border-bottom-color: var(--primary-color); }
-  .tab-body { flex: 1; overflow: auto; padding: 4px 12px 12px; }
-  .foot { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 11px;
-    color: var(--secondary-text-color); border-top: 1px solid var(--divider-color, rgba(0,0,0,.12)); }
-  .panel h3 { margin: 4px 0 6px; font-size: 14px; font-weight: 500; }
-  .panel .sub { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--secondary-text-color); }
-  .panel .hint, .panel .dim { color: var(--secondary-text-color); }
-  .panel .hint { font-size: 12px; line-height: 1.4; }
-  .panel p { margin: 6px 0; }
-  .panel .box { border: 1px solid var(--divider-color, rgba(0,0,0,.12)); border-radius: 8px; padding: 8px 10px;
-    margin: 8px 0; }
-  .panel label, .panel div.grp { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 12px;
-    color: var(--secondary-text-color); }
-  .panel .fp-field { display: block; margin: 8px 0; }
-  .panel .fp-field.check { margin: 2px 0; }
-  .panel ha-selector.fp-sel { display: block; width: 100%; }
-  .panel .entin.ha { display: flex; flex-direction: column; gap: 2px; }
-  .panel ul.otree li.obj .oacts .fp-field.act { flex: 1; min-width: 120px; margin: 0; }
-  .panel label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--primary-text-color); }
-  .panel select, .panel input[type=number] { font: inherit; padding: 5px 6px; border-radius: 6px;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.2)); background: var(--card-background-color, #fff);
-    color: var(--primary-text-color); min-width: 0; }
-  .panel button, .panel label.button { font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.2)); background: var(--card-background-color, #fff);
-    color: var(--primary-text-color); display: inline-block; margin: 0; }
-  .panel button:disabled { opacity: .45; cursor: default; }
-  .panel button.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
-  .panel button.danger { color: var(--error-color, #db4437); }
-  .panel button.link { border: none; background: none; padding: 0 2px; color: var(--primary-color); }
-  .panel .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .panel ul { list-style: none; margin: 0; padding: 0; }
-  .panel ul.list li { display: flex; align-items: center; gap: 6px; padding: 4px 0;
-    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
-  .panel ul.list li.sel .name { color: var(--primary-color); font-weight: 500; }
-  .panel .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .panel .pill { font-size: 10.5px; padding: 1px 7px; border-radius: 9px; }
-  .panel .pill.ok { background: rgba(76,175,80,.16); color: var(--success-color, #43a047); }
-  .panel tr.sel td { background: rgba(3,169,244,.12); }
-  .stage.picking .fp-handle { pointer-events: none; opacity: .45; }
-  .panel details.report { margin: 6px 0; font-size: 12px; }
-  .panel details.report summary { cursor: pointer; color: var(--secondary-text-color); }
-  .panel details.report ul, .panel .msg { user-select: text; -webkit-user-select: text; cursor: text; }
-  .panel .pill.missing { background: rgba(255,152,0,.16); color: var(--warning-color, #ef8a00); }
-  .panel table.floors { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .panel table.floors th { font-weight: normal; color: var(--secondary-text-color); text-align: left; font-size: 11px; }
-  .panel table.floors td { padding: 2px 3px 2px 0; }
-  .panel table.floors input { width: 64px; }
-  .panel .note { padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4; }
-  .panel .note.ok { background: rgba(76,175,80,.12); }
-  .panel .note.warn { background: rgba(255,152,0,.14); }
-  .panel .msg { margin: 8px 0; padding: 6px 10px; border-radius: 6px; background: rgba(76,175,80,.12); font-size: 12px; }
-  .panel .msg.warn { background: rgba(255,152,0,.14); }
-  .panel .msg.error { background: rgba(219,68,55,.14); color: var(--error-color, #db4437); }
-  button.edit { font: inherit; font-size: 13px; line-height: 1; cursor: pointer; padding: 6px 10px; border-radius: 16px;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.12)); background: var(--card-background-color, #fff);
-    color: var(--primary-text-color); display: flex; align-items: center; gap: 4px; --mdc-icon-size: 16px; }
-  button.edit[hidden], button.daynight[hidden], button.section[hidden] { display: none; }
+  button.daynight[hidden], button.section[hidden] { display: none; }
   button.section.on { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
   button.reset, button.section { font: inherit; line-height: 1; cursor: pointer; padding: 5px 8px; border-radius: 16px; display: flex;
     align-items: center; border: 1px solid var(--divider-color, rgba(0,0,0,.12)); background: var(--card-background-color, #fff);
@@ -166,97 +95,8 @@ export const STYLE: string = `
   .fp-suntime .time { font-variant-numeric: tabular-nums; min-width: 3em; }
   .fp-suntime button { font: inherit; cursor: pointer; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--divider-color, rgba(0,0,0,.12));
     background: transparent; color: var(--primary-text-color); }
-  .editing button.edit { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
 
-  .fp-handle { box-sizing: border-box; width: 13px; height: 13px; border-radius: 50%; pointer-events: auto; cursor: grab;
-    background: var(--card-background-color, #fff); border: 2px solid var(--primary-color, #03a9f4); touch-action: none; }
-  .fp-handle.mid { width: 9px; height: 9px; opacity: .75; border-width: 1.5px; }
-  .fp-handle.door { width: 11px; height: 11px; border-radius: 2px; background: var(--primary-color, #03a9f4);
-    pointer-events: none; }
-  .fp-handle.draw { pointer-events: none; width: 9px; height: 9px; }
-  .fp-handle.draw.first { width: 15px; height: 15px; background: var(--primary-color, #03a9f4); }
-  .fp-handle.cursor { pointer-events: none; width: 7px; height: 7px; border: none; background: var(--primary-color, #03a9f4); }
-  .fp-handle.cursor.vertex { width: 15px; height: 15px; background: none; border: 2px solid var(--primary-color, #03a9f4); }
-  .fp-handle.cursor.align { width: 9px; height: 9px; }
-  .stage.drawing { cursor: crosshair; }
-  .stage.drawing .fp-handle { pointer-events: none; }
-  .stage.moving { cursor: move; }
-  .stage.moving .fp-handle { pointer-events: none; }
-  .panel input[type=range] { width: 100%; margin: 0; accent-color: var(--primary-color); }
-  .panel label .lab { display: flex; justify-content: space-between; }
-  .panel label .val { color: var(--primary-text-color); }
-  .panel label.slider .slrow { display: flex; align-items: center; gap: 6px; }
-  .panel label.slider .slrow input[type=range] { flex: 1; min-width: 0; }
-  .panel input.slnum { width: 62px; flex: none; font: inherit; font-size: 12px; padding: 3px 4px; border-radius: 6px; box-sizing: border-box;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.2)); background: var(--card-background-color, #fff); color: var(--primary-text-color); }
-  .panel label.slider .unit { flex: none; min-width: 10px; font-size: 12px; color: var(--secondary-text-color); }
-  .panel label.button.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
-  .panel label.button.disabled { opacity: .6; pointer-events: none; }
-  .panel .bad { color: var(--error-color, #db4437); }
-  .panel code { font-size: 11px; }
-  .panel .tabs button { padding: 10px 2px; font-size: 12.5px; }
-  .panel input:not([type]), .panel input[list] { font: inherit; padding: 5px 6px; border-radius: 6px;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.2)); background: var(--card-background-color, #fff);
-    color: var(--primary-text-color); min-width: 0; }
-  .panel .row label { flex: 1; }
-  .panel .lg { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
-  .panel .lg .fp-logo { width: 16px; height: 16px; object-fit: contain; }
-  .panel .entin { position: relative; display: block; }
-  .panel .entin .lg { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); pointer-events: none; }
-  .panel .entin > input { width: 100%; box-sizing: border-box; padding-left: 28px; }
-  .stage.picking-views { cursor: pointer; }
   .stage.fp-hover canvas, .stage.fp-marker-hover canvas { cursor: pointer; }
-  .editing .stage.fp-marker-hover canvas { cursor: grab; }
-  .panel details.advanced { margin: 12px 0 4px; }
-  .panel details.advanced summary { cursor: pointer; color: var(--secondary-text-color); font-size: 12px; }
-  .panel .floor-links { display: flex; flex-wrap: wrap; gap: 0 12px; }
-  .panel .floor-links label.check { margin: 3px 0; }
-  .panel ul.vtree li { display: flex; align-items: center; gap: 4px; padding: 1px 0 1px calc(var(--d, 0) * 14px);
-    border-radius: 4px; min-height: 26px; }
-  .panel ul.vtree li .name { font-size: 12.5px; }
-  .panel ul.vtree li.off .name, .panel ul.vtree li.off .state { opacity: .45; }
-  .panel ul.vtree li.lvl > .name { font-weight: 500; }
-  .panel ul.vtree li.picked { background: rgba(3,169,244,.12); }
-  .panel ul.vtree .state { --mdc-icon-size: 15px; color: var(--secondary-text-color); display: flex; }
-  .panel ul.vtree button.eye { padding: 2px 5px; display: flex; align-items: center; --mdc-icon-size: 16px; line-height: 1; }
-  .panel ul.vtree button.eye.shown { color: var(--primary-color); border-color: var(--primary-color); }
-  .panel ul.vtree button.eye.hidden { color: var(--error-color, #db4437); border-color: var(--error-color, #db4437); }
-  .panel ul.vtree button.eye.default { opacity: .7; }
-  .panel ul.otree { list-style: none; margin: 4px 0; padding: 0; }
-  .panel ul.otree li.room { display: flex; align-items: center; gap: 4px; padding: 2px 0 2px calc(var(--d, 0) * 14px); font-size: 12.5px; }
-  .panel ul.otree li.lvl { font-weight: 500; }
-  .panel ul.otree li.obj { padding: 4px 6px; margin: 2px 0 2px 28px; border-radius: 6px; border: 1px solid var(--divider-color); }
-  .panel ul.otree li.obj.sel { background: rgba(3,169,244,.12); border-color: var(--primary-color); }
-  .panel ul.otree li.obj.hid .name { opacity: .5; }
-  .panel ul.otree li.obj .orow { display: flex; align-items: center; gap: 6px; --mdc-icon-size: 16px; margin-bottom: 3px; }
-  .panel ul.otree li.obj .orow .name { flex: 1; font-size: 12.5px; }
-  .panel ul.otree li.obj .orow label.check { margin: 0; font-size: 12px; }
-  .panel ul.otree li.obj .oacts { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
-  .panel ul.otree li.obj .oacts label.act { display: flex; flex-direction: column; margin: 0; font-size: 11px; color: var(--secondary-text-color); flex: 1; min-width: 80px; }
-  .panel ul.otree li.obj .oacts select { font-size: 12px; }
-  .panel ul.otree li.obj > input[name=obj-act-field] { margin-top: 3px; }
-  .panel .otagbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 4px 0 6px; font-size: 12px; }
-  .panel .otagbar label { margin: 0; font-size: 12px; }
-  .panel .otagbar input.tagadd { width: 90px; }
-  .panel ul.otree li.obj .opick { margin: 0; }
-  .panel label.owash { display: flex; align-items: center; gap: 6px; margin: 3px 0 0; font-size: 12px; }
-  .panel label.owash select { font-size: 12px; }
-  .panel ul.otree li.obj .otags { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 3px; }
-  .panel ul.otree li.obj .otag { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; padding: 0 2px 0 6px; border-radius: 9px;
-    background: var(--secondary-background-color, rgba(127,127,127,.2)); color: var(--primary-text-color); }
-  .panel ul.otree li.obj .otag button { padding: 0 4px; font-size: 12px; line-height: 1; color: var(--secondary-text-color); }
-  .panel ul.otree li.obj .otags input.tagadd { width: 70px !important; font-size: 11px; padding: 1px 4px; }
-  .panel ul.otree li.obj > .badge.warn { display: block; margin-top: 3px; white-space: normal; }
-  .panel ul.otree li.obj input[type=text], .panel ul.otree li.obj input:not([type]) { width: 100%; box-sizing: border-box; }
-  .panel ul.otree .badge { font-size: 9.5px; padding: 0 4px; border-radius: 4px; background: var(--secondary-background-color, rgba(127,127,127,.2)); color: var(--secondary-text-color); }
-  .panel ul.otree .badge.warn { background: none; color: var(--error-color, #db4437); border: 1px solid currentColor; }
-  .panel ul.otree li.flash { animation: fp-flash 1.2s ease-out; }
-  .panel ul.vtree li.flash { animation: fp-flash 1.2s ease-out; }
-  .panel .chips.colors { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 6px; font-size: 12px; }
-  .panel .cchip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 2px 1px 4px; border-radius: 10px;
-    border: 1px solid var(--divider-color); font-variant-numeric: tabular-nums; }
-  .panel .cchip .swatch, .fp-picker .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--divider-color); }
-  .panel .cchip button.link { font-size: 14px; line-height: 1; padding: 0 4px; }
   .fp-picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: var(--card-background-color, #fff);
     color: var(--primary-text-color); }
   .fp-pk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--divider-color); font-size: 13px; }
@@ -275,23 +115,7 @@ export const STYLE: string = `
   .fp-pk-info { position: absolute; left: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 8px; font-size: 12px;
     background: var(--card-background-color, #fff); box-shadow: 0 1px 4px rgba(0,0,0,.3); pointer-events: none; font-variant-numeric: tabular-nums; }
   .fp-pk-info:empty { display: none; }
-  .panel .setup-flash { animation: fp-flash 1.5s ease-out; border-radius: 4px; }
-  .panel details.mower-setup { border: 1px solid var(--divider-color); border-radius: 8px; padding: 6px 8px; margin: 4px 0 8px; }
-  .panel details.mower-setup summary { cursor: pointer; font-weight: 500; }
-  .panel details.mower-setup.complete summary { color: var(--success-color, #43a047); }
-  .panel ul.setup { margin: 4px 0 0; }
-  .panel ul.setup li { padding: 1px 0; }
-  .panel ul.setup button.setup-row { color: var(--primary-text-color); text-align: left; font: inherit; cursor: pointer; }
-  .panel ul.setup .mark { display: inline-block; width: 1.2em; font-weight: 700; }
-  .panel ul.setup .ok .mark { color: var(--success-color, #43a047); }
-  .panel ul.setup .todo .mark { color: var(--error-color, #db4437); }
-  .panel ul.setup .opt .mark { color: var(--secondary-text-color); }
   @keyframes fp-flash { 0%, 40% { background: color-mix(in srgb, var(--primary-color, #03a9f4) 35%, transparent); } 100% { background: transparent; } }
-  .panel ul.vtree li.part .state { color: var(--primary-color); }
-  .panel ul.vtree button.expand { font-size: 12px; color: var(--secondary-text-color); padding: 0 4px; }
-  .panel ul.vtree .yaml { font-size: 9.5px; padding: 0 4px; border-radius: 4px; letter-spacing: .04em;
-    border: 1px solid var(--divider-color, rgba(0,0,0,.2)); color: var(--secondary-text-color); }
-  .panel ul.vtree li.gone .name { text-decoration: line-through; opacity: .6; }
   .fp-pickmenu { position: absolute; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 6px; min-width: 170px;
     box-sizing: border-box; border-radius: 8px; font-size: 12.5px; color: var(--primary-text-color);
     background: var(--card-background-color, #fff); border: 1px solid var(--divider-color, rgba(0,0,0,.12));

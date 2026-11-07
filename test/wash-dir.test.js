@@ -8,7 +8,6 @@ import {
   WASH_DIRS,
 } from "../src/objects/wash.ts";
 import { glowEmissiveScale, hintDefaults } from "../src/objects/types.ts";
-import { setObject, setTag } from "../src/editor.ts";
 
 describe("wash direction", () => {
   it("model beam: updown / both -> both, the others unchanged", () => {
@@ -98,21 +97,5 @@ describe("glowEmissiveScale", () => {
     expect(glowEmissiveScale(3)).toBe(0.25);
     expect(glowEmissiveScale(0)).toBe(1);
     expect(glowEmissiveScale(NaN)).toBe(1);
-  });
-});
-
-describe("editor: wash settings", () => {
-  it("layout.objects[id].wash and layout.tags[name].wash; default removes the key", () => {
-    let l = setObject({}, "f1", { wash: "both" });
-    expect(l.objects.f1).toEqual({ wash: "both" });
-    l = setObject(l, "f1", { wash: undefined });
-    expect(l.objects.f1).toBeUndefined();
-    l = setTag({ tags: { facade: { entity: "switch.f" } } }, "facade", {
-      wash: "up",
-    });
-    expect(l.tags.facade).toEqual({ entity: "switch.f", wash: "up" });
-    l = setTag(l, "facade", { wash: "" });
-    expect(l.tags.facade).toEqual({ entity: "switch.f" });
-    expect(setTag({}, "x", { wash: "bogus" }).tags.x).toBeUndefined();
   });
 });

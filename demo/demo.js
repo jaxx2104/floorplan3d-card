@@ -1,6 +1,7 @@
 // Demo page wiring: a stand-in <ha-icon> and HA's tile card, a mock hass shared by all cards on the page.
 import * as mdi from "@mdi/js";
 import { createMockHass, resetMockHass } from "./mock-hass.js";
+import { DEMO_LAYOUT } from "./layout.js";
 import { installMockActions } from "./mock-actions.js";
 import "./demo-tile.js"; // window.loadCardHelpers stand-in (the object popup's tile cards)
 
@@ -48,6 +49,7 @@ function boot(params) {
       height: params.get("height") || "460px",
       view: params.get("view") || c.dataset.view || "3d",
       floor: params.get("floor") || undefined,
+      layout: structuredClone(DEMO_LAYOUT), // the layout lives in the card YAML
       // ?model=1 loads the generated demo house, any other value is used as the model url
       ...(model
         ? {

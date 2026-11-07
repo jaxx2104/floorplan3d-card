@@ -81,14 +81,12 @@ export type Checks = [
   Expect<Equal<LayoutObject["entity"], string | null | undefined>>,
   Expect<Equal<LayoutObject["wash"], WashDir | undefined>>,
   // card config: the defaults are applied, the YAML type keeps every option optional
-  Expect<Equal<ResolvedCardConfig["layout_key"], string>>,
   Expect<Equal<ResolvedCardConfig["height"], string>>,
   Expect<Equal<ResolvedCardConfig["group_by"], "device" | "entity">>,
   Expect<Equal<ResolvedCardConfig["wall_height"], number>>,
   Expect<Equal<ResolvedCardConfig["view"], "3d" | "top">>,
   Expect<Equal<ResolvedCardConfig["render"], RenderCardOption | undefined>>,
   Expect<Equal<ResolvedCardConfig["model_rotation"], number | undefined>>,
-  Expect<IsOptional<CardConfig, "layout_key">>,
   Expect<Equal<CardConfig["type"], string>>,
   // the combinators themselves
   Expect<Equal<Infer<Schema<string>>, string>>,

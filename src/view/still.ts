@@ -24,7 +24,6 @@ export class StillTrace {
   /** the path tracer (null until the first idle moment under 'still'; freed when the tier changes) */
   session: PathTraceSession | null;
   /** edit mode is open (the card) */
-  editing: boolean;
   /** idle time (ms) before a trace starts */
   idleMs: number;
   /** a session runs (tracing or showing its image) */
@@ -46,7 +45,6 @@ export class StillTrace {
   constructor(view: FloorplanView) {
     this.view = view;
     this.session = null;
-    this.editing = false;
     this.idleMs = STILL_IDLE_MS;
     this.active = false;
     this.done = false;
@@ -84,16 +82,6 @@ export class StillTrace {
     this.dispose();
   }
 
-  // Edit mode opened / closed (the card): no trace while editing.
-  setEditing(on: boolean): void {
-    if (this.editing === !!on) return;
-    this.editing = !!on;
-    if (on && this.active) {
-      this.active = false;
-      this.view.dirty = true;
-    }
-  }
-
   // An animation frame with no frame due: start a session once idle long enough, else trace a tile of the running
   // one and draw it over the raster frame. A hold (off screen, edit mode, clipped) ends a running session: the
   // raster frame is drawn again so no traced image is left.
@@ -111,7 +99,6 @@ export class StillTrace {
       visible:
         typeof document === "undefined" ||
         document.visibilityState !== "hidden",
-      editing: this.editing,
       clipped: this._clipped(),
       idleFor: this.active ? Infinity : now - this._lastFrameAt,
       idleMs: this.idleMs,

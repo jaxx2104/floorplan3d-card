@@ -2,7 +2,6 @@
 // IndexedDB blob (HA over plain http on the LAN), keyed by the model URL + its version. Only the
 // response body is stored, under a plain URL: never request headers or tokens.
 import { idbGet, idbAll, idbPut, idbDelete } from "./idb.ts";
-import type { LayoutModel } from "./types/layout.ts";
 
 /** IndexedDB record of a cached model body. */
 interface ModelRecord {
@@ -20,14 +19,6 @@ export interface LruEntry {
 
 export const CACHE_NAME = "floorplan3d-models";
 export const IDB_MODEL_CAP = 50 * 1024 * 1024;
-
-// Uploaded model (layout.model): version + size + upload time, no request needed. -> string | null
-export function layoutModelVersion(
-  m: Pick<LayoutModel, "version" | "size" | "uploaded"> | null | undefined,
-): string | null {
-  if (!m || !m.version) return null;
-  return `${m.version}:${m.size ?? ""}:${m.uploaded ?? ""}`;
-}
 
 // URL model: from the HEAD response headers (ETag, else Last-Modified + length). -> string | null
 export function headerVersion(

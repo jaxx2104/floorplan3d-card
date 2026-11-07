@@ -180,14 +180,6 @@ describe("card state flow", () => {
     expect(t.count("states")).toBe(1);
   });
 
-  it("entering edit mode rebuilds the structure (model look)", async () => {
-    const t = await ready();
-    t.reset();
-    t.st.editing.value = true;
-    await tick();
-    expect(t.calls).toEqual(["structure", "markers", "states", "tail:rebuilt"]);
-  });
-
   it("views-only changes refresh the view list without a rebuild", async () => {
     const t = await ready();
     t.reset();

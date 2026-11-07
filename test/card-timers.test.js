@@ -66,7 +66,6 @@ describe("idle_reset", () => {
     const host = {
       isConnected: true,
       _config: config,
-      _editing: false,
       _sunTime: 600,
       _popup: { close: vi.fn() },
       _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
@@ -104,18 +103,14 @@ describe("idle_reset", () => {
     expect(host.setSunTime).toHaveBeenCalledWith(null);
     expect(v._resetCamera).toHaveBeenCalledTimes(1);
   });
-  it("is off without the option and waits while editing", () => {
+  it("is off without the option", () => {
     vi.useFakeTimers();
     const off = idle({}).v;
     off._armIdleReset();
     vi.advanceTimersByTime(3600000);
     expect(off._resetCamera).not.toHaveBeenCalled();
-    const { host, v } = idle({ idle_reset: 5 });
-    host._editing = true;
+    const { v } = idle({ idle_reset: 5 });
     v._armIdleReset();
-    vi.advanceTimersByTime(5000);
-    expect(v._resetCamera).not.toHaveBeenCalled();
-    host._editing = false;
     vi.advanceTimersByTime(5000);
     expect(v._resetCamera).toHaveBeenCalledTimes(1);
     v._armIdleReset();
@@ -133,7 +128,6 @@ describe("idle_orbit", () => {
       isConnected: true,
       _config: { idle_reset: 10, idle_orbit: 3 },
       _sunTime: null,
-      _editing: false,
       _popup: { close: vi.fn() },
       _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
     };

@@ -1,5 +1,5 @@
 // Visual editor for the card options (Lovelace "Show visual editor"), built on HA's ha-form.
-// Rooms, devices, mower and model are edited on the card itself (its Edit button).
+// Rooms, pins, hidden devices and the mower are the YAML's layout: (written by hand).
 
 import type { CardConfig } from "./types/config.ts";
 import type { Hass } from "./types/ha.ts";
@@ -23,7 +23,6 @@ interface HaForm extends HTMLElement {
 }
 
 const DEFAULTS: Record<string, unknown> = {
-  layout_key: "default",
   height: "520px",
   group_by: "device",
   wall_height: 1.0,
@@ -227,11 +226,10 @@ export const SCHEMA: FormSchema[] = [
     },
   },
   { name: "debug", selector: { boolean: {} } },
-  { name: "layout_key", selector: { text: {} } },
   {
     type: "expandable",
     name: "",
-    title: "Model from a URL (instead of uploading in the card)",
+    title: "Model",
     schema: [
       { name: "model", selector: { text: {} } },
       {
@@ -288,7 +286,6 @@ const LABELS: Record<string, string> = {
   render: "Render settings",
   render_quality: "Render quality",
   render_tone_mapping: "Tone mapping",
-  layout_key: "Layout name",
   model: "Model URL (.glb)",
   model_rotation: "Model rotation",
   model_scale: "Model scale",
@@ -326,10 +323,7 @@ const HELPERS: Record<string, string> = {
     "Auto renders high and steps down to standard (and back) by the measured frame times. Every quality has the same light; standard skips the bloom and bakes coarser light probes (for slow wall tablets); still is meant for desktop GPUs. Material rules (render.materials) are set in YAML.",
   render_tone_mapping:
     "Auto: AgX in every quality (the model's recipe sets the exposure)",
-  layout_key:
-    "Cards with the same name share one plan. Letters, digits, - and _.",
-  model:
-    "e.g. /local/house.glb. Leave empty to upload a model on the card (Edit → Model).",
+  model: "e.g. /local/house.glb (a file in config/www).",
 };
 
 // The card option render is a string (the recipe) or an object { recipe, quality, tone_mapping, materials }; the

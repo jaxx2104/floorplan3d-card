@@ -147,8 +147,6 @@ describe("marker instance state (markerDraw)", () => {
     faded: false,
     quiet: false,
     alert: false,
-    editing: false,
-    tool: null,
     hover: false,
   };
   it("view mode: full, a quarter where the model hides it, hidden ones take no tap", () => {
@@ -157,7 +155,6 @@ describe("marker instance state (markerDraw)", () => {
       hiddenAlpha: 0.25,
       scale: 1,
       pickable: true,
-      pickHidden: false,
     });
   });
   it("faded (other floors of All), hover", () => {
@@ -166,25 +163,10 @@ describe("marker instance state (markerDraw)", () => {
     expect(d.hiddenAlpha).toBe(0.25);
     expect(d.scale).toBe(1.12);
   });
-  it("night quiet hides markers but alerts, not in edit mode", () => {
+  it("night quiet hides markers but alerts", () => {
     expect(markerDraw({ ...base, quiet: true }).alpha).toBe(0);
     expect(markerDraw({ ...base, quiet: true }).pickable).toBe(false);
     expect(markerDraw({ ...base, quiet: true, alert: true }).alpha).toBe(1);
-    expect(markerDraw({ ...base, quiet: true, editing: true }).alpha).toBe(1);
-  });
-  it("edit mode: half where hidden, still tappable; tools dim and let clicks through", () => {
-    const e = { ...base, editing: true };
-    expect(markerDraw(e)).toMatchObject({ hiddenAlpha: 0.5, pickHidden: true });
-    expect(markerDraw({ ...e, tool: "draw" })).toMatchObject({
-      alpha: 0.4,
-      pickable: false,
-    });
-    expect(markerDraw({ ...e, tool: "pick" }).alpha).toBe(0.45);
-    expect(markerDraw({ ...e, tool: "move" })).toMatchObject({
-      alpha: 1,
-      pickable: false,
-    });
-    expect(markerDraw({ ...e, tool: "draw", hover: true }).scale).toBe(1);
   });
 });
 

@@ -26,7 +26,6 @@ describe("_pushStructure", () => {
       _view: { model, isModelSwapping: () => swap, setStructure },
       _config: { wall_height: 1 },
       _layout: {},
-      _editing: false,
       _stage: document.createElement("div"),
     };
     const v = new ViewController(host);

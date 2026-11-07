@@ -7,11 +7,11 @@
 //
 // Inputs: hass (the object HA pushes; its registries and states are split off by identity, so a push
 // that only changes states rebuilds nothing), config, layout (edits replace only the parts they touch),
-// the loaded model, editing, labels (fetched once where hass.labels is missing), rendered (the view
+// the loaded model, labels (fetched once where hass.labels is missing), rendered (the view
 // exists), reconnects and tick (an untracked change: something the card cannot see as a signal).
 //
 // Steps (the order of the old _update): theme -> views / structure -> object bindings -> markers ->
-// model load -> mower config -> states -> tail (objects, popup, edit panel). Reruns are deferred to a
+// model load -> mower config -> states -> tail (objects, popup). Reruns are deferred to a
 // microtask and coalesced (one flush per burst of writes), as the old _schedule did.
 
 import {
@@ -75,7 +75,6 @@ export class CardState<MB extends BindingsLike = BindingsLike> {
   hass = signal<Hass | null>(null);
   config = signal<ResolvedCardConfig | null>(null);
   layout = signal<Layout | null>(null);
-  editing = signal<boolean>(false);
   /** The loaded model (view.model), set when a load finished. */
   model = signal<unknown>(null);
   /** Label names fetched from the label registry where hass.labels is missing. */
@@ -197,7 +196,6 @@ export class CardState<MB extends BindingsLike = BindingsLike> {
         this.areas.value,
         this.mb.value && this.mb.value.manifest,
         this.modelKey.value,
-        this.editing.value, // the model look: outlines and labels only while editing
       ],
       sameItems,
     );
@@ -318,7 +316,6 @@ export class CardState<MB extends BindingsLike = BindingsLike> {
         this.layout,
         this.config,
         this.model,
-        this.editing,
         this.hassLabels,
         this.tick,
       );

@@ -258,11 +258,7 @@ export class ObjectInput {
       layer = this.card._objects;
     if (!hints || !layer) return;
     const mode = tapHintsMode(this.card._layout);
-    const on =
-      mode !== "off" &&
-      !!layer.model &&
-      !this.card._editing &&
-      !!this.card._hass;
+    const on = mode !== "off" && !!layer.model && !!this.card._hass;
     if (hints.setVisible(on)) this.card._view.markDirty();
     if (!on) return;
     const grp = this.card._dockGroup();
@@ -334,8 +330,6 @@ export class ObjectInput {
     if (
       p &&
       !p.buttons &&
-      !this.card._editing &&
-      this._objectTapsOn() &&
       !this._gesture &&
       p.target === this.card._view.renderer.domElement
     ) {
@@ -345,8 +339,7 @@ export class ObjectInput {
     if (id === this._hoverId) return;
     this._hoverId = id;
     const o = id && this.card._objects ? this.card._objects.objectAt(id) : null; // id: hit on the layer
-    if (!this.card._editing)
-      this.card._view.highlightModelNode(o ? o.obj.node : null);
+    this.card._view.highlightModelNode(o ? o.obj.node : null);
     this.card._stage.classList.toggle("fp-hover", !!o);
   }
 
@@ -465,11 +458,6 @@ export class ObjectInput {
     };
   }
 
-  // Object taps: view mode; in edit mode only on the Objects tab.
-  _objectTapsOn(): boolean {
-    return !this.card._editing || this.card._edit?.tab === "objects";
-  }
-
   // The nearest tappable object (visible, bound, not hidden, level shown) within radius px of a client point.
   _objectHit(x: number, y: number, radius: number, all = false): string | null {
     const layer = this.card._objects;
@@ -546,7 +534,7 @@ export class ObjectInput {
         e.stopPropagation();
       return;
     }
-    if (!this._objectTapsOn() || e.button !== 0 || !e.isPrimary) return;
+    if (e.button !== 0 || !e.isPrimary) return;
     if (
       (this.card._popup.el && path.includes(this.card._popup.el)) ||
       path.some((n) => n.classList && n.classList.contains("toolbar"))
@@ -556,7 +544,6 @@ export class ObjectInput {
       e.clientX,
       e.clientY,
       e.pointerType === "touch" ? OBJECT_HIT_PX.touch : OBJECT_HIT_PX.mouse,
-      this.card._editing,
     );
     if (!id) return; // markers and the model as before
     if (e.target !== canvas) e.stopPropagation(); // the object wins over a marker under the finger
@@ -567,9 +554,8 @@ export class ObjectInput {
       pointerId: e.pointerId,
       long: false,
     };
-    // edit mode (Objects tab): a tap selects the object's row; no hold action
     g.warn = this._hitWarning;
-    if (!this.card._editing && !g.warn) {
+    if (!g.warn) {
       g.timer = setTimeout(() => {
         g.long = true;
         g.timer = null;
@@ -595,7 +581,6 @@ export class ObjectInput {
             this.card._moreInfo(this.card._mowerStateEntity());
           else this._openObjectPopup(id);
         } // the warning always opens the mower popup
-        else if (this.card._editing) this.card._edit?.selectObject(id);
         else
           this.card._taps.tap(
             `object:${id}`,

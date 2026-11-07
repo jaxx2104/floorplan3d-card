@@ -6,27 +6,11 @@ import { defineDelegates } from "../src/card/delegates.ts";
 import { ActionRunner } from "../src/card/action-runner.ts";
 
 describe("setConfig", () => {
-  it("keeps the layout store of the same key (its backend), a new key gets a new one", () => {
+  it("the layout is the YAML's layout:, replaced with each config", () => {
     const c = document.createElement("floorplan3d-card-impl");
-    c.setConfig({ layout_key: "home" });
-    const store = c._store;
-    store.backend = "shared"; // as after the layout load
-    c.setConfig({ layout_key: "home", merge: false });
-    expect(c._store).toBe(store);
-    expect(c._store.writable).toBe(true);
-    c.setConfig({ layout_key: "other" });
-    expect(c._store).not.toBe(store);
-    expect(c._store.key).toBe("other");
-  });
-  it("a YAML layout is read instead of the store, and replaced with the config", async () => {
-    const c = document.createElement("floorplan3d-card-impl");
+    c.setConfig({});
+    expect(c._layout.hidden).toEqual([]);
     c.setConfig({ layout: { hidden: ["device:a"] } });
-    const callWS = vi.fn(async () => ({
-      layout: { hidden: ["device:stored"] },
-    }));
-    c._hass = { callWS };
-    await c._load();
-    expect(callWS).not.toHaveBeenCalled();
     expect(c._layout.hidden).toEqual(["device:a"]);
     c.setConfig({ layout: { hidden: ["device:b"] } });
     expect(c._layout.hidden).toEqual(["device:b"]);
@@ -77,7 +61,7 @@ describe("defineDelegates", () => {
 
 describe("Floorplan3dCard facade", () => {
   const card = () => document.createElement("floorplan3d-card-impl");
-  it("keeps the members edit mode and the headless checks use", () => {
+  it("keeps the members the headless checks use", () => {
     const c = card();
     for (const name of [
       "_refreshMower",
@@ -116,12 +100,10 @@ describe("Floorplan3dCard facade", () => {
       "_objectHit",
       "_runObjectAction",
       "_openObjectPopup",
-      "_objectTapsOn",
       "_syncHints",
       "objectLabel",
       "testObject",
       "setSunTime",
-      "_commit",
       "longTasks",
     ]) {
       expect(typeof c[name], name).toBe("function");

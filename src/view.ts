@@ -1128,11 +1128,6 @@ export class FloorplanView {
     if (on) this.dirty = true;
   }
 
-  // Edit mode opened / closed (the card): the 'still' tier traces only outside it.
-  setEditing(on: unknown): void {
-    this.still.setEditing(!!on);
-  }
-
   stop(): void {
     this.skyLayer.weather.frameAt = 0;
     if (this._raf) cancelAnimationFrame(this._raf);

@@ -1,5 +1,5 @@
 // The entry HA loads on every page stays small: no three.js, no card code, under ENTRY_MAX_BYTES
-// minified; the card and edit mode are chunks it imports on demand (scripts/lib/card-build.mjs).
+// minified; the card is a chunk it imports on demand (scripts/lib/card-build.mjs).
 import { describe, it, expect, beforeAll } from "bun:test";
 import { cardOptions, ENTRY_MAX_BYTES } from "../scripts/lib/card-build.mjs";
 
@@ -44,28 +44,20 @@ describe("entry size guard", () => {
       "src/floorplan3d-card.ts",
     ]);
   });
-  it("the card, edit mode and the visual editor are dynamic chunks", () => {
+  it("the card and the visual editor are dynamic chunks", () => {
     const impl = chunkOf("src/card-impl.ts"),
-      edit = chunkOf("src/edit-mode.ts"),
       editor = chunkOf("src/card-editor.ts");
-    for (const f of [impl, edit, editor])
+    for (const f of [impl, editor])
       expect(f, "chunk").toMatch(/^dist\/chunks\/[\w-]+-[a-z0-9]+\.js$/);
     const dyn = outputs[ENTRY].imports
       .filter((i) => i.kind === "dynamic-import")
       .map((i) => i.path)
       .sort();
     expect(dyn).toEqual([impl, editor].sort());
-    // three loads with the card; edit mode only on the first Edit
+    // three loads with the card
     expect(
       inputsOf(staticClosure(impl)).some((k) =>
         k.includes("node_modules/three/"),
-      ),
-    ).toBe(true);
-    expect(staticClosure(impl).has(edit)).toBe(false);
-    expect(inputsOf(staticClosure(impl))).not.toContain("src/edit-mode.ts");
-    expect(
-      outputs[impl].imports.some(
-        (i) => i.kind === "dynamic-import" && i.path === edit,
       ),
     ).toBe(true);
   });
@@ -96,20 +88,6 @@ describe("entry size guard", () => {
     expect(
       outputs[impl].imports.some(
         (i) => i.kind === "dynamic-import" && i.path === tracer,
-      ),
-    ).toBe(true);
-  });
-  it("lit (the edit panel) is in the edit chunk only", () => {
-    const isLit = (k) =>
-      /node_modules\/(lit|lit-html|lit-element|@lit\/[^/]+)\//.test(k);
-    const edit = chunkOf("src/edit-mode.ts");
-    const withLit = Object.keys(outputs).filter((f) =>
-      Object.keys(outputs[f].inputs).some(isLit),
-    );
-    expect(withLit).toEqual([edit]);
-    expect(
-      Object.keys(outputs[edit].inputs).some((k) =>
-        k.includes("node_modules/lit-html/"),
       ),
     ).toBe(true);
   });

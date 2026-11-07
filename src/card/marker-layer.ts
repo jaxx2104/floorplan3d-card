@@ -433,10 +433,6 @@ export class MarkerLayer {
     const m = this._markerAt(e.clientX, e.clientY);
     if (!m) return;
     e.stopPropagation(); // the marker takes the pointer: no orbit, no click on the plan
-    if (this.card._editing) {
-      this.card._edit?.markerDown(m, e);
-      return;
-    }
     if (e.button !== 0) return;
     const g: MarkerGesture = {
       id: m.id,
@@ -517,25 +513,14 @@ export class MarkerLayer {
     this._syncMarkerMode();
   }
 
-  // The markers' common draw state: night quiet, edit mode and its tools (the stage classes), the hovered one.
+  // The markers' common draw state: night quiet (the stage classes), the hovered one.
   _syncMarkerMode(): void {
     const v = this.card._view,
       st = this.card._stage;
     if (!v || !st) return;
     const c = st.classList;
-    const editing = !!this.card._editing;
     v.setMarkerMode({
       quiet: c.contains("night-quiet") && !c.contains("awake"),
-      editing,
-      tool: !editing
-        ? null
-        : c.contains("drawing")
-          ? "draw"
-          : c.contains("picking")
-            ? "pick"
-            : c.contains("moving")
-              ? "move"
-              : null,
       hover: this._hoverId || null,
     });
   }

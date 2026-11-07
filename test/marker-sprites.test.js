@@ -181,10 +181,6 @@ describe("picking markers", () => {
     expect(layer._markerAt(110, 100).id).toBe("device:b"); // overlap: the nearer one
     expect(layer._markerAt(160, 100)).toBeNull();
     expect(view.markersAt(110, 100)).toEqual(["device:b", "device:a"]);
-    // a tool that lets clicks through (edit mode, drawing a room)
-    view.sprites.setMarkerMode({ editing: true, tool: "draw" });
-    expect(layer._markerAt(100, 100)).toBeNull();
-    view.sprites.setMarkerMode({ editing: false, tool: null });
     // view mode: one the model hides takes no tap, the one under it does
     view.occlusion = {
       active: () => true,

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "bun:test";
 import {
-  layoutModelVersion,
   headerVersion,
   cacheUrl,
   cacheBase,
@@ -13,18 +12,6 @@ import {
 } from "../src/model-cache.ts";
 
 describe("model cache versions", () => {
-  it("versions an uploaded model by its version, size and upload time", () => {
-    expect(
-      layoutModelVersion({
-        version: "abc",
-        size: 100,
-        uploaded: "2026-01-01T00:00:00Z",
-      }),
-    ).toBe("abc:100:2026-01-01T00:00:00Z");
-    expect(layoutModelVersion({ version: "abc" })).toBe("abc::");
-    expect(layoutModelVersion({ size: 100 })).toBe(null);
-    expect(layoutModelVersion(null)).toBe(null);
-  });
   it("versions a URL model by ETag, else Last-Modified (with the length)", () => {
     const h = (o) => ({ get: (k) => o[k.toLowerCase()] ?? null });
     expect(headerVersion(h({ etag: '"x1"', "content-length": "10" }))).toBe(

@@ -66,7 +66,7 @@ export function stillBudget(test: boolean): StillBudget {
 
 /** Why no trace runs now (null: one may). */
 export type StillHold =
-  "tier" | "model" | "offscreen" | "hidden" | "edit" | "clip" | "idle" | null;
+  "tier" | "model" | "offscreen" | "hidden" | "clip" | "idle" | null;
 
 /** Inputs of the start decision. */
 export interface StillState {
@@ -78,8 +78,6 @@ export interface StillState {
   onScreen: boolean;
   /** the page is visible */
   visible: boolean;
-  /** edit mode is open */
-  editing: boolean;
   /** a cut-away plane or the side section clips the model (the path tracer cannot clip) */
   clipped: boolean;
   /** ms since the last frame was drawn */
@@ -93,7 +91,6 @@ export function stillHold(s: StillState): StillHold {
   if (!s.model) return "model";
   if (!s.onScreen) return "offscreen";
   if (!s.visible) return "hidden";
-  if (s.editing) return "edit";
   if (s.clipped) return "clip";
   if (!(s.idleFor >= (s.idleMs ?? STILL_IDLE_MS))) return "idle";
   return null;

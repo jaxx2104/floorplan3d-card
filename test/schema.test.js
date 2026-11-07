@@ -130,7 +130,6 @@ describe("card config (YAML)", () => {
     expect(parseCardConfig({ type: "custom:floorplan3d-card" })).toEqual({
       value: {
         type: "custom:floorplan3d-card",
-        layout_key: "default",
         height: DEFAULT_HEIGHT,
         group_by: "device",
         wall_height: 1,
@@ -143,14 +142,12 @@ describe("card config (YAML)", () => {
   it("reads YAML numbers and strings the way they were meant", () => {
     const c = parseCardConfig({
       type: "t",
-      layout_key: 2,
       height: 400,
       wall_height: "1.5",
       model_position: ["1", 0, 2],
       idle_orbit: "3",
     }).value;
     expect(c).toMatchObject({
-      layout_key: "2",
       height: "400px",
       wall_height: 1.5,
       model_position: [1, 0, 2],
@@ -219,7 +216,7 @@ describe("card config (YAML)", () => {
 
   it("never throws", () => {
     for (const bad of [null, undefined, "x", 3, []])
-      expect(parseCardConfig(bad).value.layout_key).toBe("default");
+      expect(parseCardConfig(bad).value.height).toBe(DEFAULT_HEIGHT);
   });
 
   it("logs each problem once", () => {

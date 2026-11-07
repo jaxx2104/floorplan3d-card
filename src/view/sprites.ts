@@ -4,15 +4,13 @@
 import * as THREE from "three";
 import { BillboardLayer, type Billboard } from "./billboards.ts";
 import { IconResolver } from "./icons.ts";
-import { markerDraw, type MarkerDrawState } from "../marker-sprite.ts";
+import { markerDraw } from "../marker-sprite.ts";
 import { pickAt, type PickItem, type SpriteSpec } from "../sprite-atlas.ts";
 import type { FloorplanView } from "../view.ts";
 
-/** What the card says about all markers: night quiet, edit mode, the edit tool, the hovered marker. */
+/** What the card says about all markers: night quiet, the hovered marker. */
 export interface MarkerMode {
   quiet: boolean;
-  editing: boolean;
-  tool: MarkerDrawState["tool"];
   hover: string | null;
 }
 
@@ -33,7 +31,7 @@ export class ViewSprites {
     };
     this.icons.onChange = dirty;
     this.layer.onChange = dirty;
-    this.mode = { quiet: false, editing: false, tool: null, hover: null };
+    this.mode = { quiet: false, hover: null };
   }
 
   /** Theme / CSS changed: every sprite painted again. */
@@ -60,20 +58,9 @@ export class ViewSprites {
   setMarkerMode(mode: Partial<MarkerMode>): void {
     const m = { ...this.mode, ...mode };
     const was = this.mode;
-    if (
-      m.quiet === was.quiet &&
-      m.editing === was.editing &&
-      m.tool === was.tool &&
-      m.hover === was.hover
-    )
-      return;
+    if (m.quiet === was.quiet && m.hover === was.hover) return;
     this.mode = m;
-    if (
-      m.quiet !== was.quiet ||
-      m.editing !== was.editing ||
-      m.tool !== was.tool
-    )
-      this.applyMarkerDraw();
+    if (m.quiet !== was.quiet) this.applyMarkerDraw();
     else {
       if (was.hover) this.applyMarkerDraw(was.hover);
       if (m.hover) this.applyMarkerDraw(m.hover);
@@ -91,8 +78,6 @@ export class ViewSprites {
         faded: !!e.faded,
         quiet: this.mode.quiet,
         alert: !!e.alert,
-        editing: this.mode.editing,
-        tool: this.mode.tool,
         hover: this.mode.hover === mid,
       });
       const b = e.obj;
@@ -106,7 +91,6 @@ export class ViewSprites {
       b.hiddenAlpha = d.hiddenAlpha;
       b.spriteScale = d.scale;
       e.pickable = d.pickable;
-      e.pickHidden = d.pickHidden;
     }
   }
 
@@ -143,7 +127,7 @@ export class ViewSprites {
     const occ = v.occlusion.active();
     return pickAt(items, x, y).filter((id) => {
       const e = v.markerObjects.get(id)!;
-      if (!occ || e.pickHidden) return true;
+      if (!occ) return true;
       e.obj.updateWorldMatrix(true, false);
       return !v.occlusion.pointHidden(
         e.obj.getWorldPosition(new THREE.Vector3()),

@@ -19,7 +19,6 @@ const base = {
   model: true,
   onScreen: true,
   visible: true,
-  editing: false,
   clipped: false,
   idleFor: STILL_IDLE_MS,
 };
@@ -41,21 +40,18 @@ describe("still: idle path tracing rules", () => {
     expect(t.fadeTo).toBe(t.samples); // fully faded in at the last test sample
     expect(t.ms).toBe(Infinity); // ends on the sample count only: a slow runner cannot end it by time
   });
-  it("starts only in the still tier, with a model, on screen, outside edit mode, unclipped, after the idle time", () => {
+  it("starts only in the still tier, with a model, on screen, unclipped, after the idle time", () => {
     expect(stillHold(base)).toBe(null);
     expect(stillHold({ ...base, tier: false })).toBe("tier");
     expect(stillHold({ ...base, model: false })).toBe("model");
     expect(stillHold({ ...base, onScreen: false })).toBe("offscreen");
     expect(stillHold({ ...base, visible: false })).toBe("hidden");
-    expect(stillHold({ ...base, editing: true })).toBe("edit");
     expect(stillHold({ ...base, clipped: true })).toBe("clip");
     expect(stillHold({ ...base, idleFor: STILL_IDLE_MS - 1 })).toBe("idle");
     expect(stillHold({ ...base, idleFor: 500, idleMs: 400 })).toBe(null);
     expect(stillHold({ ...base, idleFor: NaN })).toBe("idle");
     // the tier comes first: standard / high never get further
-    expect(
-      stillHold({ ...base, tier: false, onScreen: false, editing: true }),
-    ).toBe("tier");
+    expect(stillHold({ ...base, tier: false, onScreen: false })).toBe("tier");
   });
   it("shows nothing before the fade threshold, then fades in to full", () => {
     const b = stillBudget(false);

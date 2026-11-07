@@ -2,12 +2,7 @@
 // its bytes through the local cache, the merge keep-list from the view rules, the alignment and the
 // level / room bindings resolved against HA. What happens once it is there is the card's (_afterModel).
 
-import {
-  headerVersion,
-  layoutModelVersion,
-  evictModel,
-  loadModelBuffer,
-} from "../model-cache.ts";
+import { headerVersion, evictModel, loadModelBuffer } from "../model-cache.ts";
 import { nodeIndex, unmatchedSelectors } from "../views.ts";
 import { threeAdapter } from "../manifest.ts";
 import {
@@ -28,8 +23,6 @@ declare global {
     __fpModelTimeoutMs?: number;
   }
 }
-
-const MODEL_API = "/api/floorplan3d/model";
 
 type FetchFn = (init?: { signal?: AbortSignal }) => Promise<Response>;
 
@@ -76,7 +69,7 @@ export class ModelLoader {
     this._modelEvicted = undefined; // headless checks
   }
 
-  // model: from YAML (model: url) if set, else the one uploaded to the integration (layout.model)
+  // model: the YAML's model: url
   _loadModel(reload = false): void {
     const c = this.card._config;
     let opts: ModelOptions | null = null;
@@ -110,31 +103,6 @@ export class ModelLoader {
         scale: c.model_scale || 1,
         opacity: c.model_opacity ?? 1,
       };
-    } else {
-      const m = this.card._layout && this.card._layout.model;
-      if (m && m.version && this.card._hass && this.card._hass.fetchWithAuth) {
-        const base = `${MODEL_API}/${encodeURIComponent(c.layout_key)}`;
-        const url = `${base}?v=${m.version}`;
-        opts = {
-          id: m.version,
-          name: m.name,
-          // cached locally by version (only the body, keyed by the plain URL: no auth headers stored)
-          data: () => {
-            const src: ModelSource = (this._modelSrc = {
-              base: new URL(base, location.href).href,
-              version: layoutModelVersion(m),
-              fetchFn: ({ signal } = {}) =>
-                this.card._hass.fetchWithAuth(url, { signal }),
-            });
-            return this._modelBytes(src.base, src.version, src.fetchFn);
-          },
-          dataFresh: () => this._modelFresh(),
-          position: m.position || [0, 0, 0],
-          rotation: m.rotation || 0,
-          scale: m.scale || 1,
-          opacity: m.opacity ?? 1,
-        };
-      }
     }
     if (opts) {
       opts.merge = c.merge !== false;
@@ -214,7 +182,6 @@ export class ModelLoader {
       if (!this.card._floorOnly) this.card._applyViewVisibility();
       this.card._applyMarkerStates();
     }
-    if (this.card._editing) this.card._edit?.render();
     this.card._scheduleSurfaces();
     this.card._schedule();
   }
