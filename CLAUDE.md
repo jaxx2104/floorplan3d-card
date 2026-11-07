@@ -78,7 +78,7 @@ auto-sync from HA floors (`hass.floors`, elevation = level * 3); a room's floor 
 
 ## Behaviour
 
-- View chips (the model's views, linked to HA floors), 3D / Top view toggle, day / night, sun time.
+- View chips (the model's views, linked to HA floors), 3D / Top view toggle, Reset view, day / night.
 - Marker tap: toggle for light/switch/fan/input_boolean, otherwise more-info.
   Long-press (500 ms): more-info (`hass-more-info` event, bubbles + composed).
 - Model objects (lamps, mower, dock) bound to entities: real lights, tap actions, popup.

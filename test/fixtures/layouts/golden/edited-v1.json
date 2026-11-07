@@ -6,7 +6,8 @@
     "mower.image",
     "mower.static_entity",
     "mower.picture_entity",
-    "views.view_2.zoom_to"
+    "views.view_2.zoom_to",
+    "views.view_2.section"
   ],
   "value": {
     "version": 1,

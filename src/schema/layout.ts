@@ -164,7 +164,7 @@ export const viewRuleSchema = object({
   keep_objects: opt(boolean()),
 });
 
-/** layout.views[id]: overrides of one view; cameras and sections are validated by views.ts. */
+/** layout.views[id]: overrides of one view; cameras are validated by views.ts. */
 export const viewSchema = object({
   label: opt(string()),
   added: opt(boolean()),
@@ -172,7 +172,6 @@ export const viewSchema = object({
   rules: opt(array(viewRuleSchema)),
   camera: opt(unknownValue()),
   camera_top: opt(unknownValue()),
-  section: opt(unknownValue()),
   floors: opt(array(string())),
   cut: opt(nullable(boolean())),
 });

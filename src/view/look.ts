@@ -140,7 +140,7 @@ export class RenderLook {
     this._houseBox = null; // the sun's shadow box before the margin (the sky keep-out without room polygons)
     this._modelBottom = null; // rain / snow fall down to here
     this._shadowBox = null; // { centre, radius } of the sun's shadow camera
-    this._sunStale = false; // the sun's map was skipped while it was down (or the scrubber moved)
+    this._sunStale = false; // the sun's map was skipped while it was down
   }
 
   // Card option render: 'model' | 'default' (the recipe: the model's fp.render or none), or { recipe, quality,
@@ -267,12 +267,7 @@ export class RenderLook {
   // night 0..1 and the unit vector toward the sun (world) or null (fixed bearing from fp.north).
   // With a model only the light values change; shadows are re-rendered when the sun moved > 1 degree
   // or night entered / left 1 (sun.castShadow stays true, so no shader recompile).
-  // shadow: false (time scrubber dragging): lights move now, the sun's shadow map is redrawn at the next
-  // setSky with shadow true (the scrubber settled).
-  setSky(
-    { night = 0, sunDir = null, sun = 1 }: Partial<SkyState> = {},
-    { shadow = true }: { shadow?: boolean } = {},
-  ): void {
+  setSky({ night = 0, sunDir = null, sun = 1 }: Partial<SkyState> = {}): void {
     const old = this.sky;
     this.sky = { night, sunDir, sun };
     this.daylight = night < 0.5;
@@ -290,8 +285,8 @@ export class RenderLook {
           Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])),
         ) >
         Math.PI / 180;
-    if (moved) this._fitShadow({ redraw: shadow });
-    else if (this._sunStale && shadow) this._sunShadow(); // the sun came up: its map was skipped while it was down
+    if (moved) this._fitShadow();
+    else if (this._sunStale) this._sunShadow(); // the sun came up: its map was skipped while it was down
     this.view.dirty = true;
   }
 
@@ -682,7 +677,7 @@ export class RenderLook {
 
   // Fit the sun's shadow camera to the house: storey / basement / roof levels (untagged: meshes up
   // to 30 m across) + 4 m, not the whole plot, so the 2048² map stays sharp. Sun azimuth from fp.north.
-  _fitShadow({ redraw = true }: { redraw?: boolean } = {}): void {
+  _fitShadow(): void {
     const model = this.view.model;
     if (!model) return;
     const sun = this.view.sun;
@@ -735,13 +730,12 @@ export class RenderLook {
     cam.far = radius * 5;
     cam.updateProjectionMatrix();
     sun.target.updateMatrixWorld();
-    if (redraw) this._sunShadow();
-    else this._sunStale = true; // redrawn once the time scrubber settles
+    this._sunShadow();
     this.view.stats.shadow++;
     this.view.dirty = true;
   }
 
-  // The shadow casters changed (model, visibility, cut, section): the sun's map (while it is up) and
+  // The shadow casters changed (model, visibility, cut): the sun's map (while it is up) and
   // every lit pool shadow map. Dark lights are redrawn when they light up.
   _shadowDirty(): void {
     if (this._contact) this._contact.stale = true; // rebuilt before the next frame (view loop)

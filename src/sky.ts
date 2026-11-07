@@ -1,4 +1,4 @@
-// Sun / moon in the sky: sun position, moon position and phase (low precision, the suncalc formulas:
+// Moon in the sky: moon position and phase (low precision, the suncalc formulas:
 // https://github.com/mourner/suncalc, after "Astronomy Answers" by Aa. Kirsch), moonlight strength.
 
 const RAD = Math.PI / 180;
@@ -27,10 +27,6 @@ export interface MoonPosition {
   elevation: number;
   phase: number;
   illumination: number;
-}
-export interface SunPosition {
-  azimuth: number;
-  elevation: number;
 }
 
 // Atmospheric refraction (rad) for an altitude h (rad), clamped at the horizon.
@@ -113,132 +109,6 @@ export function moonPosition(
     illumination: (1 + Math.cos(inc)) / 2,
   };
 }
-
-// Sun position (suncalc formulas): date Date or ms, lat / lon degrees -> { azimuth (deg from north,
-// clockwise, 0..360), elevation (deg, geometric: no refraction, so it stays smooth across the horizon) }
-// or null without a valid time / location.
-export function sunPosition(
-  date: Date | number,
-  latDeg: number,
-  lonDeg: number,
-): SunPosition | null {
-  const ms = date instanceof Date ? date.getTime() : Number(date);
-  if (
-    !Number.isFinite(ms) ||
-    !Number.isFinite(latDeg) ||
-    !Number.isFinite(lonDeg)
-  )
-    return null;
-  const d = toDays(ms),
-    phi = RAD * latDeg,
-    lw = RAD * -lonDeg;
-  const c = sunCoords(d);
-  const H = siderealTime(d, lw) - c.ra;
-  const h = Math.asin(
-    Math.sin(phi) * Math.sin(c.dec) +
-      Math.cos(phi) * Math.cos(c.dec) * Math.cos(H),
-  );
-  const azSouth = Math.atan2(
-    Math.sin(H),
-    Math.cos(H) * Math.sin(phi) - Math.tan(c.dec) * Math.cos(phi),
-  );
-  return {
-    azimuth: (((azSouth / RAD + 180) % 360) + 360) % 360,
-    elevation: h / RAD,
-  };
-}
-
-// Time scrubber (session only): minutes 0..1440 in 15 min steps on today's local date.
-// Today and the minutes are in HA's time zone (hass.config.time_zone), else the browser's.
-export const SCRUB_STEP_MIN = 15;
-export const SCRUB_IDLE_MS = 120000; // back to live after 2 minutes without slider input
-export const snapMinutes = (m: unknown): number =>
-  Math.min(
-    1440,
-    Math.max(0, Math.round((Number(m) || 0) / SCRUB_STEP_MIN) * SCRUB_STEP_MIN),
-  );
-
-interface WallClock {
-  y: number;
-  mo: number;
-  d: number;
-  h: number;
-  mi: number;
-  s: number;
-}
-const fmts = new Map<string, Intl.DateTimeFormat | null>();
-// wall-clock parts of ms in time zone tz -> { y, mo (0-based), d, h, mi, s } or null (unknown zone)
-function tzParts(ms: number, tz: string | null | undefined): WallClock | null {
-  if (!tz) return null;
-  let f = fmts.get(tz);
-  if (f === undefined) {
-    try {
-      f = new Intl.DateTimeFormat("en-US", {
-        timeZone: tz,
-        hourCycle: "h23",
-        year: "numeric",
-        month: "numeric",
-        day: "numeric",
-        hour: "numeric",
-        minute: "numeric",
-        second: "numeric",
-      });
-    } catch {
-      f = null;
-    }
-    fmts.set(tz, f);
-  }
-  if (!f) return null;
-  const p = Object.fromEntries(
-    f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]),
-  );
-  return {
-    y: +p.year,
-    mo: +p.month - 1,
-    d: +p.day,
-    h: +p.hour % 24,
-    mi: +p.minute,
-    s: +p.second,
-  };
-}
-// zone offset (ms) at ms: wall clock as UTC - real UTC
-// (only called with a zone tzParts knows: sliderDate checked it)
-const tzOffset = (ms: number, tz: string | null): number => {
-  const p = tzParts(ms, tz)!;
-  return (
-    Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000
-  );
-};
-
-// Minutes since midnight of ms in the zone (browser's without a valid tz).
-export function tzMinutes(ms: number, tz: string | null | undefined): number {
-  const p = tzParts(ms, tz);
-  if (p) return p.h * 60 + p.mi;
-  const d = new Date(ms);
-  return d.getHours() * 60 + d.getMinutes();
-}
-
-// Today (in tz) at minutes since its midnight -> Date.
-export function sliderDate(
-  now: Date | number,
-  minutes: number,
-  tz: string | null = null,
-): Date {
-  const ms = now instanceof Date ? now.getTime() : Number(now);
-  const p = tzParts(ms, tz);
-  if (!p) {
-    const d = new Date(ms);
-    d.setHours(0, 0, 0, 0);
-    d.setMinutes(minutes);
-    return d;
-  }
-  const wall = Date.UTC(p.y, p.mo, p.d, 0, minutes);
-  let t = wall - tzOffset(wall, tz);
-  t = wall - tzOffset(t, tz); // the offset at the result (DST change days)
-  return new Date(t);
-}
-export const hhmm = (m: number): string =>
-  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 // Moonlight intensity: night (0..1) > 0.5 and the moon above the horizon (dir[1] > 0, world up).
 export function moonLight(

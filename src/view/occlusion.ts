@@ -81,7 +81,7 @@ export class MarkerOcclusion {
       }
       const h = rc
         .intersectObject(mesh, false)
-        .find((x) => x.point.y <= cut + 1e-6 && !this.view._cutAway(x.point));
+        .find((x) => x.point.y <= cut + 1e-6);
       if (h && isOccluded(h.distance, dist)) return true;
     }
     return false;

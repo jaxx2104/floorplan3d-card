@@ -120,11 +120,6 @@ const VIEW_METHODS = [
   "_setFloor",
   "_setMode",
   "_armIdleReset",
-  "_dropSection",
-  "sectionPlaneNow",
-  "leaveSection",
-  "setSection",
-  "previewSection",
   "saveViewPatch",
 ] as const satisfies readonly (keyof ViewController)[];
 const VIEW_FIELDS = [
@@ -137,7 +132,6 @@ const VIEW_FIELDS = [
   "_modelRooms",
   "_outlineModel",
   "_roomList",
-  "_section",
   "_viewId",
   "_viewState",
   "_views",
@@ -192,8 +186,6 @@ const OBJECT_FIELDS = [
   "_groups",
 ] as const satisfies readonly (keyof ObjectInput)[];
 const SKY_METHODS = [
-  "setSunTime",
-  "_paintSunBtn",
   "_paintDayBtn",
   "_applySky",
   "_applyWeather",
@@ -202,7 +194,6 @@ const SKY_METHODS = [
 ] as const satisfies readonly (keyof SkyController)[];
 const SKY_FIELDS = [
   "_skyMode",
-  "_sunTime",
   "_sunNow",
   "_dayBtn",
 ] as const satisfies readonly (keyof SkyController)[];
@@ -259,7 +250,6 @@ export class Floorplan3dCard extends HTMLElement {
   declare _chips: HTMLDivElement;
   declare _empty: HTMLDivElement;
   declare _notice: HTMLDivElement;
-  declare _sectionBtn: HTMLButtonElement;
   declare _loadUI: ModelLoadUI;
   declare _popup: ObjectPopup;
   declare _hints: TapHints;
@@ -530,7 +520,7 @@ export class Floorplan3dCard extends HTMLElement {
       this._io.disconnect();
       this._io = null;
     }
-    this._skyCtl.dispose(); // wake, moon, scrubber timers, visibility listener
+    this._skyCtl.dispose(); // wake and moon timers
     this._mowerCtl.dispose(); // stuck timer, warning pulse
     if (this._debug) {
       this._debug.dispose();
@@ -553,11 +543,8 @@ export class Floorplan3dCard extends HTMLElement {
               <div class="chips"></div>
               <div class="seg"><button data-mode="3d">3D</button><button data-mode="top">Top</button></div>
               <button class="reset" title="Reset view"><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>
-              <button class="section" hidden title="Side section"><ha-icon icon="mdi:box-cutter"></ha-icon></button>
               <button class="daynight" hidden title="Day / night: auto"><ha-icon icon="mdi:theme-light-dark"></ha-icon></button>
-              <button class="suntime" hidden title="Sun time (today)"><ha-icon icon="mdi:clock-outline"></ha-icon><span class="t"></span></button>
             </div>
-            <div class="fp-suntime" hidden><input type="range" min="0" max="1440" step="15" aria-label="Sun time"><span class="time"></span><button class="now">Now</button></div>
             <div class="empty" hidden></div>
             <div class="notice" hidden></div>
           </div>
@@ -585,11 +572,7 @@ export class Floorplan3dCard extends HTMLElement {
     q<HTMLButtonElement>("button.reset").addEventListener("click", () =>
       this._resetCamera(),
     );
-    this._sectionBtn = q<HTMLButtonElement>("button.section");
-    this._sectionBtn.addEventListener("click", () =>
-      this.setSection(!this._section),
-    );
-    this._skyCtl.wire(root); // Day / night button, sun time scrubber
+    this._skyCtl.wire(root); // Day / night button
     this._view = new FloorplanView(this._stage);
     this._loadUI = new ModelLoadUI({
       stage: this._stage,
@@ -646,7 +629,6 @@ export class Floorplan3dCard extends HTMLElement {
   ): void {
     if ((fresh || err || !opts) && gen === (this._loadGen || 0))
       this._loadUI.done(!!this._view.model && !err, err || "");
-    if (this._view.model !== prevModel && this._section) this._dropSection();
     if (this._view.model !== prevModel) {
       this._endGesture();
       this._popup.close();
@@ -722,18 +704,7 @@ export class Floorplan3dCard extends HTMLElement {
     ))
       btn.classList.toggle("on", btn.dataset.mode === this._mode);
     this._dayBtn!.hidden = !(this._view && this._view.model); // wired by _render first
-    if (this._section && (!this._mb || !this._index || !hasModel))
-      this._dropSection();
-    if (this._sectionBtn) {
-      this._sectionBtn.hidden = !(
-        this._view &&
-        this._view.model &&
-        this._mode === "3d"
-      );
-      this._sectionBtn.classList.toggle("on", !!this._section);
-    }
     this._paintDayBtn();
-    this._paintSunBtn();
   }
 }
 

@@ -379,8 +379,7 @@ export class IndirectLight {
     ];
     const levels = [...new Set(nodes)].filter((n) => !n.visible);
     for (const n of levels) n.visible = true;
-    const clip = r.clippingPlanes,
-      auto = r.autoClear,
+    const auto = r.autoClear,
       shadow = r.shadowMap.needsUpdate,
       cut = v.modelClip.constant;
     const clear = r.getClearColor(new THREE.Color()),
@@ -389,7 +388,6 @@ export class IndirectLight {
       bgI = s.backgroundIntensity,
       bgB = s.backgroundBlurriness;
     const shadowMap = r.shadowMap;
-    r.clippingPlanes = [];
     r.autoClear = true;
     r.setClearColor(0x000000, 1);
     v.modelClip.constant = 1e6;
@@ -413,7 +411,6 @@ export class IndirectLight {
       });
       for (const c of hidden) c.visible = true;
       for (const n of levels) n.visible = false;
-      r.clippingPlanes = clip;
       r.autoClear = auto;
       r.setClearColor(clear, alpha);
       v.modelClip.constant = cut;

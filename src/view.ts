@@ -14,8 +14,6 @@ import { levelVisible, type LevelAssign } from "./bindings.ts";
 import { DepthPrepass } from "./depth-pass.ts";
 import {
   testMode,
-  isMesh,
-  meshMaterials,
   type CssEntry,
   type Drawable,
   type MarkerEntry,
@@ -41,7 +39,7 @@ import { isBillboard } from "./view/billboards.ts";
 import type { SpriteSpec } from "./sprite-atlas.ts";
 import { AutoQualityView } from "./view/auto-quality.ts";
 import type { ObjectLayer } from "./objects/layer.ts";
-import type { Floor, Vec3 } from "./types/layout.ts";
+import type { Floor } from "./types/layout.ts";
 
 export { planToWorld, testMode, frameInterval } from "./view/core.ts";
 export { fallbackOutline, mergeStaticMeshes } from "./view/model.ts";
@@ -115,7 +113,6 @@ export class FloorplanView {
   modelLevels: Record<string, LevelAssign> | null;
   _modelVisibility: ModelVisibility | null;
   modelClip: THREE.Plane;
-  sectionClip: THREE.Plane | null;
   raycaster: THREE.Raycaster;
   mowerMarkerId: string | null;
   mowerOnFloor: boolean;
@@ -198,7 +195,6 @@ export class FloorplanView {
     this.modelLevels = null; // level id -> { show, floor } from the card's bindings
     this._modelVisibility = null; // { index, flags, masks } of applyModelVisibility, null = level rules
     this.modelClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
-    this.sectionClip = null; // side section: global clipping plane (card world) or null
     this.raycaster = new THREE.Raycaster();
     this.raycaster.params.Line.threshold = PICK_LINE_M;
     this.raycaster.params.Points.threshold = PICK_LINE_M;
@@ -482,12 +478,6 @@ export class FloorplanView {
   modelBox() {
     return this.modelLayer.modelBox();
   }
-  sectionBox() {
-    return this.modelLayer.sectionBox();
-  }
-  modelPlaneToWorld(plane: ModelArgs<"modelPlaneToWorld">[0]) {
-    return this.modelLayer.modelPlaneToWorld(plane);
-  }
   modelPointToWorld(p: ModelArgs<"modelPointToWorld">[0]) {
     return this.modelLayer.modelPointToWorld(p);
   }
@@ -521,8 +511,8 @@ export class FloorplanView {
   setDaylight(day: LookArgs<"setDaylight">[0]) {
     return this.look.setDaylight(day);
   }
-  setSky(sky?: LookArgs<"setSky">[0], opts?: LookArgs<"setSky">[1]) {
-    return this.look.setSky(sky, opts);
+  setSky(sky?: LookArgs<"setSky">[0]) {
+    return this.look.setSky(sky);
   }
   setCityLights(opt: LookArgs<"setCityLights">[0]) {
     return this.look.setCityLights(opt);
@@ -688,52 +678,6 @@ export class FloorplanView {
     this.dirty = true;
   }
 
-  // Side section: plane {normal, constant} (card world) clips everything (renderer.clippingPlanes);
-  // model materials turn double-sided so cut walls read solid; markers and glows on the removed side
-  // are hidden. null restores everything.
-  setSection(
-    plane: { normal: Vec3; constant: number } | null | undefined,
-  ): void {
-    if (plane) {
-      if (!this.sectionClip) this.sectionClip = new THREE.Plane();
-      this.sectionClip.normal.set(...plane.normal);
-      this.sectionClip.constant = plane.constant;
-      this.sectionClip.normalize();
-      this.renderer.clippingPlanes = [this.sectionClip];
-    } else {
-      this.sectionClip = null;
-      this.renderer.clippingPlanes = [];
-    }
-    this._sectionMaterials();
-    this.skyLayer._placeSkyBodies();
-    this._applyFloorVisibility(); // the section is part of the shadow / occlusion signatures
-    this.dirty = true;
-  }
-
-  // double-sided model materials while the section is on (original side remembered in userData)
-  _sectionMaterials(): void {
-    if (!this.model) return;
-    const on = !!this.sectionClip;
-    this.model.root.traverse((o) => {
-      if (!isMesh(o)) return;
-      for (const mat of meshMaterials(o)) {
-        if (on && mat.userData.sectionSide === undefined) {
-          mat.userData.sectionSide = mat.side;
-          mat.side = THREE.DoubleSide;
-          mat.needsUpdate = true;
-        } else if (!on && mat.userData.sectionSide !== undefined) {
-          mat.side = mat.userData.sectionSide;
-          delete mat.userData.sectionSide;
-          mat.needsUpdate = true;
-        }
-      }
-    });
-  }
-
-  _cutAway(pos: THREE.Vector3): boolean {
-    return !!this.sectionClip && this.sectionClip.distanceToPoint(pos) < 0;
-  }
-
   floorElevation(floorId: string | null | undefined): number {
     const f = this.floors.find((x) => x.id === floorId);
     return f ? f.elevation : 0;
@@ -821,7 +765,7 @@ export class FloorplanView {
       c.kind === "marker" && c.id === this.mowerMarkerId
         ? this.mower._mowerShows(c.floorId)
         : this._shows(c.floorId);
-    return (st ? !!st.shown : floorRule) && !this._cutAway(c.obj.position);
+    return st ? !!st.shown : floorRule;
   }
 
   // What the shadow map depends on: the model, which of its nodes are shown, the cut, the section.
@@ -833,16 +777,9 @@ export class FloorplanView {
       : this.model.manifest.levels
           .map((l) => (l.node.visible ? 1 : 0))
           .join("");
-    const s = this.sectionClip;
-    return [
-      this.model.id,
-      vis,
-      this.modelClip.constant,
-      this.cutaway.sig,
-      s
-        ? [...s.normal.toArray(), s.constant].map((v) => v.toFixed(4)).join()
-        : "",
-    ].join("|");
+    return [this.model.id, vis, this.modelClip.constant, this.cutaway.sig].join(
+      "|",
+    );
   }
 
   _flagShadows(lights: THREE.Light[] | null | undefined): void {

@@ -34,12 +34,6 @@ export interface TopCamera {
   zoom: number;
 }
 
-/** Vertical clipping plane (three.js Plane: n·p + constant = 0, the >= 0 side is kept). */
-export interface SectionPlaneConfig {
-  normal: Vec3;
-  constant: number;
-}
-
 /** The whole stored layout after parseLayout: defaults present, migrated to the current version. */
 export type Layout = S.NormalisedLayout;
 /** Same as Layout (kept as the name for "parsed, defaults present"). */

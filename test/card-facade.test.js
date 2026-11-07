@@ -77,13 +77,9 @@ describe("Floorplan3dCard facade", () => {
       "_setMode",
       "_setView",
       "_setFloor",
-      "setSection",
       "saveViewPatch",
       "currentView",
       "viewIndex",
-      "leaveSection",
-      "sectionPlaneNow",
-      "previewSection",
       "_stateFor",
       "_resetCamera",
       "_applyMarkerSelection",
@@ -97,7 +93,6 @@ describe("Floorplan3dCard facade", () => {
       "_syncHints",
       "objectLabel",
       "testObject",
-      "setSunTime",
       "longTasks",
     ]) {
       expect(typeof c[name], name).toBe("function");

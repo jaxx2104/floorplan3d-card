@@ -1,7 +1,6 @@
 // The card's views: structure (floors, rooms, labels) into the view, the view list and per-view
-// states, visibility, marker states by room / floor, cameras, floor / mode switches, idle reset and
-// the side section. Single owner of _floor / _floorOnly / _section / _viewId / _viewState /
-// _viewStates / _index: other parts change them through the methods here.
+// states, visibility, marker states by room / floor, cameras, floor / mode switches, idle reset.
+// Single owner of _floor / _floorOnly / _viewId / _viewState / _viewStates / _index: other parts change them through the methods here.
 
 import {
   combineRooms,
@@ -35,8 +34,6 @@ import {
   deviceState,
   cameraToCard,
   topCameraToCard,
-  sectionPlane,
-  sectionCamera,
   type ResolvedView,
   type Visibility,
 } from "../views.ts";
@@ -45,12 +42,7 @@ import { threeAdapter } from "../manifest.ts";
 import type { Floorplan3dCard } from "../card-impl.ts";
 import type { ModelBindings } from "./model-loader.ts";
 import type { ModelIndex } from "../view/model.ts";
-import type {
-  Floor,
-  LayoutRoom,
-  PlanPoint,
-  SectionPlaneConfig,
-} from "../types/layout.ts";
+import type { Floor, LayoutRoom, PlanPoint } from "../types/layout.ts";
 
 /** A view's state: effective node visibility, primary storey, linked HA floors. */
 export interface ViewState {
@@ -100,8 +92,6 @@ export class ViewController {
   _viewStates: Map<string, ViewState>;
   _index: ModelIndex | null;
   _mode: "3d" | "top";
-  _section: boolean;
-  _sectionPreview: SectionPlaneConfig | null;
   _floorOnly: string | null | undefined;
   _floors: Floor[] | undefined;
   _levels: Levels | null | undefined;
@@ -131,8 +121,6 @@ export class ViewController {
     this._viewStates = new Map();
     this._index = null;
     this._mode = "3d";
-    this._section = false; // side section toggle
-    this._sectionPreview = null; // Views tab slider: plane shown while dragging
     this._floorOnly = undefined; // one HA floor on its own (edit mode), not a view
     this._floors = undefined;
     this._levels = undefined;
@@ -464,10 +452,7 @@ export class ViewController {
   _applyViewVisibility(): void {
     const vw = this.card._view,
       v = this.currentView(),
-      section = this._sectionActive();
-    const st = section ? this._sectionState() : this._viewState;
-    if (section) this._applySectionPlane();
-    else if (vw.sectionClip) vw.setSection(null);
+      st = this._viewState;
     if (!v || !st) {
       this._floor = "all";
       vw.setVisibleFloors("all");
@@ -481,10 +466,6 @@ export class ViewController {
     vw.setVisibleFloors(visible);
     if (this._index && vw.model && st.effective) {
       vw.applyModelVisibility(this._index, st.effective);
-      if (section) {
-        vw.setCut(null);
-        return;
-      }
       const all = this._floors || [];
       const floors = st.floors
         .map((id) => all.find((f) => f.id === id))
@@ -501,7 +482,7 @@ export class ViewController {
     const vw = this.card._view,
       mb = this.card._mb,
       L = this._levels;
-    const st = this._sectionActive() ? this._sectionState() : this._viewState;
+    const st = this._viewState;
     if (
       !mb ||
       !this._index ||
@@ -599,10 +580,7 @@ export class ViewController {
   _setView(id: string, { instant = false }: { instant?: boolean } = {}): void {
     const v = this._views.find((x) => x.id === id);
     if (!v) return;
-    const wasSection = this._section;
     this.card._popup.close();
-    this._section = false;
-    this._sectionPreview = null;
     this._viewId = id;
     this._floorOnly = null;
     this._viewState = this._stateFor(v);
@@ -616,8 +594,7 @@ export class ViewController {
       else if (!this.card._view.model) this.card._view.fit({ instant });
     } else if (v.camera)
       this.card._view.setCamera(this.viewCamera(v), { instant });
-    else if (!this.card._view.model || wasSection)
-      this.card._view.fit({ instant });
+    else if (!this.card._view.model) this.card._view.fit({ instant });
     this.card._syncToolbar();
   }
 
@@ -650,7 +627,6 @@ export class ViewController {
     this._idleTimer = null;
     if (!this.card._view || !this._views) return;
     this.card._popup.close();
-    if (this.card._sunTime !== null) this.card.setSunTime(null);
     const startId = defaultViewId(
       this._views,
       {
@@ -668,7 +644,6 @@ export class ViewController {
 
   // Reset view: the view's saved camera (3D incl. its rotation centre; top: camera_top), else frame it.
   _resetCamera(): void {
-    if (this._section) this.setSection(false, { camera: false });
     const v = this.currentView();
     if (this._mode === "top") {
       if (v && v.camera_top)
@@ -677,115 +652,8 @@ export class ViewController {
     } else this.card._view.resetCamera(this.viewCamera(v));
   }
 
-  // ---------- side section ----------
-  _sectionActive(): boolean {
-    if (
-      this._section &&
-      (!this.card._mb || !this._index || !this.card._view.model)
-    )
-      this._dropSection(); // model gone: fully off
-    return this._section && this._mode === "3d" && !this._floorOnly;
-  }
-
-  // Section off without touching visibility or camera (callers re-apply what they need).
-  _dropSection(): void {
-    this._section = false;
-    this._sectionPreview = null;
-    if (this.card._view.sectionClip) this.card._view.setSection(null);
-    if (this.card._sectionBtn) this.card._sectionBtn.classList.remove("on");
-  }
-
-  // "Show all" while the section is on: every node, all floors, overview device rules.
-  _sectionState(): ViewState {
-    // only while _sectionActive (a model, its index and bindings are there)
-    const index = this._index!,
-      mb = this.card._mb!;
-    const effective = index.nodes.map(() => true);
-    return {
-      effective,
-      primary: primaryLevel(index, effective, mb.manifest.levels),
-      floors: (this._floors || []).map((f) => f.id),
-      allFloors: true,
-      overview: true,
-    };
-  }
-
-  // A view's cut plane in card world (the active view: the Views tab preview while sliding wins).
-  sectionPlaneNow(
-    v: ResolvedView | null = this.currentView(),
-  ): SectionPlaneConfig | null {
-    const box = this.card._view.sectionBox();
-    if (!box || !v) return null;
-    if (this._sectionPreview && v.id === this._viewId)
-      return this._sectionPreview;
-    return sectionPlane(v, box, (p) => this.card._view.modelPlaneToWorld(p));
-  }
-
-  _applySectionPlane(): void {
-    const plane = this.sectionPlaneNow();
-    this.card._view.setSection(plane);
-  }
-
-  // Section off and back at the view's camera at once (before saving or re-centring the camera).
-  leaveSection(): boolean {
-    if (!this._section) return false;
-    this.setSection(false, { camera: false });
-    const v = this.currentView();
-    if (v && v.camera)
-      this.card._view.setCamera(this.viewCamera(v), { instant: true });
-    else this.card._view.fit({ instant: true });
-    return true;
-  }
-
-  // Toggle the side section. Off returns to the view's visibility and (camera: true) its camera.
-  setSection(on: boolean, { camera = true }: { camera?: boolean } = {}): void {
-    if (this.card._popup) this.card._popup.close();
-    if (on) {
-      if (this._mode !== "3d" || !this.card._view.model || !this._index) return;
-      const was = this._section;
-      this._section = true;
-      this._applyViewVisibility();
-      this._applyMarkerStates();
-      const plane = this.sectionPlaneNow(),
-        box = this.card._view.sectionBox();
-      if (!was && plane && box)
-        this.card._view.setCamera(sectionCamera(plane, box));
-    } else {
-      if (!this._section) return;
-      this._section = false;
-      this._sectionPreview = null;
-      this._applyViewVisibility();
-      this._applyMarkerStates();
-      if (camera) this._resetCamera();
-    }
-    this.card._syncToolbar();
-  }
-
-  // Views tab: show this plane while the slider moves (turns the section on); null drops the preview.
-  // aim: also move the camera to look at the new cut.
-  previewSection(
-    id: string,
-    plane: SectionPlaneConfig | null,
-    { aim = false }: { aim?: boolean } = {},
-  ): void {
-    if (id !== this._viewId || this._mode !== "3d") return;
-    this._sectionPreview = plane || null;
-    if (!plane) {
-      if (this._section) this._applySectionPlane();
-      return;
-    }
-    if (!this._section) {
-      this.setSection(true);
-      return;
-    }
-    this.card._view.setSection(plane);
-    const box = this.card._view.sectionBox();
-    if (aim && box) this.card._view.setCamera(sectionCamera(plane, box));
-  }
-
   // Merge a patch into layout.views[id] (rules replace the list); the headless checks use it.
   saveViewPatch(id: string, patch: Record<string, unknown>): void {
-    if ("section" in patch && id === this._viewId) this._sectionPreview = null; // the saved plane takes over
     const l = this.card._layout!; // set with the config
     const views = l.views || {};
     this.card._layout = {
@@ -813,7 +681,6 @@ export class ViewController {
       if (this.card._view.model && !match.camera) this.card._view.fit();
       return;
     }
-    if (this._section) this._dropSection();
     this._floorOnly = id;
     this._floor = id;
     this.card._view.setVisibleFloor(id);
@@ -826,8 +693,6 @@ export class ViewController {
 
   _setMode(mode: "3d" | "top"): void {
     this.card._popup.close();
-    if (mode !== "3d" && this._section)
-      this.setSection(false, { camera: false });
     this._mode = mode;
     this.card._view.setMode(mode);
     const v = this.currentView(),

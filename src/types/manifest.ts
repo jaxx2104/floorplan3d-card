@@ -3,12 +3,7 @@ import type { CutawayTag } from "../cutaway.ts";
 // views read from node names / glTF extras. Generic over the node type N: three.js nodes in the card,
 // glTF JSON nodes in tools/check-model.mjs.
 
-import type {
-  PlanPoint,
-  SectionPlaneConfig,
-  TopCamera,
-  ViewCamera,
-} from "./layout.ts";
+import type { PlanPoint, TopCamera, ViewCamera } from "./layout.ts";
 import type { RenderRecipe } from "../render-recipe.ts";
 
 export type LevelRole = "storey" | "basement" | "exterior" | "roof";
@@ -83,7 +78,6 @@ export interface ManifestView {
   show: string[];
   hide: string[];
   camera: ViewCamera | null;
-  section?: SectionPlaneConfig;
   camera_top?: TopCamera;
 }
 

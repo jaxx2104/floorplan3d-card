@@ -5,7 +5,6 @@ import type {
   Floor,
   LayoutView,
   SavedLevelBinding,
-  SectionPlaneConfig,
   TopCamera,
   Vec3,
   ViewCamera,
@@ -102,15 +101,7 @@ export interface ResolvedView {
   cut: boolean | null;
   source: ViewSource;
   hidden: boolean;
-  section: SectionPlaneConfig | null;
-  modelSection: SectionPlaneConfig | null;
   camera_top: TopCamera | null;
-}
-
-/** Axis-aligned box in card world. */
-export interface Box3Like {
-  min: Vec3 | number[];
-  max: Vec3 | number[];
 }
 
 export function parseSelector(s: unknown): Selector | null {
@@ -554,7 +545,6 @@ interface ViewBase extends BaseView {
   floors: string[] | null;
   source: ViewSource;
   camera?: ViewCamera | null;
-  section?: SectionPlaneConfig;
   camera_top?: TopCamera;
 }
 
@@ -597,7 +587,6 @@ export function resolveViews({
         camera: v.camera,
         floors: null,
         source: "model",
-        section: v.section,
         camera_top: v.camera_top,
       }));
   } else {
@@ -656,9 +645,6 @@ export function resolveViews({
         ? l.floors
         : b.floors;
     const floors = Array.isArray(fl) ? [...fl] : null;
-    const section = normSection(
-      y.section !== undefined ? y.section : l.section,
-    );
     const camera_top =
       normTopCamera(y.camera_top) ||
       normTopCamera(l.camera_top) ||
@@ -682,8 +668,6 @@ export function resolveViews({
       cut: pick("cut", null) as boolean | null,
       source: b.source,
       hidden: !!pick("hidden", false),
-      section,
-      modelSection: normSection(b.section),
       camera_top,
     };
   });
@@ -1028,106 +1012,6 @@ export function orderViews<V extends { id: string }>(
     .map((v, i): [V, number] => [v, pos.has(v.id) ? pos.get(v.id)! : n + i])
     .sort((a, b) => a[1] - b[1])
     .map((x) => x[0]);
-}
-
-// ---------- side section: one vertical clipping plane ----------
-// A plane is { normal: [x, y, z], constant } in card world (three.js Plane: n·p + constant = 0);
-// points with n·p + constant >= 0 are kept, the rest is cut away.
-
-const z0 = (x: number): number => x + 0; // no -0
-
-// A valid section (finite numbers, normal length > 0) with a unit normal, or null.
-export function normSection(s: unknown): SectionPlaneConfig | null {
-  if (!s || typeof s !== "object") return null;
-  const raw = s as { normal?: unknown; constant?: unknown };
-  if (!Array.isArray(raw.normal) || raw.normal.length !== 3) return null;
-  const n: unknown[] = raw.normal,
-    c = raw.constant;
-  if (
-    !n.every((x): x is number => typeof x === "number" && Number.isFinite(x)) ||
-    typeof c !== "number" ||
-    !Number.isFinite(c)
-  )
-    return null;
-  const len = Math.hypot(...n);
-  if (!(len > 1e-9)) return null;
-  return {
-    normal: [z0(n[0] / len), z0(n[1] / len), z0(n[2] / len)],
-    constant: z0(c / len),
-  };
-}
-
-// box: { min: [x, y, z], max: [x, y, z] } (card world)
-const centre = (box: Box3Like): number[] =>
-  box.min.map((v, i) => (v + box.max[i]) / 2);
-export const sectionSide = (
-  plane: SectionPlaneConfig,
-  p: readonly number[],
-): number =>
-  plane.normal[0] * p[0] +
-  plane.normal[1] * p[1] +
-  plane.normal[2] * p[2] +
-  plane.constant;
-
-// The view's cut: layout / YAML section (card world), else the model's (model space; toWorld maps it
-// into card world), else normal (-1,0,0) through the box centre x (keeps the west half).
-export function sectionPlane(
-  view: { section?: unknown; modelSection?: unknown } | null | undefined,
-  box: Box3Like,
-  toWorld: (p: SectionPlaneConfig) => unknown = (p) => p,
-): SectionPlaneConfig {
-  const own = normSection(view && view.section);
-  if (own) return own;
-  const m = normSection(view && view.modelSection);
-  if (m) return normSection(toWorld(m)) || m;
-  return { normal: [-1, 0, 0], constant: z0(centre(box)[0]) };
-}
-
-// Camera on the removed side looking back at the cut face: target = the box centre projected onto
-// the plane at 45 % of the box height, distance max(20, 1.3 × diagonal), slightly above the target.
-export function sectionCamera(
-  plane: SectionPlaneConfig,
-  box: Box3Like,
-): { position: number[]; target: number[] } {
-  const c = centre(box);
-  c[1] = box.min[1] + 0.45 * (box.max[1] - box.min[1]);
-  const n = plane.normal,
-    d = sectionSide(plane, c);
-  const target = c.map((v, i) => v - n[i] * d);
-  const diag = Math.hypot(...box.max.map((v, i) => v - box.min[i]));
-  const dist = Math.max(20, 1.3 * diag);
-  const position = target.map((v, i) => v - n[i] * dist);
-  position[1] += 0.11 * dist; // ~6° down: OrbitControls in 3D limit the polar angle to 0.47π (84.6°)
-  return { position, target };
-}
-
-// Views tab directions (world normals; world z = -plan y).
-export interface SectionDir {
-  id: string;
-  label: string;
-  normal: Vec3;
-}
-
-// Levels whose boxes frame the section (the house without garden / roof overhang).
-export const sectionLevels = <L extends ViewLevel>(
-  levels: readonly L[] | null | undefined,
-): L[] => (levels || []).filter(isStorey);
-
-// Union of {min, max} boxes (null entries skipped); null when there is none.
-export function unionBox(
-  boxes: readonly (Box3Like | null | undefined)[] | null | undefined,
-): { min: number[]; max: number[] } | null {
-  let out: { min: number[]; max: number[] } | null = null;
-  for (const b of boxes || []) {
-    if (!b) continue;
-    if (!out) out = { min: [...b.min], max: [...b.max] };
-    else
-      for (let k = 0; k < 3; k++) {
-        out.min[k] = Math.min(out.min[k], b.min[k]);
-        out.max[k] = Math.max(out.max[k], b.max[k]);
-      }
-  }
-  return out;
 }
 
 // ---------- roomless markers (pins, live mower) ----------

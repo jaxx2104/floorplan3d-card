@@ -382,12 +382,7 @@ export class SkyLayer {
 
   // Weather effects (cloud shadows, rain, snow) may show: a model, the clouds option, the sky on.
   _weatherFxOn(): boolean {
-    return (
-      !!this.view.model &&
-      this._skyOn &&
-      !this.view.sectionClip &&
-      this.weather.show
-    );
+    return !!this.view.model && this._skyOn && this.weather.show;
   }
 
   // Cloud shadows drifting over the model's surroundings (not the rooms: _updateRoomMask), with
@@ -591,7 +586,7 @@ export class SkyLayer {
   // surroundings hide it: it only shows over open background, not floating over a neighbour building.
   _placeSkyBodies(): void {
     const d = this.view.look._dome,
-      on = !!this.view.model && this._skyOn && !!d && !this.view.sectionClip; // the section's global plane would cut them
+      on = !!this.view.model && this._skyOn && !!d;
     const hull = on ? this._roomHull() : [];
     const cam = this.view.camera,
       back = this.view.mode !== "top" && isPerspective(cam);

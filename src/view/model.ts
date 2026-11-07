@@ -14,8 +14,6 @@ import { measuredElevations } from "../bindings.ts";
 import { buildManifest, threeAdapter } from "../manifest.ts";
 import type { Manifest } from "../types/manifest.ts";
 import {
-  sectionLevels,
-  unionBox,
   nodeIndex,
   parseSelector,
   matches,
@@ -43,7 +41,6 @@ import {
   type BoxData,
   type Drawable,
   type ModelMaterial,
-  type PlaneData,
   type TexKey,
 } from "./core.ts";
 import type { FloorplanView } from "../view.ts";
@@ -1017,8 +1014,7 @@ export class ModelLayer {
           isMesh(h.object) &&
           candidate(h.object) &&
           shown(h.object) &&
-          h.point.y <= this.view.modelClip.constant + 1e-6 &&
-          !this.view._cutAway(h.point),
+          h.point.y <= this.view.modelClip.constant + 1e-6,
       );
     return hit || null;
   }
@@ -1124,32 +1120,6 @@ export class ModelLayer {
     this.view.modelGroup.updateMatrixWorld(true);
     const b = new THREE.Box3().setFromObject(this.view.model.root);
     return b.isEmpty() ? null : { min: b.min.toArray(), max: b.max.toArray() };
-  }
-
-  // box framing the section: union of the storey/basement levels (the house), else the whole model
-  sectionBox(): BoxData | null {
-    if (!this.view.model) return null;
-    this.view.modelGroup.updateMatrixWorld(true);
-    const boxes = sectionLevels(this.view.model.manifest.levels).map(
-      (l: { node: THREE.Object3D }) => {
-        const b = new THREE.Box3().setFromObject(l.node);
-        return b.isEmpty()
-          ? null
-          : { min: b.min.toArray(), max: b.max.toArray() };
-      },
-    );
-    return unionBox(boxes) || this.modelBox();
-  }
-
-  // a plane given in model space (glTF scene coordinates) -> card world
-  modelPlaneToWorld(plane: PlaneData): PlaneData {
-    if (!this.view.model) return plane;
-    this.view.modelGroup.updateMatrixWorld(true);
-    const p = new THREE.Plane(
-      new THREE.Vector3(...plane.normal),
-      plane.constant,
-    ).applyMatrix4(this.view.model.root.matrixWorld);
-    return { normal: p.normal.toArray(), constant: p.constant };
   }
 
   // a point in model world (glTF scene coordinates) -> card world, through the model's placement

@@ -4,11 +4,6 @@ import {
   moonLight,
   moonLitRight,
   domeRadius,
-  sunPosition,
-  sliderDate,
-  snapMinutes,
-  hhmm,
-  tzMinutes,
 } from "../src/sky.ts";
 
 // Reference: suncalc's published test values (2013-03-05 UTC, 50.5 N, 30.5 E):
@@ -122,87 +117,3 @@ describe("moonLitRight", () => {
 
 // Reference: suncalc's published test value (2013-03-05 UTC, 50.5 N, 30.5 E):
 // getPosition azimuth -2.5003175907168385 rad (from south), altitude -0.7000406838781611 rad.
-describe("sunPosition", () => {
-  const deg = (r) => (r * 180) / Math.PI;
-  it("matches the suncalc reference within 0.5 degrees", () => {
-    const p = sunPosition(REF, 50.5, 30.5);
-    expect(Math.abs(p.azimuth - (deg(-2.5003175907168385) + 180))).toBeLessThan(
-      0.5,
-    );
-    expect(Math.abs(p.elevation - deg(-0.7000406838781611))).toBeLessThan(0.5);
-  });
-  it("is near the zenith at equinox noon on the equator", () => {
-    const p = sunPosition(new Date("2024-03-20T12:07:00Z"), 0, 0);
-    expect(p.elevation).toBeGreaterThan(88);
-  });
-  it("summer at 52 N: low in the east at 06:00 local solar, high in the south at noon, down at midnight", () => {
-    const six = sunPosition(new Date("2024-06-21T05:40:00Z"), 52, 5); // ~06:00 local solar time at 5 E
-    const noon = sunPosition(new Date("2024-06-21T11:40:00Z"), 52, 5);
-    const midnight = sunPosition(new Date("2024-06-21T23:40:00Z"), 52, 5);
-    expect(six.elevation).toBeGreaterThan(5);
-    expect(six.elevation).toBeLessThan(20);
-    expect(six.azimuth).toBeGreaterThan(70);
-    expect(six.azimuth).toBeLessThan(110);
-    expect(Math.abs(noon.elevation - (90 - 52 + 23.44))).toBeLessThan(0.5);
-    expect(Math.abs(noon.azimuth - 180)).toBeLessThan(3);
-    expect(midnight.elevation).toBeLessThan(0);
-  });
-  it("null without a valid time / location", () => {
-    expect(sunPosition(NaN, 1, 2)).toBeNull();
-    expect(sunPosition(REF, undefined, 2)).toBeNull();
-  });
-});
-
-describe("time scrubber helpers", () => {
-  it("sliderDate: today (local) at the given minutes", () => {
-    const now = new Date(2024, 5, 21, 17, 33, 12);
-    const d = sliderDate(now, 6 * 60 + 15);
-    expect([
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate(),
-      d.getHours(),
-      d.getMinutes(),
-      d.getSeconds(),
-    ]).toEqual([2024, 5, 21, 6, 15, 0]);
-  });
-  it("sliderDate in the HA time zone (not the browser's)", () => {
-    const now = Date.UTC(2024, 5, 21, 23, 30); // 21 June 23:30 UTC = 22 June 02:30 in Helsinki (UTC+3)
-    expect(
-      new Date(sliderDate(now, 6 * 60, "Europe/Helsinki")).toISOString(),
-    ).toBe("2024-06-22T03:00:00.000Z");
-    expect(
-      new Date(sliderDate(now, 6 * 60, "America/New_York")).toISOString(),
-    ).toBe("2024-06-21T10:00:00.000Z");
-    expect(new Date(sliderDate(now, 12 * 60, "UTC")).toISOString()).toBe(
-      "2024-06-21T12:00:00.000Z",
-    );
-    // DST change day (Europe/Amsterdam 31 March 2024, 02:00 -> 03:00): 12:00 is UTC+2
-    expect(
-      new Date(
-        sliderDate(Date.UTC(2024, 2, 31, 8), 12 * 60, "Europe/Amsterdam"),
-      ).toISOString(),
-    ).toBe("2024-03-31T10:00:00.000Z");
-  });
-  it("sliderDate: an unknown time zone falls back to the browser's", () => {
-    const now = new Date(2024, 5, 21, 17, 33);
-    expect(sliderDate(now, 60, "Not/AZone").getHours()).toBe(1);
-  });
-  it("tzMinutes: minutes since midnight in the zone", () => {
-    expect(tzMinutes(Date.UTC(2024, 5, 21, 23, 30), "Europe/Helsinki")).toBe(
-      150,
-    );
-    expect(tzMinutes(Date.UTC(2024, 5, 21, 23, 30), "UTC")).toBe(23 * 60 + 30);
-  });
-  it("snapMinutes: 15 min steps within 0..1440", () => {
-    expect(snapMinutes(7)).toBe(0);
-    expect(snapMinutes(8)).toBe(15);
-    expect(snapMinutes(-30)).toBe(0);
-    expect(snapMinutes(2000)).toBe(1440);
-  });
-  it("hhmm", () => {
-    expect(hhmm(0)).toBe("00:00");
-    expect(hhmm(375)).toBe("06:15");
-    expect(hhmm(1440)).toBe("24:00");
-  });
-});

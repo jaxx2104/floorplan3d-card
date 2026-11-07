@@ -91,11 +91,6 @@ export interface TopCameraPose {
   center: [number, number] | number[];
   zoom: number;
 }
-/** A plane as plain data (card world or model space). */
-export interface PlaneData {
-  normal: Vec3 | number[];
-  constant: number;
-}
 /** World box as arrays. */
 export interface BoxData {
   min: number[];

@@ -125,11 +125,6 @@ house.userData.fp = { views: [
   metres (x east, y north) and zoom > 0 (1 shows 20 m vertically; the horizontal extent follows
   the card width). Used when the
   view is opened in Top and on **Reset view** there; invalid values are ignored with a warning.
-- `section` (optional): `{ normal: [x, y, z], constant }`, the view's **Side section** cut as a
-  three.js plane in model world (the side where `normal · p + constant ≥ 0` stays), e.g.
-  `{ normal: [-1, 0, 0], constant: 7 }` keeps x ≤ 7 m. Without one the card keeps the west half,
-  cut through the middle of the storeys. Users can move it per view (`section` in the card YAML's `views:`).
-  Use the prototype's presets as a starting point (see below).
 - A view that shows every storey and the roof is an **overview**: all devices are shown. In a
   storey view the top visible storey is the view's storey: devices of lower storeys are hidden,
   outdoor devices stay.

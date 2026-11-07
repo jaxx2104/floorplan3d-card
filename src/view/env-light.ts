@@ -253,9 +253,7 @@ export class EnvLight {
     U.cloudCoverage.value = S.cloudCoverage;
     U.cloudDensity.value = S.cloudDensity;
     this._ground!.material.color.copy(groundColor(sky));
-    const clip = r.clippingPlanes,
-      auto = r.autoClear;
-    r.clippingPlanes = []; // the section's plane is for the house, not the sky
+    const auto = r.autoClear;
     r.autoClear = true;
     try {
       this._cubeCam!.update(r, this._skyScene!);
@@ -265,7 +263,6 @@ export class EnvLight {
         this._target,
       );
     } finally {
-      r.clippingPlanes = clip;
       r.autoClear = auto;
     }
     this.scene.environment = this._target.texture;
