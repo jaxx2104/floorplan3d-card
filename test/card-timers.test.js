@@ -1,64 +1,8 @@
 // @vitest-environment happy-dom
-// Card timers across disconnect / reconnect (a wall tablet switching dashboard views), idle reset and
-// night markers, on the card's parts with fake hosts.
+// Card timers: idle reset, idle orbit, night markers and the sun time scrubber, on the card's parts with fake hosts.
 import { describe, it, expect, vi, afterEach } from "bun:test";
-import { MowerController } from "../src/card/mower-controller.ts";
 import { ViewController } from "../src/card/view-controller.ts";
 import { SkyController } from "../src/card/sky-controller.ts";
-
-function mower(connected) {
-  const host = { isConnected: connected };
-  const m = new MowerController(host);
-  m._refreshMapOverlay = vi.fn();
-  return { host, m };
-}
-
-describe("_setCameraTimer", () => {
-  afterEach(() => vi.useRealTimers());
-  it("while disconnected counts as 0 s, so a later reconnect can start the interval", () => {
-    vi.useFakeTimers();
-    const { host, m } = mower(false);
-    m._setCameraTimer(10); // e.g. model load .then finishing after the disconnect
-    vi.advanceTimersByTime(20000);
-    expect(m._refreshMapOverlay).not.toHaveBeenCalled();
-    host.isConnected = true;
-    m._setCameraTimer(10); // reconnect: the same interval is armed now
-    vi.advanceTimersByTime(10000);
-    expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
-    m._setCameraTimer(0);
-  });
-  it("the image timer behaves the same", () => {
-    vi.useFakeTimers();
-    const { host, m } = mower(false);
-    m._detectMower = vi.fn();
-    m._setImageTimer(5);
-    vi.advanceTimersByTime(10000);
-    expect(m._detectMower).not.toHaveBeenCalled();
-    host.isConnected = true;
-    m._setImageTimer(5);
-    vi.advanceTimersByTime(5000);
-    expect(m._detectMower).toHaveBeenCalledTimes(1);
-    m._setImageTimer(0);
-  });
-  it("resume() lets the same interval start again; dispose() stops both", () => {
-    vi.useFakeTimers();
-    const { host, m } = mower(true);
-    m._detectMower = vi.fn();
-    m._setCameraTimer(10);
-    m._setImageTimer(5);
-    host.isConnected = false;
-    m.dispose();
-    vi.advanceTimersByTime(20000);
-    expect(m._refreshMapOverlay).not.toHaveBeenCalled();
-    expect(m._detectMower).not.toHaveBeenCalled();
-    host.isConnected = true;
-    m.resume(); // connectedCallback: the next update re-arms whatever interval it asks for
-    m._setCameraTimer(10);
-    vi.advanceTimersByTime(10000);
-    expect(m._refreshMapOverlay).toHaveBeenCalledTimes(1);
-    m._setCameraTimer(0);
-  });
-});
 
 describe("idle_reset", () => {
   afterEach(() => vi.useRealTimers());

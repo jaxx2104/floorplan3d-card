@@ -4,8 +4,6 @@ import {
   readTrack,
   toPlanar,
   fitTransform,
-  overlayUrl,
-  calibrationError,
   mowerTransform,
 } from "../src/mower.ts";
 
@@ -285,85 +283,6 @@ describe("fitTransform", () => {
     expect(
       fitTransform([{ src: [0, 0], plan: [0, 0] }], "xy")(null),
     ).toBeNull();
-  });
-});
-
-describe("overlayUrl", () => {
-  const hass = {
-    states: {
-      "image.map": {
-        attributes: { entity_picture: "/api/image_proxy/image.map?token=abc" },
-      },
-      "image.none": { attributes: {} },
-    },
-    hassUrl: (p) => "http://ha.local:8123" + p,
-  };
-
-  it("builds an absolute url with cache busting", () => {
-    expect(overlayUrl(hass, "image.map")).toBe(
-      "http://ha.local:8123/api/image_proxy/image.map?token=abc",
-    );
-    expect(overlayUrl(hass, "image.map", 42)).toBe(
-      "http://ha.local:8123/api/image_proxy/image.map?token=abc&_t=42",
-    );
-  });
-
-  it("leaves data: and blob: urls alone (no base, no cache busting)", () => {
-    const h = {
-      ...hass,
-      states: {
-        "image.d": {
-          attributes: { entity_picture: "data:image/png;base64,AAAA" },
-        },
-      },
-    };
-    expect(overlayUrl(h, "image.d", 42)).toBe("data:image/png;base64,AAAA");
-  });
-
-  it("camera entities and pictures without a query; no hassUrl keeps the path", () => {
-    const h = {
-      states: {
-        "camera.live": {
-          attributes: { entity_picture: "/api/camera_proxy/camera.live" },
-        },
-        "image.b": { attributes: { entity_picture: "blob:http://x/1" } },
-      },
-    };
-    expect(overlayUrl(h, "camera.live", 7)).toBe(
-      "/api/camera_proxy/camera.live?_t=7",
-    );
-    expect(overlayUrl(h, "camera.live")).toBe("/api/camera_proxy/camera.live");
-    expect(overlayUrl(h, "image.b", 7)).toBe("blob:http://x/1");
-  });
-
-  it("returns null without a picture", () => {
-    expect(overlayUrl(hass, "image.none")).toBeNull();
-    expect(overlayUrl(hass, "image.missing")).toBeNull();
-    expect(overlayUrl(null, "image.map")).toBeNull();
-  });
-});
-
-describe("calibrationError", () => {
-  it("is 0 for exact fits and small samples", () => {
-    const g = ([u, v]) => [2 * u + 1, v - 3];
-    const pts = [
-      [0, 0],
-      [5, 0],
-      [0, 5],
-      [3, 3],
-    ].map((s) => ({ src: s, plan: g(s) }));
-    expect(calibrationError(pts, "xy")).toBeCloseTo(0);
-    expect(calibrationError(pts.slice(0, 2), "xy")).toBe(0);
-  });
-
-  it("reports the residual of a noisy fit", () => {
-    const pts = [
-      [0, 0],
-      [10, 0],
-      [10, 10],
-      [0, 10],
-    ].map((s, i) => ({ src: s, plan: [s[0] + (i % 2 ? 0.5 : -0.5), s[1]] }));
-    expect(calibrationError(pts, "xy")).toBeGreaterThan(0.3);
   });
 });
 

@@ -42,8 +42,6 @@ const absentIfNull = <T>(s: Schema<T>): Schema<T | undefined> =>
 /** Plan point in metres: [x east, y north]. */
 export const planPoint = tuple(2, "[x, y]");
 const vec3 = tuple(3, "[x, y, z]");
-/** RGB colour as stored by the colour pickers ([r, g, b], 0..255). */
-const rgb = map(tuple(3, "[r, g, b]"), (c): number[] => c);
 const washDir = literal("down", "up", "both", "none");
 
 export const floorSchema = object({
@@ -80,49 +78,14 @@ export const pinSchema = object({
 
 const calibrationPoint = object({ src: planPoint, plan: planPoint });
 
-export const overlaySchema = object({
-  entity: opt(string()),
-  x: opt(number()),
-  y: opt(number()),
-  rotation: opt(number()),
-  width: opt(number()),
-  opacity: opt(number()),
-  refresh: opt(number()),
-  /** Set once the alignment tool ran (the defaults then count as aligned). */
-  aligned: opt(boolean()),
-  edit_only: opt(boolean()),
-  hide_icon: opt(boolean()),
-  height_offset: opt(number()),
-  /** Lawn clip zone id; null / absent / 'auto': automatic, 'none': no clip. */
-  zone: opt(nullable(string())),
-  /** Colour keying of the map image (v1 also had a single <kind>_color: migrated). */
-  bg_colors: opt(array(rgb)),
-  mowed_colors: opt(array(rgb)),
-  nomow_colors: opt(array(rgb)),
-  bg_tolerance: opt(number()),
-  mowed_tolerance: opt(number()),
-  nomow_tolerance: opt(number()),
-});
-
-/** mower.image: mower icon detection on the live map (source 'image'). */
-export const mowerImageSchema = object({
-  entity: opt(string()),
-  colors: opt(array(rgb)),
-  tolerance: opt(number()),
-  min_pixels: opt(number()),
-  front_offset: opt(number()),
-});
-
 export const mowerSchema = object({
   entity: opt(string()),
-  /** 'gps' | 'xy' | 'image' (others: read as gps). */
+  /** 'gps' | 'xy' (others: read as gps). */
   source: opt(string()),
   x_attr: opt(string()),
   y_attr: opt(string()),
   floor_id: opt(string()),
   calibration: opt(array(calibrationPoint)),
-  overlay: opt(nullable(overlaySchema)),
-  image: opt(mowerImageSchema),
   /** 'floor': the mower drives on the floor, not on the model's lawn. */
   ground: opt(string()),
   /** xy source: attribute with the path driven so far ([[u, v], ...] or a list of segments). */
@@ -137,11 +100,6 @@ export const mowerSchema = object({
   ok_values: opt(union(string(), array(string()))),
   /** Minutes mowing without moving before the stuck warning (0 off). */
   stuck_minutes: opt(numeric()),
-  /** Auto mode (static vs live map); false turns it off. */
-  auto: opt(boolean()),
-  /** '' = none, unset = auto-detected. */
-  static_entity: opt(nullable(string())),
-  picture_entity: opt(nullable(string())),
 });
 
 /** layout.model.levels[levelId]: which HA floor shows a model level (see bindings.ts). */
@@ -263,20 +221,6 @@ export type NormalisedLayout = Infer<typeof layoutSchema>;
 type Raw = Record<string, unknown>;
 type Migration = (l: Raw) => Raw;
 
-const isRgb = (c: unknown): boolean =>
-  Array.isArray(c) &&
-  c.length >= 3 &&
-  c.slice(0, 3).every((v) => Number.isFinite(Number(v)));
-
-// v1 colour keys: a single <one> colour next to (or instead of) the <many> list -> the list only.
-function foldColor(o: unknown, one: string, many: string): unknown {
-  if (!isPlainObject(o) || !(one in o)) return o;
-  const { [one]: c, ...rest } = o;
-  return Array.isArray(rest[many]) || !isRgb(c)
-    ? rest
-    : { ...rest, [many]: [c] };
-}
-
 // v0.1.4 model.floor_map { levelId: haFloorId | 'always' | 'hidden' } -> model.levels (saved levels win).
 function foldFloorMap(m: unknown): unknown {
   if (!isPlainObject(m) || !("floor_map" in m)) return m;
@@ -298,7 +242,6 @@ const MIGRATIONS: Record<number, Migration> = {
   // v1 -> v2: the legacy aliases readers had to understand are folded into their current form.
   //   groups (pre-0.4.5)          -> tags (a tags entry wins)
   //   model.floor_map (v0.1.4)    -> model.levels
-  //   mower.overlay.<kind>_color  -> <kind>_colors, mower.image.color -> colors
   1: (l) => {
     const out: Raw = { ...l, version: 2 };
     if ("groups" in out) {
@@ -308,18 +251,6 @@ const MIGRATIONS: Record<number, Migration> = {
         out.tags = { ...g, ...(isPlainObject(out.tags) ? out.tags : {}) };
     }
     if ("model" in out) out.model = foldFloorMap(out.model);
-    if (isPlainObject(out.mower)) {
-      const m: Raw = { ...out.mower };
-      if (isPlainObject(m.overlay)) {
-        let o = m.overlay as unknown;
-        for (const k of ["bg", "mowed", "nomow"])
-          o = foldColor(o, `${k}_color`, `${k}_colors`);
-        m.overlay = o;
-      }
-      if (isPlainObject(m.image))
-        m.image = foldColor(m.image, "color", "colors");
-      out.mower = m;
-    }
     return out;
   },
 };

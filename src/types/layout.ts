@@ -14,9 +14,6 @@ export type Vec3 = [number, number, number];
 /** RGB colour as stored by the colour pickers ([r, g, b], 0..255). */
 export type RgbColor = [number, number, number] | number[];
 
-/** Colour keying of the map image: overlay.<kind>_colors. */
-export type MapColorKind = "bg" | "mowed" | "nomow";
-
 /** "Light on wall" setting of a lamp or a tag. */
 export type WashDir = "down" | "up" | "both" | "none";
 
@@ -52,9 +49,6 @@ export type LayoutFloor = Infer<typeof S.floorSchema>;
 export type LayoutRoom = Infer<typeof S.roomSchema>;
 export type LayoutPin = Infer<typeof S.pinSchema>;
 export type LayoutMower = Infer<typeof S.mowerSchema>;
-export type MowerOverlay = Infer<typeof S.overlaySchema>;
-export type MowerImageConfig = Infer<typeof S.mowerImageSchema>;
-export type MowerImage = MowerImageConfig;
 export type MowerCalibrationPoint = NonNullable<
   LayoutMower["calibration"]
 >[number];

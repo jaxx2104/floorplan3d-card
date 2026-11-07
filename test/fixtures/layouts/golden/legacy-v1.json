@@ -1,7 +1,7 @@
 {
   "from": 1,
   "warnings": [],
-  "unknown": [],
+  "unknown": ["mower.image", "mower.overlay"],
   "value": {
     "version": 2,
     "floors": [
@@ -149,9 +149,9 @@
       "calibration": [],
       "image": {
         "entity": "camera.sunseeker_live_map",
+        "color": [255, 59, 48],
         "tolerance": 40,
-        "min_pixels": 4,
-        "colors": [[255, 59, 48]]
+        "min_pixels": 4
       },
       "overlay": {
         "entity": "image.sunseeker_map",
@@ -161,12 +161,13 @@
         "width": 9,
         "opacity": 0.55,
         "refresh": 10,
+        "bg_color": [47, 93, 44],
+        "mowed_color": [127, 194, 111],
         "nomow_colors": [[140, 140, 140]],
+        "nomow_color": [0, 0, 0],
         "bg_tolerance": 30,
         "zone": null,
-        "aligned": true,
-        "bg_colors": [[47, 93, 44]],
-        "mowed_colors": [[127, 194, 111]]
+        "aligned": true
       }
     },
     "views": {

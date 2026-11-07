@@ -218,26 +218,6 @@ export class CameraRig {
     return hit ? [hit.x, -hit.z] : null;
   }
 
-  // The map overlay under a screen position: the ray hits the overlay plane itself (clouds, helpers,
-  // markers and the model are ignored). -> { u, v, x, y } (texture uv, v up; plan point) or null.
-  mapHit(
-    clientX: number,
-    clientY: number,
-  ): { u: number; v: number; x: number; y: number } | null {
-    const pl = this.view.mower.mapPlane;
-    const r = this.view.renderer.domElement.getBoundingClientRect();
-    if (!pl || !r.width || !r.height) return null;
-    const ndc = new THREE.Vector2(
-      ((clientX - r.left) / r.width) * 2 - 1,
-      -((clientY - r.top) / r.height) * 2 + 1,
-    );
-    this.view.raycaster.setFromCamera(ndc, this.view.camera);
-    pl.updateMatrixWorld();
-    const hit = this.view.raycaster.intersectObject(pl, false)[0];
-    if (!hit || !hit.uv) return null;
-    return { u: hit.uv.x, v: hit.uv.y, x: hit.point.x, y: -hit.point.z };
-  }
-
   // Screen position (client px) of a plan point, the inverse of planPoint.
   screenPoint(
     x: number,

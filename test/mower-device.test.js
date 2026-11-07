@@ -1,7 +1,5 @@
 import { describe, it, expect } from "bun:test";
 import {
-  findStaticMap,
-  findMowerPicture,
   findErrorEntity,
   findProgress,
   progressValue,
@@ -64,27 +62,10 @@ const h = hassOf([
 ]);
 
 describe("mower device auto-detection", () => {
-  it("static map, mower picture, error code, progress", () => {
-    expect(findStaticMap(h, "camera.robo_live_map", "lawn_mower.robo")).toBe(
-      "image.robo_map",
-    );
-    expect(findStaticMap(h, "image.robo_map", "lawn_mower.robo")).toBe(null); // the live map itself is excluded
-    expect(findMowerPicture(h, "camera.robo_live_map", "lawn_mower.robo")).toBe(
-      "image.robo_mower_image",
-    );
+  it("error code, progress", () => {
     expect(findErrorEntity(h, "lawn_mower.robo")).toBe("sensor.robo_errorcode");
     expect(findProgress(h, "lawn_mower.robo")).toBe("sensor.robo_progress");
     expect(progressValue(h, "sensor.robo_progress")).toBeCloseTo(0.39, 9);
-    expect(findStaticMap(h, "camera.nope", "lawn_mower.nope")).toBe(null);
-    // a static map whose name says "live" is still found; the live map is excluded by its id
-    const lv = hassOf([
-      ["lawn_mower.l", "x"],
-      ["camera.l_live_map", "x"],
-      ["image.l_live_area_map", "x"],
-    ]);
-    expect(findStaticMap(lv, "camera.l_live_map", "lawn_mower.l")).toBe(
-      "image.l_live_area_map",
-    );
     expect(mowerDevice(h, "x.y").entities).toEqual([]);
   });
   it("connectivity and rain", () => {

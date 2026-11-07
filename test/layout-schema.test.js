@@ -103,21 +103,6 @@ describe("what the fixtures pin down", () => {
       level1: { floor: "first" },
       roof: { show: "always" },
     }); // saved levels win
-    expect(l.mower.image).toEqual({
-      entity: "camera.sunseeker_live_map",
-      colors: [[255, 59, 48]],
-      tolerance: 40,
-      min_pixels: 4,
-    });
-    const o = l.mower.overlay;
-    expect([o.bg_colors, o.mowed_colors, o.nomow_colors]).toEqual([
-      [[47, 93, 44]],
-      [[127, 194, 111]],
-      [[140, 140, 140]],
-    ]); // a list wins over the single colour
-    expect(
-      ["bg_color", "mowed_color", "nomow_color"].filter((k) => k in o),
-    ).toEqual([]);
     expect(l.mower.stuck_minutes).toBe(10); // "10" read as a number
     expect(l.pins["device:no_z"]).toEqual({ x: 1, y: 1, floor_id: "ground" }); // z: null (v1 NaN) read as absent
   });
@@ -153,7 +138,6 @@ describe("what the fixtures pin down", () => {
         "room_labels",
         "views.v.rules",
         "mower.stuck_minutes",
-        "mower.overlay.width",
       ]),
     );
     const l = p.value;
@@ -178,10 +162,10 @@ describe("what the fixtures pin down", () => {
     expect(l.mower).toEqual({
       entity: "lawn_mower.m",
       track_show: "always",
-      overlay: {},
+      overlay: { width: "9" }, // no longer a known field: kept as written
     });
     expect(l.my_extension).toEqual({ keep: ["me"] });
-    expect(p.unknown).toEqual(["my_extension"]);
+    expect(p.unknown).toEqual(["mower.overlay", "my_extension"]);
   });
 
   it("a newer card's layout loads as far as known, keeps its version and its fields", () => {

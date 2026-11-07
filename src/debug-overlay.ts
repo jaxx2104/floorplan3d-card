@@ -1,9 +1,7 @@
 // `debug: true`: a small performance overlay (bottom-left, monospace, theme colours). Updated once a
 // second: FPS, frame ms (avg / max over 1 s), the longest main-thread task of the last 60 s (long task
-// API, else measured frame gaps), the last map refresh's stages, shadow-map updates and renders a minute,
-// the map refresh interval (doubled by the adaptive throttle) and the render quality in use ('auto': its level,
-// the median frame interval it measured, the display's refresh).
-import { effectiveRefresh } from "./mower-track.ts";
+// API, else measured frame gaps), shadow-map updates and renders a minute and the render quality in use
+// ('auto': its level, the median frame interval it measured, the display's refresh).
 import type { FloorplanView } from "./view.ts";
 import type { Floorplan3dCard } from "./card-impl.ts";
 
@@ -15,10 +13,7 @@ const fmt = (v: number | null): string =>
     : "–";
 
 /** What the overlay reads of the card (the card itself; a narrow view for fakes). */
-export type DebugCard = Pick<
-  Floorplan3dCard,
-  "_perf" | "_throttle" | "_mapRefreshSec" | "longTasks"
->;
+export type DebugCard = Pick<Floorplan3dCard, "longTasks">;
 
 export class DebugOverlay {
   view: FloorplanView;
@@ -73,15 +68,9 @@ export class DebugOverlay {
     const longest = lt
       ? Math.max(0, ...lt.filter((e) => now - e.start < 60000).map((e) => e.ms))
       : Math.max(0, ...this.gaps.map(([, ms]) => ms - 16.7));
-    const p = this.card._perf && this.card._perf.last;
-    const t = this.card._throttle;
-    const base = this.card._mapRefreshSec ? this.card._mapRefreshSec() : null;
     const lines = [
       `fps ${frames} · frame ${fmt(avg)} / ${fmt(max)} ms`,
       `longest task (60 s) ${fmt(longest)} ms ${lt ? "" : "(gaps)"}`.trim(),
-      p
-        ? `map: decode ${fmt(p.decode)} · worker ${fmt(p.worker)} · apply ${fmt(p.apply)} ms (main ${fmt(p.main)})`
-        : "map: decode – · worker – · apply –",
       `shadows ${fmt(shadowsMin)}/min · renders ${fmt(rendersMin)}/min`,
     ];
     const look = v.look,
@@ -91,10 +80,6 @@ export class DebugOverlay {
         `quality auto: ${auto.level}${auto.pending ? ` -> ${auto.pending} (when idle)` : ""} · median ${fmt(auto.median)} ms (${auto.samples} frames) · refresh ${fmt(auto.refreshMs)} ms${auto.failures ? ` · ${auto.failures} failed up` : ""}`,
       );
     else if (look && look.quality) lines.push(`quality ${look.quality()}`);
-    if (base)
-      lines.push(
-        `map refresh ${effectiveRefresh(base, t)} s${t && t.factor > 1 ? " (throttled)" : ""}`,
-      );
     this.el.textContent = lines.join("\n");
   }
 

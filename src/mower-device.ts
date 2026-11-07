@@ -73,37 +73,6 @@ const firstMatch = (
       (!domain || eid.startsWith(domain + ".")) && re.test(label(hass, eid)),
   ) || null;
 
-// The static lawn map: an image.* of the live map's (else the mower's) device whose id / name ends in
-// "map" and is not the live map, the mower picture or a wifi map.
-export function findStaticMap(
-  hass: DeviceHass,
-  liveEntity: string | null | undefined,
-  mowerEntity: string | null | undefined,
-): string | null {
-  const { entities } = mowerDevice(hass, liveEntity, mowerEntity);
-  return (
-    entities.find((eid) => {
-      if (!eid.startsWith("image.") || eid === liveEntity) return false; // the live map by its id
-      const id = lc(eid.split(".")[1]);
-      if (
-        /mower_image|wifi/.test(id) ||
-        /wifi|mower image/.test(label(hass, eid))
-      )
-        return false;
-      return id.endsWith("map");
-    }) || null
-  );
-}
-
-export function findMowerPicture(
-  hass: DeviceHass,
-  liveEntity: string | null | undefined,
-  mowerEntity: string | null | undefined,
-): string | null {
-  const { entities } = mowerDevice(hass, mowerEntity, liveEntity);
-  return firstMatch(hass, entities, /mower image/, "image");
-}
-
 export function findErrorEntity(
   hass: DeviceHass,
   mowerEntity: string | null | undefined,

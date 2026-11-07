@@ -7,7 +7,6 @@
 import { Color } from "three";
 import { FloorplanView } from "./view.ts";
 import { logLayoutWarnings, parseLayout } from "./schema/layout.ts";
-import "./mower-auto.ts"; // registers the auto-mode kernel with the map worker
 import { ObjectLayer } from "./objects/layer.ts";
 import { TapHints } from "./objects/hints.ts";
 import { DebugOverlay } from "./debug-overlay.ts";
@@ -86,34 +85,12 @@ const MOWER_METHODS = [
   "_warningText",
   "_dockGroup",
   "_dockedNow",
-  "mowerStatus",
-  "mowerStatusText",
-  "mowerHeading",
-  "_mapRefreshSec",
-  "mowerAuto",
   "_mowerZ",
-  "mapZone",
   "mapInfo",
-  "_refreshMapOverlay",
 ] as const satisfies readonly (keyof MowerController)[];
 const MOWER_FIELDS = [
-  "_autoMismatch",
-  "_dockPx",
-  "_headSt",
-  "_headingSource",
-  "_iconHead",
-  "_iconHeadRaw",
-  "_imageBlob",
-  "_imageResult",
-  "_lastFrame",
-  "_mapDetect",
-  "_mapProc",
-  "_mapStats",
   "_mowerLive",
   "_mowerOffline",
-  "_perf",
-  "_throttle",
-  "_trk",
   "_warning",
 ] as const satisfies readonly (keyof MowerController)[];
 const MODEL_METHODS = [
@@ -530,8 +507,6 @@ export class Floorplan3dCard extends HTMLElement {
     if (this._io) this._io.observe(this);
     this._syncDebug();
     this._observeLongTasks();
-    // the map / image timers stopped on disconnect: re-arm them (refresh states and mower on the next update)
-    this._mowerCtl.resume();
     this._state.reconnects.value = this._state.reconnects.peek() + 1;
     this._scheduleSurfaces();
     // idle_reset: any touch, wheel or key on the card restarts the countdown
@@ -564,7 +539,7 @@ export class Floorplan3dCard extends HTMLElement {
       this._io = null;
     }
     this._skyCtl.dispose(); // wake, moon, scrubber timers, visibility listener
-    this._mowerCtl.dispose(); // stuck, camera, image, reprocess timers, the map worker
+    this._mowerCtl.dispose(); // stuck timer, warning pulse
     if (this._debug) {
       this._debug.dispose();
       this._debug = null;
@@ -636,10 +611,6 @@ export class Floorplan3dCard extends HTMLElement {
         return drawn.length ? drawn : null;
       },
     });
-    this._view.onMapImage = (img, w, h) =>
-      this._mowerCtl._onMapImage(img, w, h);
-    // auto mode: settings or the mower picture changed -> the current picture again, searched in full
-    this._view.onMapReprocess = () => this._mowerCtl.onMapReprocess();
     const objects = (this._objects = new ObjectLayer(this._view));
     this._view.onObjectsInvalidate = () => this._objectInput._updateObjects(); // view, section or placement changed
     this._popup = new ObjectPopup(this._stage, {
@@ -710,8 +681,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._syncToolbar();
     this._state.model.value = this._view.model; // the manifest arrived: rebuild
     this._schedule();
-    if (this._layout && this._layout.mower && this._hass)
-      this._refreshMapOverlay(); // the map lies on the model's lawn
   }
 
   _resize(): void {

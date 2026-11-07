@@ -50,7 +50,7 @@ describe("FloorplanView facade", () => {
     look: ["render", "renderFrom", "sky", "_dome", "_sunStale"],
     skyLayer: ["skySprites", "skyRing", "weather", "_cloudU", "_precip"],
     structure: ["stems"],
-    mower: ["mapPlane", "warning", "_ground", "_mowerGround"],
+    mower: ["warning", "_ground", "_mowerGround"],
   };
   for (const [part, names] of Object.entries(fields)) {
     it(`${part} fields read and write the part's own objects`, () => {
@@ -84,7 +84,6 @@ describe("FloorplanView facade", () => {
     v.modelLayer.surfaceRays = vi.fn(() => []);
     v.look._shadowDirty = vi.fn();
     v.skyLayer._roomHull = vi.fn(() => [[1, 2]]);
-    v.mower.setMapCanvas = vi.fn();
     v.sprites.markersAt = vi.fn(() => ["m1"]);
     expect(v.setCamera({ position: [1, 1, 1] }, { instant: true })).toBe(
       "moved",
@@ -104,8 +103,6 @@ describe("FloorplanView facade", () => {
     v._shadowDirty();
     expect(v.look._shadowDirty).toHaveBeenCalledTimes(1);
     expect(v._roomHull()).toEqual([[1, 2]]);
-    v.setMapCanvas("c", 4, 2);
-    expect(v.mower.setMapCanvas).toHaveBeenCalledWith("c", 4, 2, undefined);
     expect(v.markersAt(3, 4)).toEqual(["m1"]);
     expect(v.sprites.markersAt).toHaveBeenCalledWith(3, 4);
   });

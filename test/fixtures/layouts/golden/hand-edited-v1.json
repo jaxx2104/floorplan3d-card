@@ -68,13 +68,9 @@
     {
       "path": "mower.stuck_minutes",
       "message": "expected a number, got \"soon\""
-    },
-    {
-      "path": "mower.overlay.width",
-      "message": "expected a number, got \"9\""
     }
   ],
-  "unknown": ["my_extension"],
+  "unknown": ["mower.overlay", "my_extension"],
   "value": {
     "rooms": [
       {
@@ -141,7 +137,9 @@
     "mower": {
       "entity": "lawn_mower.m",
       "track_show": "always",
-      "overlay": {}
+      "overlay": {
+        "width": "9"
+      }
     },
     "my_extension": {
       "keep": ["me"]

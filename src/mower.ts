@@ -10,7 +10,7 @@
 // 2 points -> similarity transform (shift, rotate, uniform scale)
 // 3+ points -> least-squares affine transform
 
-import type { Hass, HassEntity } from "./types/ha.ts";
+import type { HassEntity } from "./types/ha.ts";
 import type {
   LayoutMower,
   MowerCalibrationPoint,
@@ -211,45 +211,6 @@ function solve3(A: number[][], b: number[]): [number, number, number] | null {
     }
   }
   return [m[0][3] / m[0][0], m[1][3] / m[1][1], m[2][3] / m[2][2]];
-}
-
-// Image URL for an image.* or camera.* entity (entity_picture carries the access token).
-export function overlayUrl(
-  hass: Hass | null | undefined,
-  entityId: string | null | undefined,
-  bust?: number | string | null,
-): string | null {
-  if (!hass || !entityId) return null;
-  const st = hass.states[entityId];
-  if (!st || !st.attributes.entity_picture) return null;
-  if (/^(data|blob):/.test(st.attributes.entity_picture))
-    return st.attributes.entity_picture; // immutable, no base
-  const url = hass.hassUrl
-    ? hass.hassUrl(st.attributes.entity_picture)
-    : st.attributes.entity_picture;
-  if (!bust) return url;
-  return url + (url.includes("?") ? "&" : "?") + "_t=" + bust;
-}
-
-// Root mean square distance (metres) between calibration plan points and where the fitted
-// transform puts their readings. 0 for 1-2 points (they fit exactly).
-export function calibrationError(
-  points: MowerCalibrationPoint[],
-  sourceKind: SourceKind | string | undefined,
-): number {
-  const f = fitTransform(points, sourceKind);
-  if (!f || points.length < 3) return 0;
-  let sum = 0;
-  for (const p of points) {
-    const q = f(
-      sourceKind === "xy"
-        ? { u: p.src[0], v: p.src[1] }
-        : { lat: p.src[0], lon: p.src[1] },
-    );
-    if (!q) continue; // unreachable: f only returns null without a reading
-    sum += (q[0] - p.plan[0]) ** 2 + (q[1] - p.plan[1]) ** 2;
-  }
-  return Math.sqrt(sum / points.length);
 }
 
 // Position on the plan for the current reading, or null. Without calibration, xy readings are

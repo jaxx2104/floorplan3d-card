@@ -74,16 +74,6 @@ export interface ViewStats {
   mapUploads?: number;
 }
 
-/** Processed mower map picture (onMapImage): a canvas to draw, null = as loaded, undefined = keep what is shown. */
-export type MapImageResult =
-  | {
-      canvas: HTMLCanvasElement | OffscreenCanvas;
-      width: number;
-      height: number;
-    }
-  | null
-  | undefined;
-
 // facade parameter types, taken from the parts that own them
 type Args<F> = F extends (...a: infer A) => unknown ? A : never;
 type CamArgs<K extends keyof CameraRig> = Args<CameraRig[K]>;
@@ -128,14 +118,6 @@ export class FloorplanView {
   overlayGroup: THREE.Group;
   mowerGroup: THREE.Group;
   stemGroup: THREE.Group;
-  onMapImage:
-    | ((
-        image: CanvasImageSource,
-        width: number,
-        height: number,
-      ) => MapImageResult | Promise<MapImageResult>)
-    | null;
-  onMapReprocess: (() => void) | null;
   modelGroup: THREE.Group;
   objectsGroup: THREE.Group;
   onRender: (() => void) | null;
@@ -237,8 +219,6 @@ export class FloorplanView {
       this.overlayGroup,
       this.stemGroup,
     );
-    this.onMapImage = null; // (image, width, height) -> processed { canvas, width, height } | null
-    this.onMapReprocess = null; // external map: run the card's processing again
     this.modelGroup = new THREE.Group();
     this.scene.add(this.modelGroup);
     this.objectsGroup = new THREE.Group(); // model objects: the light pool sub-group (ObjectLayer.lights) and object labels
@@ -437,12 +417,6 @@ export class FloorplanView {
     this.structure.stems = v;
   }
 
-  get mapPlane() {
-    return this.mower.mapPlane;
-  }
-  set mapPlane(v) {
-    this.mower.mapPlane = v;
-  }
   get warning() {
     return this.mower.warning;
   }
@@ -489,9 +463,6 @@ export class FloorplanView {
     height: CamArgs<"planPoint">[2],
   ) {
     return this.cam.planPoint(clientX, clientY, height);
-  }
-  mapHit(clientX: CamArgs<"mapHit">[0], clientY: CamArgs<"mapHit">[1]) {
-    return this.cam.mapHit(clientX, clientY);
   }
   screenPoint(
     x: CamArgs<"screenPoint">[0],
@@ -744,20 +715,6 @@ export class FloorplanView {
   _groundRay(x: MowerArgs<"_groundRay">[0], y: MowerArgs<"_groundRay">[1]) {
     return this.mower._groundRay(x, y);
   }
-  setMapOverlay(o: MowerArgs<"setMapOverlay">[0]) {
-    return this.mower.setMapOverlay(o);
-  }
-  setMapCanvas(
-    canvas: MowerArgs<"setMapCanvas">[0],
-    natW: MowerArgs<"setMapCanvas">[1],
-    natH: MowerArgs<"setMapCanvas">[2],
-    loaded?: MowerArgs<"setMapCanvas">[3],
-  ) {
-    return this.mower.setMapCanvas(canvas, natW, natH, loaded);
-  }
-  reprocessMap() {
-    return this.mower.reprocessMap();
-  }
   setMowerWarning(w: MowerArgs<"setMowerWarning">[0]) {
     return this.mower.setMowerWarning(w);
   }
@@ -952,8 +909,6 @@ export class FloorplanView {
         : !!this.model && this.visibleFloor === "all" && m.floorId !== top;
     }
     this.sprites.applyMarkerDraw();
-    if (this.mower.mapPlane && this.mower.mapPlane.material.map)
-      this.mower.mapPlane.visible = this.mower._mapShown(this.mower.mapPlane);
     // the shadow map only when its inputs changed (not on every state update)
     const model = this._modelSig();
     if (model !== this._shadowSig) {
@@ -1174,7 +1129,6 @@ export class FloorplanView {
     this.onObjectsInvalidate = null;
     this.look.dispose(); // finish, depth pass
     this.still.dispose(); // the path tracer
-    this.mower.setMapOverlay(null);
     this.mower.setMowerWarning(null);
     this.skyLayer.dispose(); // sprites, room mask, rain / snow, compass ring
     this.markerObjects.clear();

@@ -185,10 +185,8 @@ export class ObjectInput {
     if (!o || !card._hass || (o.binding && o.binding.hidden)) return null;
     const extra: PopupRow[] = [];
     if (o.obj.type === "mower") {
-      // from the processed live map
+      // from a progress sensor of the mower's device
       const mi = card.mapInfo();
-      if (mi.stripes)
-        extra.push({ kind: "info", label: "Stripes", value: mi.stripes });
       if (mi.mowed)
         extra.push({ kind: "info", label: "Mowed", value: mi.mowed });
       const wt = card._warningText();

@@ -12,7 +12,6 @@ import type {
   LayoutRoom,
   LayoutTag,
   LayoutView,
-  MowerOverlay,
   PlanPoint,
   SavedLevelBinding,
   Vec3,
@@ -75,9 +74,7 @@ export type Checks = [
     Equal<NonNullable<LayoutModel["levels"]>, Record<string, SavedLevelBinding>>
   >,
   Expect<Equal<SavedLevelBinding["floor"], string | null | undefined>>,
-  Expect<Equal<LayoutMower["overlay"], MowerOverlay | null | undefined>>,
   Expect<Equal<LayoutMower["stuck_minutes"], number | undefined>>,
-  Expect<Equal<MowerOverlay["bg_colors"], number[][] | undefined>>,
   Expect<Equal<LayoutObject["entity"], string | null | undefined>>,
   Expect<Equal<LayoutObject["wash"], WashDir | undefined>>,
   // card config: the defaults are applied, the YAML type keeps every option optional

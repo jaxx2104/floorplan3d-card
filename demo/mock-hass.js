@@ -20,153 +20,6 @@ const areaFloor = {
   master_bedroom: "first",
   bathroom_2: "first",
 };
-// Live map image like a robot mower integration renders it (Sunseeker live map): the 9 x 17 m lawn of
-// mower-map.svg (50 px/m, centred on the garden) on a dark green background (unmowed), light mowed
-// stripes at 30° (counter-clockwise from east), grey no-mow areas, a blue boundary and the mower as a
-// red dot with a white ring. Aligned as the overlay at (16.5, 1.5), width 9, the dot sits where the
-// fake mower is. window.__demoMapScale (headless checks) renders it larger: the size changes.
-let liveCanvas = null;
-function liveMap(t) {
-  if (typeof document === "undefined") return "";
-  const s = (typeof window !== "undefined" && window.__demoMapScale) || 1;
-  const c = (liveCanvas = liveCanvas || document.createElement("canvas"));
-  if (c.width !== 450 * s) c.width = 450 * s;
-  if (c.height !== 850 * s) c.height = 850 * s;
-  const g = c.getContext("2d");
-  g.setTransform(s, 0, 0, s, 0, 0);
-  g.fillStyle = "#284f26"; // unmowed has two shades: the margin darker
-  g.fillRect(0, 0, 450, 850);
-  g.fillStyle = "#2f5d2c";
-  g.fillRect(25, 25, 400, 800);
-  g.save();
-  g.beginPath();
-  g.rect(25, 25, 400, 800);
-  g.clip();
-  g.translate(225, 425);
-  g.rotate((-30 * Math.PI) / 180); // canvas y points down: -30° turns the bands counter-clockwise
-  g.fillStyle = "#7fc26f";
-  for (let y = -700; y < 700; y += 60) g.fillRect(-700, y, 1400, 30);
-  g.restore();
-  g.fillStyle = "#8c8c8c"; // no-mow: a flower bed and a shed
-  g.beginPath();
-  g.arc(225, 395, 34, 0, Math.PI * 2);
-  g.fill();
-  g.fillRect(60, 700, 70, 50);
-  g.strokeStyle = "#4a8fd6"; // boundary
-  g.lineWidth = 4;
-  g.strokeRect(25, 25, 400, 800);
-  g.fillStyle = "#f0f0f0";
-  g.fillRect(360, 770, 50, 40); // dock
-  const mx = 225 + 200 * Math.cos(t),
-    my = 425 - 200 * Math.sin(t);
-  g.fillStyle = "#ffffff"; // the mower: red dot, white ring
-  g.beginPath();
-  g.arc(mx, my, 12, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = "#ff3b30";
-  g.beginPath();
-  g.arc(mx, my, 9, 0, Math.PI * 2);
-  g.fill();
-  return c.toDataURL("image/png");
-}
-// A second robot (no area, so no marker) as the Sunseeker integration exposes it: a static lawn map
-// (image), a live map (camera) = the static map + light mowed stripes + the mower picture turned to
-// its heading + a big grey dock icon, the mower's top-down picture (front = top), and its sensors.
-// window.__robotT (headless checks) holds its position on a 150 px circle; heading = t + 90°.
-const ROBOT = { canvas: null, pic: null };
-function robotPicture() {
-  if (typeof document === "undefined") return null;
-  if (ROBOT.pic) return ROBOT.pic;
-  const c = document.createElement("canvas");
-  c.width = 48;
-  c.height = 64;
-  const g = c.getContext("2d");
-  g.fillStyle = "#5a5d63";
-  g.beginPath();
-  g.roundRect(4, 4, 40, 56, 10);
-  g.fill();
-  g.fillStyle = "#202224"; // front bumper (top)
-  g.fillRect(6, 4, 36, 10);
-  g.fillStyle = "#eeeeee"; // the lid's disc, at the back
-  g.beginPath();
-  g.arc(24, 44, 9, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = "#e67e22";
-  g.fillRect(8, 18, 4, 18);
-  return (ROBOT.pic = c);
-}
-// ?robotmap=1600 (benchmark): both robot maps drawn S x S pixels (the 450 x 850 lawn scaled and centred).
-const ROBOT_SIZE = (() => {
-  try {
-    return Number(new URLSearchParams(location.search).get("robotmap")) || 0;
-  } catch (e) {
-    return 0;
-  }
-})();
-function robotCanvas() {
-  const c = document.createElement("canvas");
-  c.width = ROBOT_SIZE || 450;
-  c.height = ROBOT_SIZE || 850;
-  const g = c.getContext("2d");
-  if (ROBOT_SIZE) {
-    const s = ROBOT_SIZE / 850;
-    g.fillStyle = "#1d1f21";
-    g.fillRect(0, 0, ROBOT_SIZE, ROBOT_SIZE);
-    g.setTransform(s, 0, 0, s, (ROBOT_SIZE - 450 * s) / 2, 0);
-  }
-  return { c, g };
-}
-function robotStatic(g) {
-  g.fillStyle = "#1d1f21";
-  g.fillRect(0, 0, 450, 850);
-  g.fillStyle = "#3d7d3a";
-  g.fillRect(25, 25, 400, 800);
-}
-function robotOverlay(g) {
-  g.fillStyle = "#8c8c8c"; // no-mow
-  g.beginPath();
-  g.arc(225, 395, 34, 0, Math.PI * 2);
-  g.fill();
-  g.fillRect(60, 700, 70, 50);
-  g.strokeStyle = "#d23c3c"; // boundary
-  g.lineWidth = 3;
-  g.strokeRect(25, 25, 400, 800);
-}
-// at: { x, y, t } draws the mower at that map pixel instead of on its circle (e.g. on the dock);
-// mowed: how many stripes are mowed (more over time in the benchmark).
-function robotDraw(live, t, at = null, mowed = 12) {
-  const { c, g } = robotCanvas();
-  robotStatic(g);
-  if (live) {
-    g.save();
-    g.beginPath();
-    g.rect(25, 25, 400, 800);
-    g.clip();
-    g.translate(225, 425);
-    g.rotate((-30 * Math.PI) / 180);
-    g.fillStyle = "#79c46a";
-    for (let y = -700, i = 0; y < 0 && i < mowed; y += 60, i++)
-      g.fillRect(-700, y, 1400, 30); // the north half mowed
-    g.restore();
-  }
-  robotOverlay(g);
-  if (live) {
-    g.fillStyle = "#b4b4b4"; // dock
-    g.fillRect(370, 765, 42, 42);
-    const x = at ? at.x : 225 + 150 * Math.cos(t),
-      y = at ? at.y : 425 - 150 * Math.sin(t);
-    g.save();
-    g.translate(x, y);
-    g.rotate(-(at ? at.t : t)); // top of the picture along the heading t + 90° (counter-clockwise, image up)
-    g.drawImage(robotPicture(), -14.4, -19.2, 28.8, 38.4);
-    g.restore();
-  }
-  return c;
-}
-function robotMap(live, t, at = null) {
-  if (typeof document === "undefined") return "";
-  return robotDraw(live, t, at).toDataURL("image/png");
-}
 const pretty = (id) =>
   id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 const areas = Object.fromEntries(
@@ -316,40 +169,8 @@ device("mower", "Mower", "garden", [
   ["binary_sensor.demo_mower_error", "off", { device_class: "problem" }],
 ]);
 device("garden_cam", "Garden camera", "garden", [["camera.garden", "idle"]]);
-device("mower_map", "Sunseeker map", "garden", [
-  [
-    "image.sunseeker_map",
-    "2026-01-01T00:00:00+00:00",
-    { entity_picture: "/demo/mower-map.svg" },
-  ],
-]);
-device("mower_live_map", "Sunseeker live map", "garden", [
-  [
-    "image.sunseeker_live_map",
-    "2026-01-01T00:00:00+00:00",
-    { entity_picture: liveMap(0) },
-  ],
-]);
 device("robot", "Robo", null, [
   ["lawn_mower.robo", "mowing"],
-  ["camera.robo_live_map", "idle", { entity_picture: robotMap(true, 0) }],
-  [
-    "image.robo_map",
-    "2026-01-01T00:00:00+00:00",
-    { entity_picture: robotMap(false, 0) },
-  ],
-  [
-    "image.robo_mower_image",
-    "2026-01-01T00:00:00+00:00",
-    {
-      entity_picture:
-        typeof document === "undefined"
-          ? ""
-          : robotPicture().toDataURL("image/png"),
-      friendly_name: "Robo Mower image",
-    },
-  ],
-  ["image.robo_wifi_map", "2026-01-01T00:00:00+00:00", {}],
   ["sensor.robo_progress", 39, { unit_of_measurement: "%" }],
   [
     "sensor.robo_battery",
@@ -567,17 +388,10 @@ export function createMockHass({ onChange }) {
     const lon =
       10.0 + (Math.cos(t) * 4) / (111320 * Math.cos((45.0 * Math.PI) / 180));
     const s = current.states["device_tracker.sunseeker_position"];
-    const m = current.states["image.sunseeker_live_map"];
     update({
       "device_tracker.sunseeker_position": {
         ...s,
         attributes: { ...s.attributes, latitude: lat, longitude: lon },
-      },
-      "image.sunseeker_live_map": {
-        ...m,
-        state: new Date().toISOString(),
-        last_updated: new Date().toISOString(),
-        attributes: { ...m.attributes, entity_picture: liveMap(t) },
       },
     });
   };
@@ -588,43 +402,6 @@ export function createMockHass({ onChange }) {
     if (!window.__demoMowerPaused) step();
   }, 500);
 
-  // the second robot: window.__setRobot(t) puts it at angle t (radians) on its circle (heading t + 90°)
-  let rt = 0;
-  const setRobotPicture = (url) => {
-    const c = current.states["camera.robo_live_map"];
-    update({
-      "camera.robo_live_map": {
-        ...c,
-        state: "idle",
-        last_updated: new Date().toISOString(),
-        attributes: { ...c.attributes, entity_picture: url },
-      },
-    });
-  };
-  window.__setRobot = (t) => {
-    rt = t;
-    setRobotPicture(robotMap(true, rt));
-  };
-  // headless checks: the mower drawn at a map pixel (x, y of the 450 x 850 map), turned by t
-  window.__setRobotAt = (x, y, t = 0) =>
-    setRobotPicture(robotMap(true, 0, { x, y, t }));
-  // benchmark: frames rendered ahead as blob URLs (encoding a big PNG is not the card's time), then
-  // shown one by one. -> Promise of the frame count
-  const frames = [],
-    blobs = [];
-  window.__robotFrames = async (n, t0 = 0, dt = 0.02) => {
-    for (let i = 0; i < n; i++) {
-      const c = robotDraw(true, t0 + i * dt, null, 6 + Math.floor((i * 6) / n));
-      const b = await new Promise((r) => c.toBlob(r, "image/png"));
-      blobs.push(b);
-      frames.push(URL.createObjectURL(b));
-    }
-    return frames.length;
-  };
-  window.__setRobotFrame = (i) => setRobotPicture(frames[i % frames.length]);
-  // the same picture under a new URL (a camera refresh where nothing changed)
-  window.__setRobotSame = (i) =>
-    setRobotPicture(URL.createObjectURL(blobs[i % blobs.length]));
   // headless checks: window.__setDemoStates({ entity_id: state | { state, attributes } })
   window.__setDemoStates = (changes) =>
     update(
