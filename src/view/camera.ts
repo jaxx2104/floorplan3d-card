@@ -311,6 +311,9 @@ export class CameraRig {
     this.view.camera = mode === "top" ? this.view.ortho : this.view.persp;
     this._makeControls();
     this.fit();
+    // Top frames the sun / moon only where they clear the rooms on screen, judged with the ortho camera:
+    // on the first switch it still sits where it was created, so frame again from the framed house.
+    if (mode === "top") this.fit();
   }
 
   // Frame the rooms of the visible floor(s); the model when there are no rooms (or asked to).
