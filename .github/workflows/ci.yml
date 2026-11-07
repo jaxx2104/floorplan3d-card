@@ -53,7 +53,7 @@ jobs:
           if-no-files-found: ignore
 
   # the render loop's work by counters and condition waits (no frame-time budget), one shard per group pair
-  # (--shard k/3 takes every 3rd group: quality-standard + auto, quality-high, still)
+  # (--shard k/3 takes every 3rd group: quality-standard + still, quality-high, auto)
   perf-check:
     runs-on: ubuntu-latest
     strategy:

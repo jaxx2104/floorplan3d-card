@@ -461,9 +461,18 @@ sections.add(
       chunk: performance.getEntriesByType('resource').some((r) => /path-tracer-/.test(r.name)) }; })())`).then(
         JSON.parse,
       );
+    // the card settled first (surface search, pending updates): late load work draws a raster frame, which ends
+    // a session; then a session that finished after it
+    await until(
+      page,
+      `(() => { const c = ${card}; return !c._pending && !c._surfJob; })()`,
+      "the card settled",
+      120000,
+    );
+    await rafs(page, 2); // the frame the settling work asked for, if any
     const traced = await until(
       page,
-      `${card}._view.still.done`,
+      `${card}._view.still.done && !${card}._view.dirty`,
       "the first session",
       120000,
     );
@@ -792,7 +801,9 @@ for (const quality of ["standard", "high"])
   );
 
 // group order: what a plain run does first
-sections.order(["quality-standard", "quality-high", "still", "auto", "bench"]);
+// still runs after another group in its shard (--shard 1/3: quality-standard, then still), as it did before the
+// mower-map group went: alone and first on a cold CI runner its first session stalled or was ended by a late frame
+sections.order(["quality-standard", "quality-high", "auto", "still", "bench"]);
 const args = parseArgs(process.argv.slice(2));
 if (args.list) {
   for (const g of sections.groups)
