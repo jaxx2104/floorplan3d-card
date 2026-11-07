@@ -20,12 +20,12 @@ describe("card editor", () => {
         view: "top",
         model: "",
         floor: undefined,
-        wall_height: 1.2,
+        model_scale: 0.01,
       }),
     ).toEqual({
       type: "custom:floorplan3d-card",
       view: "top",
-      wall_height: 1.2,
+      model_scale: 0.01,
     });
   });
 
@@ -87,9 +87,7 @@ describe("card editor", () => {
     });
     expect(form.schema).toBe(mod.SCHEMA);
     expect(form.hass).toEqual({ states: {} });
-    expect(form.computeLabel({ name: "wall_height" })).toBe(
-      "Cut-away wall height",
-    );
+    expect(form.computeLabel({ name: "model_scale" })).toBe("Model scale");
 
     let got;
     el.addEventListener("config-changed", (e) => {

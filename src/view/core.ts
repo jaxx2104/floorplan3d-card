@@ -1,7 +1,6 @@
 // Helpers shared by the view parts (src/view/*) and re-exported from src/view.
 
 import * as THREE from "three";
-import type { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import type { Billboard } from "./billboards.ts";
 import type { LayoutRoom, Vec3 } from "../types/layout.ts";
 
@@ -15,10 +14,6 @@ declare global {
 // Narrowing helpers for scene-graph walks (traverse hands out Object3D; three's is* flags tell the kind).
 export const isMesh = (o: THREE.Object3D | null | undefined): o is THREE.Mesh =>
   !!o && (o as Partial<THREE.Mesh>).isMesh === true;
-export const isCss2d = (
-  o: THREE.Object3D | null | undefined,
-): o is CSS2DObject =>
-  !!o && (o as { isCSS2DObject?: boolean }).isCSS2DObject === true; // three sets the flag; its types omit it
 /** The view's two camera kinds. */
 export type ViewCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 export const isPerspective = (c: THREE.Camera): c is THREE.PerspectiveCamera =>
@@ -53,11 +48,11 @@ export type ModelMaterial = THREE.Material &
 
 // --- the view's contract with its parts and callers ---
 
-/** An overlay object the view tracks for floor visibility: marker and room label (GPU sprites), editor handle (DOM). */
+/** A sprite the view tracks for floor visibility: marker or room label. */
 export interface CssEntry {
-  obj: CSS2DObject | Billboard;
+  obj: Billboard;
   floorId: string;
-  kind: "marker" | "label" | "handle";
+  kind: "marker" | "label";
   id?: string;
 }
 /** A drawn room on its floor (setStructure). */
@@ -76,19 +71,9 @@ export interface MarkerEntry {
   alert?: boolean;
   pickable?: boolean;
 }
-/** view.glows value: the glow under a light that is on. */
-export interface GlowEntry {
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  floorId: string;
-  sig?: string;
-}
 /** Card theme (floorplan3d-card _applyTheme); { dark: false } until the card sets one. */
 export interface ViewTheme {
   dark: boolean;
-  floor?: THREE.ColorRepresentation;
-  outdoor?: THREE.ColorRepresentation;
-  wall?: THREE.ColorRepresentation;
-  edge?: THREE.ColorRepresentation;
   primary?: THREE.ColorRepresentation;
 }
 /** Marker visibility override per marker id (setMarkerStates). */

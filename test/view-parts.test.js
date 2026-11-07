@@ -38,18 +38,10 @@ const facade = () => {
 
 describe("FloorplanView facade", () => {
   const fields = {
-    cam: ["controls", "pivotMarker", "_tween", "_framed"],
-    modelLayer: [
-      "mergeStats",
-      "pickHelper",
-      "_preview",
-      "_previewRing",
-      "_previewFace",
-      "_surfMeshes",
-    ],
+    cam: ["controls", "_tween", "_framed"],
+    modelLayer: ["mergeStats", "pickHelper", "_surfMeshes"],
     look: ["render", "renderFrom", "sky", "_dome", "_sunStale"],
     skyLayer: ["skySprites", "skyRing", "weather", "_cloudU", "_precip"],
-    structure: ["stems"],
     mower: ["warning", "_ground", "_mowerGround"],
   };
   for (const [part, names] of Object.entries(fields)) {
@@ -105,21 +97,6 @@ describe("FloorplanView facade", () => {
     expect(v._roomHull()).toEqual([[1, 2]]);
     expect(v.markersAt(3, 4)).toEqual(["m1"]);
     expect(v.sprites.markersAt).toHaveBeenCalledWith(3, 4);
-  });
-
-  it("a light marker's floor glow shows on the plan alone, never over a 3D model (its real light is there)", () => {
-    const v = facade();
-    Object.assign(v, {
-      model: null,
-      _markerStates: null,
-      _visibleSet: null,
-      visibleFloor: "all",
-      _cutAway: () => false,
-    });
-    const g = { floorId: "ground", mesh: { position: new THREE.Vector3() } };
-    expect(v._glowVisible("light", g)).toBe(true);
-    v.model = { id: "m" };
-    expect(v._glowVisible("light", g)).toBe(false);
   });
 
   it("no ao pass any more: the probe grids and contact shadows shade corners in every tier", () => {

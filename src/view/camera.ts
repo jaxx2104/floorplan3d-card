@@ -71,10 +71,6 @@ export class CameraRig {
   _zoomTo: "center" | "cursor";
   _orbit: { speed: number; frameAt: number } | null;
   _bounds: SceneBounds | null;
-  pivotMarker: THREE.LineSegments<
-    THREE.BufferGeometry,
-    THREE.LineBasicMaterial
-  > | null;
   _onWheel: () => void;
 
   constructor(view: FloorplanView) {
@@ -88,7 +84,6 @@ export class CameraRig {
     this._zoomTo = "center"; // zoom pivot: 'center' (controls target) or 'cursor'
     this._orbit = null; // idle orbit { speed, frameAt }
     this._bounds = null; // { house: Box3, centre: Vector3, radius } for the depth range
-    this.pivotMarker = null; // edit mode: small cross at the rotation centre
     this._onWheel = () => {
       this.view.dirty = true;
     };
@@ -158,40 +153,6 @@ export class CameraRig {
     const cam = pivotCamera(this.getCamera(), point);
     this.setCamera(cam);
     return cam;
-  }
-
-  // Edit mode: show the rotation centre as a small cross (three short lines, primary colour).
-  setPivotMarker(on: boolean): void {
-    if (!on) {
-      if (this.pivotMarker) {
-        this.view.scene.remove(this.pivotMarker);
-        this.pivotMarker.geometry.dispose();
-        this.pivotMarker.material.dispose();
-        this.pivotMarker = null;
-        this.view.dirty = true;
-      }
-      return;
-    }
-    if (this.pivotMarker) return;
-    const L = 0.25;
-    const g = new THREE.BufferGeometry().setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(
-        [-L, 0, 0, L, 0, 0, 0, -L, 0, 0, L, 0, 0, 0, -L, 0, 0, L],
-        3,
-      ),
-    );
-    const m = new THREE.LineBasicMaterial({
-      color: this.view.theme.primary || 0x03a9f4,
-      depthTest: false,
-      transparent: true,
-    });
-    this.pivotMarker = new THREE.LineSegments(g, m);
-    this.pivotMarker.renderOrder = 12;
-    this.pivotMarker.userData.helper = true;
-    this.pivotMarker.position.copy(this.controls.target);
-    this.view.scene.add(this.pivotMarker);
-    this.view.dirty = true;
   }
 
   setControlsEnabled(on: boolean): void {
@@ -609,7 +570,6 @@ export class CameraRig {
     if (!w || !h) return;
     this.view.size = { w, h };
     this.view.renderer.setSize(w, h);
-    this.view.labelRenderer.setSize(w, h);
     // render the top part of a taller view, so the scene centre sits below the toolbar
     this.view.persp.aspect = w / (h + TOOLBAR_PX);
     this.view.persp.setViewOffset(w, h + TOOLBAR_PX, 0, 0, w, h);

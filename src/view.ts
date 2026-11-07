@@ -1,7 +1,7 @@
-// Three.js scene for the floorplan: floors, rooms, cut-away walls, GPU markers and labels, light glow.
+// Three.js scene for the floorplan: the model, GPU markers and room labels.
 // Plan (x, y, z) maps to world (x, floorElevation + z, -y) so north is up in top view.
 //
-// FloorplanView is the facade the card, the editor and the checks talk to. It owns the scene graph
+// FloorplanView is the facade the card and the checks talk to. It owns the scene graph
 // (renderer, cameras, lights, groups), floor / marker visibility, the section and the render loop;
 // the rest lives in parts under src/view/, each with a back-reference to the view:
 //   cam (camera.js), modelLayer (model.js), look (look.js), skyLayer (sky.js), structure (structure.js),
@@ -10,20 +10,14 @@
 // accessors that return the part's own object.
 
 import * as THREE from "three";
-import {
-  CSS2DRenderer,
-  type CSS2DObject,
-} from "three/addons/renderers/CSS2DRenderer.js";
 import { levelVisible, type LevelAssign } from "./bindings.ts";
 import { DepthPrepass } from "./depth-pass.ts";
 import {
   testMode,
-  isCss2d,
   isMesh,
   meshMaterials,
   type CssEntry,
   type Drawable,
-  type GlowEntry,
   type MarkerEntry,
   type MarkerState,
   type ViewCamera,
@@ -102,7 +96,6 @@ export class FloorplanView {
   still: StillTrace;
   /** render quality 'auto': measured frames -> the level in use */
   auto: AutoQualityView;
-  labelRenderer: CSS2DRenderer;
   persp: THREE.PerspectiveCamera;
   ortho: THREE.OrthographicCamera;
   mode: "3d" | "top";
@@ -114,10 +107,7 @@ export class FloorplanView {
   onScreen: boolean;
   staticGroup: THREE.Group;
   markerGroup: THREE.Group;
-  glowGroup: THREE.Group;
-  overlayGroup: THREE.Group;
   mowerGroup: THREE.Group;
-  stemGroup: THREE.Group;
   modelGroup: THREE.Group;
   objectsGroup: THREE.Group;
   onRender: (() => void) | null;
@@ -134,7 +124,6 @@ export class FloorplanView {
   raycaster: THREE.Raycaster;
   mowerMarkerId: string | null;
   mowerOnFloor: boolean;
-  _cssShown: boolean;
   /** the frame (stats.frames) the depth pre-pass was drawn for */
   _depthFrame: number;
   _shadowSig: string | null;
@@ -147,9 +136,7 @@ export class FloorplanView {
   _cutOverride: number | null | undefined;
   cssObjects: CssEntry[];
   markerObjects: Map<string, MarkerEntry>;
-  glows: Map<string, GlowEntry>;
   theme: ViewTheme;
-  wallHeight: number;
   size: { w: number; h: number };
   dirty: boolean;
   _raf: number | null;
@@ -177,14 +164,7 @@ export class FloorplanView {
     this.renderer.setPixelRatio(this.look._pixelRatio());
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.localClippingEnabled = true; // model cut-away
-    this.labelRenderer = new CSS2DRenderer();
-    Object.assign(this.labelRenderer.domElement.style, {
-      position: "absolute",
-      inset: "0",
-      pointerEvents: "none",
-      isolation: "isolate",
-    }); // own stacking context: the edit handles' z-indexes stay under the popup
-    container.append(this.renderer.domElement, this.labelRenderer.domElement);
+    container.append(this.renderer.domElement);
 
     this.persp = new THREE.PerspectiveCamera(35, 1, 0.3, 500);
     this.ortho = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 500);
@@ -207,18 +187,8 @@ export class FloorplanView {
 
     this.staticGroup = new THREE.Group();
     this.markerGroup = new THREE.Group();
-    this.glowGroup = new THREE.Group();
-    this.overlayGroup = new THREE.Group(); // editor graphics, drawn on top
-    this.mowerGroup = new THREE.Group(); // map image, warning
-    this.stemGroup = new THREE.Group(); // edit mode: marker -> floor stems
-    this.scene.add(
-      this.staticGroup,
-      this.mowerGroup,
-      this.glowGroup,
-      this.markerGroup,
-      this.overlayGroup,
-      this.stemGroup,
-    );
+    this.mowerGroup = new THREE.Group(); // warning, track
+    this.scene.add(this.staticGroup, this.mowerGroup, this.markerGroup);
     this.modelGroup = new THREE.Group();
     this.scene.add(this.modelGroup);
     this.objectsGroup = new THREE.Group(); // model objects: the light pool sub-group (ObjectLayer.lights) and object labels
@@ -239,7 +209,6 @@ export class FloorplanView {
     this.raycaster.params.Points.threshold = PICK_LINE_M;
     this.mowerMarkerId = null; // the live mower's marker (shown with the outdoors)
     this.mowerOnFloor = false; // the mower stands on its floor (indoors: no ground ray)
-    this._cssShown = false; // DOM overlay objects (edit handles) were drawn last frame
     this._depthFrame = -1;
     this._shadowSig = null; // inputs of the last shadow map render (model visibility, cut, section)
     this.stats = {
@@ -266,9 +235,7 @@ export class FloorplanView {
     this._cutOverride = undefined;
     this.cssObjects = []; // { obj, floorId }
     this.markerObjects = new Map(); // id -> { obj, floorId }
-    this.glows = new Map(); // id -> { mesh, floorId }
     this.theme = { dark: false };
-    this.wallHeight = 1.0;
     this.size = { w: 1, h: 1 };
     this.dirty = true;
     this._raf = null;
@@ -287,12 +254,6 @@ export class FloorplanView {
   }
   set controls(v) {
     this.cam.controls = v;
-  }
-  get pivotMarker() {
-    return this.cam.pivotMarker;
-  }
-  set pivotMarker(v) {
-    this.cam.pivotMarker = v;
   }
   get _tween() {
     return this.cam._tween;
@@ -323,24 +284,7 @@ export class FloorplanView {
   set pickHelper(v) {
     this.modelLayer.pickHelper = v;
   }
-  get _preview() {
-    return this.modelLayer._preview;
-  }
-  set _preview(v) {
-    this.modelLayer._preview = v;
-  }
-  get _previewRing() {
-    return this.modelLayer._previewRing;
-  }
-  set _previewRing(v) {
-    this.modelLayer._previewRing = v;
-  }
-  get _previewFace() {
-    return this.modelLayer._previewFace;
-  }
-  set _previewFace(v) {
-    this.modelLayer._previewFace = v;
-  }
+
   get _surfMeshes() {
     return this.modelLayer._surfMeshes;
   }
@@ -410,13 +354,6 @@ export class FloorplanView {
     this.skyLayer._precip = v;
   }
 
-  get stems() {
-    return this.structure.stems;
-  }
-  set stems(v) {
-    this.structure.stems = v;
-  }
-
   get warning() {
     return this.mower.warning;
   }
@@ -450,9 +387,6 @@ export class FloorplanView {
   }
   setPivot(point: CamArgs<"setPivot">[0]) {
     return this.cam.setPivot(point);
-  }
-  setPivotMarker(on: CamArgs<"setPivotMarker">[0]) {
-    return this.cam.setPivotMarker(on);
   }
   setControlsEnabled(on: CamArgs<"setControlsEnabled">[0]) {
     return this.cam.setControlsEnabled(on);
@@ -559,9 +493,7 @@ export class FloorplanView {
   ) {
     return this.modelLayer.surfaceRays(worldPoint, dirs, maxDist);
   }
-  setSurfacePreview(p: ModelArgs<"setSurfacePreview">[0]) {
-    return this.modelLayer.setSurfacePreview(p);
-  }
+
   highlightModelNode(node: ModelArgs<"highlightModelNode">[0]) {
     return this.modelLayer.highlightModelNode(node);
   }
@@ -668,9 +600,6 @@ export class FloorplanView {
 
   // --- facade: plan structure (structure.js) ---
 
-  setOverlay(o?: StructureArgs<"setOverlay">[0]) {
-    return this.structure.setOverlay(o);
-  }
   moveMarker(
     id: StructureArgs<"moveMarker">[0],
     x: StructureArgs<"moveMarker">[1],
@@ -692,12 +621,6 @@ export class FloorplanView {
   }
   setMarkers(markers: StructureArgs<"setMarkers">[0]) {
     return this.structure.setMarkers(markers);
-  }
-  setStems(on: StructureArgs<"setStems">[0]) {
-    return this.structure.setStems(on);
-  }
-  setGlows(glows: StructureArgs<"setGlows">[0]) {
-    return this.structure.setGlows(glows);
   }
 
   // --- facade: mower (mower-layer.js) ---
@@ -851,15 +774,6 @@ export class FloorplanView {
     const stateOf = (id: string | undefined) =>
       ms && id !== undefined ? ms.get(id) : null;
     for (const c of this.cssObjects) c.obj.visible = this._markerVisible(c);
-    for (const [id, g] of this.glows) g.mesh.visible = this._glowVisible(id, g);
-    for (const [id, st] of this.structure.stems) {
-      const m = this.markerObjects.get(id);
-      const shown = !!(m && m.obj.visible);
-      st.disc.visible = shown;
-      st.line.visible = shown && st.line.userData.height > 0.01;
-    }
-    for (const o of this.overlayGroup.children)
-      if (!isCss2d(o)) o.visible = this._shows(o.userData.floorId);
     if (this.mower.warning) this.mower._warningVisible();
     if (this.mower.mowerTrack)
       this.mower.mowerTrack.mesh.visible = this.mower._mowerShows(
@@ -928,23 +842,7 @@ export class FloorplanView {
       c.kind === "marker" && c.id === this.mowerMarkerId
         ? this.mower._mowerShows(c.floorId)
         : this._shows(c.floorId);
-    return (
-      (st ? !!st.shown : floorRule) &&
-      !(c.kind !== "handle" && this._cutAway(c.obj.position))
-    );
-  }
-
-  // A light marker's floor glow: only on the plan alone. Over a 3D model the floor is lit by the sun, the sky and
-  // the model's real lamps, and the decal (additive, not tone mapped) on top of that light blew it out (dark theme
-  // by day: 0.52 to 0.69 display luminance, 27 % of it clipped) or, painted over it in the light theme, darkened
-  // a sunlit floor. The marker itself still shows the light is on.
-  _glowVisible(id: string, g: GlowEntry): boolean {
-    if (this.model) return false;
-    const st = this._markerStates ? this._markerStates.get(id) : null;
-    return (
-      (st ? !!st.shown : this._shows(g.floorId)) &&
-      !this._cutAway(g.mesh.position)
-    );
+    return (st ? !!st.shown : floorRule) && !this._cutAway(c.obj.position);
   }
 
   // What the shadow map depends on: the model, which of its nodes are shown, the cut, the section.
@@ -1014,15 +912,6 @@ export class FloorplanView {
       if (this.onTick) this.onTick(ts); // debug overlay: frame gaps
       if (cam._tween) cam._stepTween(performance.now());
       if (cam.controls.update()) this.dirty = true; // damping still moving
-      const pivot = cam.pivotMarker;
-      if (pivot && !pivot.position.equals(cam.controls.target)) {
-        pivot.position.copy(cam.controls.target);
-        this.dirty = true;
-      }
-      if (pivot && pivot.visible === !!this.sectionClip) {
-        pivot.visible = !this.sectionClip; // no rotation-centre cross over the section camera
-        this.dirty = true;
-      }
       sky._driftClouds();
       look._stepScreens();
       look._stepSway();
@@ -1069,13 +958,6 @@ export class FloorplanView {
       depth = this.look._depthPass.target.depthTexture;
     }
     this.sprites.draw(depth);
-    // CSS2D only for edit handles and the drag preview label (DOM); one more frame after the last hides them
-    const css =
-      this.cssObjects.some((c) => c.kind === "handle") ||
-      !!(this.modelLayer._preview && this.modelLayer._preview.visible);
-    if (css || this._cssShown)
-      this.labelRenderer.render(this.scene, this.camera);
-    this._cssShown = css;
   }
 
   setOnScreen(on: unknown): void {
@@ -1089,20 +971,14 @@ export class FloorplanView {
     this._raf = null;
   }
 
-  _removeCss(obj: CSS2DObject | THREE.Object3D): void {
+  _removeCss(obj: THREE.Object3D): void {
     if (isBillboard(obj)) this.sprites.remove(obj);
     if (obj.parent) obj.parent.remove(obj);
-    if (!isCss2d(obj)) return;
-    // removing the object does not reliably remove its DOM element
-    if (obj.element && obj.element.parentNode)
-      obj.element.parentNode.removeChild(obj.element);
   }
 
   _clearGroup(group: THREE.Object3D): void {
     group.traverse((obj) => {
       if (isBillboard(obj)) this.sprites.remove(obj);
-      if (isCss2d(obj) && obj.element && obj.element.parentNode)
-        obj.element.parentNode.removeChild(obj.element);
       const o = obj as Drawable;
       if (o.geometry) o.geometry.dispose();
       // a material array has no dispose (as before: it throws; the view never puts one in these groups)
@@ -1119,12 +995,7 @@ export class FloorplanView {
     this.cam.controls.dispose();
     this._clearGroup(this.staticGroup);
     this._clearGroup(this.markerGroup);
-    this._clearGroup(this.glowGroup);
-    this._clearGroup(this.overlayGroup);
-    this.structure._disposeStems();
-    this.cam.setPivotMarker(false);
     this.modelLayer._disposeModel();
-    this.modelLayer._disposePreview();
     if (this.objectLayer) this.objectLayer.dispose();
     this.onObjectsInvalidate = null;
     this.look.dispose(); // finish, depth pass
@@ -1132,11 +1003,9 @@ export class FloorplanView {
     this.mower.setMowerWarning(null);
     this.skyLayer.dispose(); // sprites, room mask, rain / snow, compass ring
     this.markerObjects.clear();
-    this.glows.clear();
     this.cssObjects = [];
     this.sprites.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
-    this.labelRenderer.domElement.remove();
   }
 }

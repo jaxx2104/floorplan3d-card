@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 import {
   mergeFloors,
   roomFloorId,
-  wallSegments,
   markerPositions,
   lightGlow,
   roomLabel,
@@ -76,56 +75,6 @@ describe("roomFloorId", () => {
     expect(roomFloorId({ floor_id: "gone", area_id: "x" }, hass, floors)).toBe(
       "ground",
     );
-  });
-});
-
-describe("wallSegments", () => {
-  const a = {
-    polygon: [
-      [0, 0],
-      [4, 0],
-      [4, 3],
-      [0, 3],
-    ],
-  };
-  const b = {
-    polygon: [
-      [4, 0],
-      [8, 0],
-      [8, 3],
-      [4, 3],
-    ],
-  };
-  const total = (segs) =>
-    segs.reduce((s, w) => s + Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]), 0);
-
-  it("emits shared walls once", () => {
-    const segs = wallSegments([a, b]);
-    expect(segs).toHaveLength(7);
-    expect(total(segs)).toBeCloseTo(14 + 14 - 3);
-  });
-
-  it("cuts a door gap", () => {
-    const segs = wallSegments([{ ...a, doors: [[2, 0.1]] }]);
-    expect(segs).toHaveLength(5);
-    expect(total(segs)).toBeCloseTo(14 - 0.9);
-  });
-
-  it("a door in a shared wall opens it for both rooms", () => {
-    const segs = wallSegments([{ ...a, doors: [[4, 1.5]] }, b]);
-    expect(total(segs)).toBeCloseTo(25 - 0.9);
-  });
-
-  it("clips a door at the end of a wall", () => {
-    const segs = wallSegments([{ ...a, doors: [[0.2, 0]] }], { doorWidth: 1 });
-    expect(total(segs)).toBeCloseTo(14 - 0.7 - 0.5);
-  });
-
-  it("outdoor rooms have no walls but their doors cut indoor walls", () => {
-    expect(wallSegments([{ ...b, outdoor: true }])).toEqual([]);
-    expect(
-      total(wallSegments([a, { ...b, outdoor: true, doors: [[4, 1.5]] }])),
-    ).toBeCloseTo(14 - 0.9);
   });
 });
 

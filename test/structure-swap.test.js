@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-// While one model replaces another (a merge reload) the plan's walls and fills stay off: they were drawn for
-// the moment between, their shaders compiled and were dropped again.
+// While one model replaces another (a merge reload) the card keeps the model look.
 import { describe, it, expect, vi } from "bun:test";
 import { ViewController } from "../src/card/view-controller.ts";
 import { ModelLayer } from "../src/view/model.ts";
@@ -24,7 +23,7 @@ describe("_pushStructure", () => {
     const setStructure = vi.fn();
     const host = {
       _view: { model, isModelSwapping: () => swap, setStructure },
-      _config: { wall_height: 1 },
+      _config: {},
       _layout: {},
       _stage: document.createElement("div"),
     };
@@ -32,16 +31,11 @@ describe("_pushStructure", () => {
     v._floors = [];
     v._roomList = [];
     v._pushStructure();
-    return { opts: setStructure.mock.calls[0][2], stage: host._stage };
+    return { calls: setStructure.mock.calls.length, stage: host._stage };
   };
-  it("draws walls and fills without a model, not while a model is swapped for another", () => {
-    expect(push(null, false).opts).toMatchObject({ walls: true, fills: true });
-    const swap = push(null, true);
-    expect(swap.opts).toMatchObject({ walls: false, fills: false });
-    expect(swap.stage.classList.contains("has-model")).toBe(true);
-    expect(push({ id: "m" }, false).opts).toMatchObject({
-      walls: false,
-      fills: false,
-    });
+  it("keeps the model look (has-model) while a model is swapped for another", () => {
+    expect(push(null, false).stage.classList.contains("has-model")).toBe(false);
+    expect(push(null, true).stage.classList.contains("has-model")).toBe(true);
+    expect(push({ id: "m" }, false).calls).toBe(1);
   });
 });

@@ -16,12 +16,6 @@ import type {
 import type { CardConfig } from "./types/config.ts";
 import type { PlanXYZ } from "./surface.ts";
 
-/** A wall piece between two plan points (door gaps already cut out). */
-export interface WallSegment {
-  a: PlanPoint;
-  b: PlanPoint;
-}
-
 /** Where a marker is drawn: plan metres on a floor (auto placed, pinned, attached or the live mower). */
 export interface MarkerPosition extends PlanXYZ {
   floorId: string;
@@ -100,74 +94,6 @@ export function roomFloorId(
   if (area && area.floor_id && floors.some((f) => f.id === area.floor_id))
     return area.floor_id;
   return floors[0].id;
-}
-
-function distToSegment(
-  p: PlanPoint,
-  a: PlanPoint,
-  b: PlanPoint,
-): { d: number; t: number } {
-  const dx = b[0] - a[0],
-    dy = b[1] - a[1];
-  const l2 = dx * dx + dy * dy;
-  const t = l2
-    ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2))
-    : 0;
-  return { d: Math.hypot(a[0] + dx * t - p[0], a[1] + dy * t - p[1]), t };
-}
-
-const ptKey = (p: PlanPoint): string =>
-  Math.round(p[0] * 100) + "," + Math.round(p[1] * 100);
-
-// Wall segments for the indoor rooms of one floor. Edges shared by two rooms are emitted once
-// and doors (points near an edge) cut a gap of doorWidth into it.
-export function wallSegments(
-  rooms: readonly Pick<LayoutRoom, "outdoor" | "polygon" | "doors">[],
-  { doorWidth = 0.9, doorSnap = 0.3 } = {},
-): WallSegment[] {
-  const edges = new Map<string, [PlanPoint, PlanPoint]>();
-  const doors: PlanPoint[] = [];
-  for (const r of rooms) {
-    if (r.outdoor || !r.polygon || r.polygon.length < 3) continue;
-    for (const d of r.doors || []) doors.push(d);
-    const poly = r.polygon;
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i],
-        b = poly[(i + 1) % poly.length];
-      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6) continue;
-      const ka = ptKey(a),
-        kb = ptKey(b);
-      const key = ka < kb ? ka + "|" + kb : kb + "|" + ka;
-      if (!edges.has(key)) edges.set(key, [a, b]);
-    }
-  }
-  // doors also apply to outdoor rooms (terrace door in an indoor wall)
-  for (const r of rooms)
-    if (r.outdoor) for (const d of r.doors || []) doors.push(d);
-
-  const out: WallSegment[] = [];
-  for (const [a, b] of edges.values()) {
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const gaps: [number, number][] = [];
-    for (const d of doors) {
-      const { d: dist, t } = distToSegment(d, a, b);
-      if (dist > doorSnap) continue;
-      const half = doorWidth / 2 / len;
-      gaps.push([Math.max(0, t - half), Math.min(1, t + half)]);
-    }
-    gaps.sort((g, h) => g[0] - h[0]);
-    let start = 0;
-    const at = (t: number): PlanPoint => [
-      a[0] + (b[0] - a[0]) * t,
-      a[1] + (b[1] - a[1]) * t,
-    ];
-    for (const [g0, g1] of gaps) {
-      if (g0 > start + 1e-6) out.push({ a: at(start), b: at(g0) });
-      start = Math.max(start, g1);
-    }
-    if (start < 1 - 1e-6) out.push({ a: at(start), b: at(1) });
-  }
-  return out;
 }
 
 // Positions for all markers: pins win, otherwise auto placement inside the first room drawn

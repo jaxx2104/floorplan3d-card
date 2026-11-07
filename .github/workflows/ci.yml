@@ -27,7 +27,7 @@ jobs:
             dist/floorplan3d-card.js
             dist/chunks/
 
-  # demo screenshots, edit mode
+  # demo screenshots
   browser:
     runs-on: ubuntu-latest
     strategy:
@@ -35,7 +35,6 @@ jobs:
       matrix:
         check:
           - { name: screenshot, run: bun scripts/screenshot.mjs }
-          - { name: edit-check, run: bun scripts/edit-check.mjs }
     name: browser (${{ matrix.check.name }})
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +53,7 @@ jobs:
           if-no-files-found: ignore
 
   # the render loop's work by counters and condition waits (no frame-time budget), one shard per group pair
-  # (--shard k/3 takes every 3rd group: mower-map + still, quality-standard + auto, quality-high)
+  # (--shard k/3 takes every 3rd group: quality-standard + auto, quality-high, still)
   perf-check:
     runs-on: ubuntu-latest
     strategy:
@@ -72,7 +71,7 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
 
-  # timing numbers (main-thread ms per map refresh, frame time per tier): a shared runner's timing is no verdict,
+  # timing numbers (frame time per tier): a shared runner's timing is no verdict,
   # so this job reports and never fails the run
   perf-bench:
     runs-on: ubuntu-latest

@@ -25,7 +25,6 @@ interface HaForm extends HTMLElement {
 const DEFAULTS: Record<string, unknown> = {
   height: "520px",
   group_by: "device",
-  wall_height: 1.0,
   view: "3d",
   room_labels: "size",
   zoom_to: "center",
@@ -56,18 +55,6 @@ export const SCHEMA: FormSchema[] = [
         },
       },
       { name: "floor", selector: { floor: {} } },
-      {
-        name: "wall_height",
-        selector: {
-          number: {
-            min: 0.2,
-            max: 3,
-            step: 0.05,
-            mode: "box",
-            unit_of_measurement: "m",
-          },
-        },
-      },
       {
         name: "group_by",
         selector: {
@@ -268,7 +255,6 @@ const LABELS: Record<string, string> = {
   height: "Card height",
   view: "Start view",
   floor: "Start floor",
-  wall_height: "Cut-away wall height",
   occlusion: "Dim markers behind walls",
   merge: "Merge model parts (faster)",
   sky_bodies: "Sun and moon in the sky",
@@ -294,7 +280,6 @@ const LABELS: Record<string, string> = {
 
 const HELPERS: Record<string, string> = {
   height: "CSS height, e.g. 520px or 60vh",
-  wall_height: "Drawn walls only; a model is cut at the top of the storey",
   occlusion:
     "With a 3D model: markers hidden by a wall from the current angle are shown faint",
   merge:

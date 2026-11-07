@@ -13,10 +13,9 @@
     "typecheck": "bun check",
     "demo": "bun scripts/build.mjs && python3 -m http.server 8765",
     "screenshot": "bun scripts/screenshot.mjs",
-    "check:edit": "bun scripts/edit-check.mjs",
     "check:model": "bun scripts/model-check.mjs",
     "check:perf": "bun scripts/perf-check.mjs",
-    "check:all": "bun scripts/build.mjs && bun scripts/screenshot.mjs && bun scripts/edit-check.mjs && bun scripts/model-check.mjs",
+    "check:all": "bun scripts/build.mjs && bun scripts/screenshot.mjs && bun scripts/model-check.mjs",
     "check-model": "bun tools/check-model.mjs",
     "deploy": "bun scripts/deploy.mjs",
     "make-demo-model": "bun scripts/make-demo-model.mjs"

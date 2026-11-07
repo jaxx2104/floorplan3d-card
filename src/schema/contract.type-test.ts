@@ -80,7 +80,6 @@ export type Checks = [
   // card config: the defaults are applied, the YAML type keeps every option optional
   Expect<Equal<ResolvedCardConfig["height"], string>>,
   Expect<Equal<ResolvedCardConfig["group_by"], "device" | "entity">>,
-  Expect<Equal<ResolvedCardConfig["wall_height"], number>>,
   Expect<Equal<ResolvedCardConfig["view"], "3d" | "top">>,
   Expect<Equal<ResolvedCardConfig["render"], RenderCardOption | undefined>>,
   Expect<Equal<ResolvedCardConfig["model_rotation"], number | undefined>>,

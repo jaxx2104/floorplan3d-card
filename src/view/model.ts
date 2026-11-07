@@ -5,7 +5,6 @@
 import * as THREE from "three";
 import { rememberColor } from "../furniture.ts";
 import { collectScreens } from "../screens.ts";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import {
   mergeGeometries,
@@ -114,13 +113,6 @@ export interface SurfaceRayHit {
   distance: number;
   dir: number[];
   object: THREE.Object3D;
-}
-/** Drag preview on the model surface (setSurfacePreview). */
-export interface SurfacePreview {
-  point: Vec3 | THREE.Vector3;
-  normal: Vec3 | THREE.Vector3;
-  tri?: (Vec3 | THREE.Vector3)[] | null;
-  label?: string | null;
 }
 
 const TEX_KEYS: readonly TexKey[] = [
@@ -361,8 +353,6 @@ export function mergeStaticMeshes(
   return { groups: groups.length - failed, merged, failed };
 }
 
-const vecArr = (v: Vec3 | THREE.Vector3): Vec3 =>
-  Array.isArray(v) ? v : [v.x, v.y, v.z];
 const firstMaterial = (o: THREE.Object3D): ModelMaterial | undefined => {
   const m = (o as Drawable).material;
   return (Array.isArray(m) ? m[0] : m) as ModelMaterial | undefined;
@@ -387,13 +377,6 @@ export class ModelLayer {
   _modelLoading: Promise<string | null> | null;
   mergeStats: MergeStats | null;
   pickHelper: THREE.BoxHelper | null;
-  _preview: THREE.Group | null;
-  _previewRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null;
-  _previewFace: THREE.Mesh<
-    THREE.BufferGeometry,
-    THREE.MeshBasicMaterial
-  > | null;
-  _previewLabel: CSS2DObject | null;
   _surfMeshes: SurfaceMesh[] | null;
   _surfRay: THREE.Raycaster;
 
@@ -403,10 +386,6 @@ export class ModelLayer {
     this._modelLoading = null; // its load promise (resolves to null or an error message)
     this.mergeStats = null; // { enabled, before, after: { meshes, triangles, calls }, groups, merged } of the loaded model
     this.pickHelper = null; // BoxHelper around the highlighted model node
-    this._preview = null; // drag preview (ring, tinted face, label), created on first use
-    this._previewRing = null;
-    this._previewFace = null;
-    this._previewLabel = null;
     this._surfMeshes = null; // [{ mesh, box }] model meshes devices stick to (cached per placement)
     this._surfRay = new THREE.Raycaster();
   }
@@ -993,97 +972,6 @@ export class ModelLayer {
     return list;
   }
 
-  // Drag preview on the model surface: p = { point, normal, tri: [[x,y,z] x3] | null, label } (card world)
-  // or null to hide. One ring, one tinted face and one label, created once and reused.
-  setSurfacePreview(p: SurfacePreview | null | undefined): void {
-    if (!p) {
-      if (this._preview && this._preview.visible) {
-        this._preview.visible = false;
-        this._previewLabel!.element.hidden = true;
-        this.view.dirty = true;
-      }
-      return;
-    }
-    if (!this._preview) this._buildPreview();
-    // _buildPreview made all four
-    const g = this._preview!,
-      ring = this._previewRing!,
-      color = this.view.theme.primary || 0x03a9f4;
-    const pt = new THREE.Vector3(...vecArr(p.point)),
-      n = new THREE.Vector3(...vecArr(p.normal)).normalize();
-    ring.position.copy(pt).addScaledVector(n, 0.01);
-    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-    ring.material.color.set(color);
-    const face = this._previewFace!;
-    if (p.tri) {
-      const pos = face.geometry.attributes.position as THREE.BufferAttribute; // made in _buildPreview
-      p.tri.forEach((v, i) => pos.setXYZ(i, ...vecArr(v)));
-      pos.needsUpdate = true;
-      face.geometry.computeBoundingSphere();
-      face.material.color.set(color);
-      face.visible = true;
-    } else face.visible = false;
-    const label = this._previewLabel!;
-    label.element.textContent = p.label || "";
-    label.element.hidden = !p.label;
-    label.visible = !!p.label;
-    label.position.copy(pt).addScaledVector(n, 0.05);
-    g.visible = true;
-    this.view.dirty = true;
-  }
-
-  _buildPreview(): void {
-    const g = new THREE.Group();
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.09, 0.12, 40),
-      new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.95,
-        toneMapped: false,
-      }),
-    );
-    ring.renderOrder = 12;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array(9), 3),
-    );
-    const face = new THREE.Mesh(
-      geo,
-      new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.25,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-        toneMapped: false,
-      }),
-    );
-    face.renderOrder = 11;
-    const el = document.createElement("div");
-    el.className = "fp-attach-label";
-    el.hidden = true;
-    const label = new CSS2DObject(el);
-    for (const o of [ring, face, label]) {
-      o.userData.helper = true;
-      o.raycast = () => {};
-      o.frustumCulled = false;
-    }
-    g.add(ring, face, label);
-    g.userData.helper = true;
-    g.visible = false;
-    this._preview = g;
-    this._previewRing = ring;
-    this._previewFace = face;
-    this._previewLabel = label;
-    this.view.scene.add(g);
-  }
-
   // First visible model intersection under a screen point (raycaster left set to that ray).
   _modelHit(
     clientX: number,
@@ -1295,14 +1183,5 @@ export class ModelLayer {
       [r(x1), r(y1)],
       [r(x0), r(y1)],
     ];
-  }
-
-  // The drag preview (view.dispose).
-  _disposePreview(): void {
-    if (this._preview) {
-      this.view._clearGroup(this._preview);
-      this.view.scene.remove(this._preview);
-      this._preview = null;
-    }
   }
 }

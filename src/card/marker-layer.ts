@@ -1,6 +1,6 @@
 // Device markers of the card: built from the registry, positioned (auto, pins, attached, the live
 // mower), their face (the GPU sprite's picture: icon, value, badges, state colours; marker-sprite.ts),
-// the gestures on them (picked on screen: tap, hold, edit drag), state refresh (faces, light glows) and
+// the gestures on them (picked on screen: tap, hold), state refresh (faces) and
 // the move of auto-placed markers onto the model's surfaces. _buildMarkers replaces the _positions Map:
 // other parts read card._positions each time, never keep it.
 
@@ -31,7 +31,6 @@ import { badgeOptions, badgeInfo } from "../badges.ts";
 import { LONG_PRESS_MS, CLICK_SLOP_PX } from "./constants.ts";
 import type { Floorplan3dCard } from "../card-impl.ts";
 import type { LayoutPin } from "../types/layout.ts";
-import type { GlowSpec } from "../view/structure.ts";
 
 /** A pin attached to a model object: the object id and the offset from its anchor. */
 type AttachPin = LayoutPin & { attach?: string; offset?: unknown };
@@ -317,7 +316,7 @@ export class MarkerLayer {
       if (compute) vw.moveMarker(m.id, next.x, next.y, next.z, next.floorId);
       moved = true;
     }
-    if (compute && moved) this._refreshStates(); // light glows follow
+    if (compute && moved) this._refreshStates();
     return pending;
   }
 
@@ -591,7 +590,6 @@ export class MarkerLayer {
   _refreshStates(): void {
     const h = this.card._hass,
       vw = this.card._view;
-    const glows: GlowSpec[] = [];
     const bo = this.badgeOpts(),
       anyBadge = bo.integration || bo.status || bo.battery;
     const dark = !!(this.card._theme && this.card._theme.dark);
@@ -644,9 +642,6 @@ export class MarkerLayer {
         const g = lightGlow(st);
         lightColor =
           g && st.attributes.rgb_color ? `rgb(${g.rgb.join(",")})` : "";
-        const p = this._positions && this._positions.get(m.id); // set with the markers
-        if (g && p)
-          glows.push({ id: m.id, x: p.x, y: p.y, floorId: p.floorId, ...g });
       }
       this._setFace(m.id, {
         shape: look.shape,
@@ -677,6 +672,5 @@ export class MarkerLayer {
     layer.keepImages(images);
     for (const k of this._pictureUrls.keys())
       if (!images.has(this._pictureUrls.get(k)!)) this._pictureUrls.delete(k);
-    vw.setGlows(glows);
   }
 }

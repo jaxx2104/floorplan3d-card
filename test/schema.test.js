@@ -132,7 +132,6 @@ describe("card config (YAML)", () => {
         type: "custom:floorplan3d-card",
         height: DEFAULT_HEIGHT,
         group_by: "device",
-        wall_height: 1,
         view: "3d",
       },
       warnings: [],
@@ -143,13 +142,11 @@ describe("card config (YAML)", () => {
     const c = parseCardConfig({
       type: "t",
       height: 400,
-      wall_height: "1.5",
       model_position: ["1", 0, 2],
       idle_orbit: "3",
     }).value;
     expect(c).toMatchObject({
       height: "400px",
-      wall_height: 1.5,
       model_position: [1, 0, 2],
       idle_orbit: 3,
     });
@@ -169,7 +166,6 @@ describe("card config (YAML)", () => {
     });
     expect(p.value).toMatchObject({
       group_by: "device",
-      wall_height: 1,
       view: "3d",
       future_option: { a: 1 },
     });

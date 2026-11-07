@@ -341,14 +341,7 @@ export class ViewController {
       floorId: r.floorId,
       label: labelled(r) ? roomLabel(r.name, r.room.polygon, mode) : "",
     }));
-    this.card._view.setStructure(this._floors!, rooms, {
-      // set by _buildStructure before any push
-      wallHeight: this.card._config.wall_height,
-      walls: !hasModel,
-      fills: !hasModel,
-      outlines: !hasModel,
-      labels: true,
-    });
+    this.card._view.setStructure(this._floors!, rooms); // floors: set by _buildStructure before any push
     this.card._stage.classList.toggle("has-model", hasModel);
   }
 

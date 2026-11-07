@@ -1,8 +1,6 @@
 // Headless checks of the render loop's work, by counters (frames, shadow requests, environment / contact builds,
 // probes baked, bloom passes, model material ids, shader programs, path tracer sessions / steps, auto switches),
 // state flags and condition waits; no frame-time budget blocks. Section groups (scripts/lib/sections.mjs):
-// - mower-map: a 1600 x 1600 live map (camera) with a moving mower, then refreshes where nothing changed: no
-//   shadow-map update from the mower, no frame for an unchanged picture, the debug overlay.
 // - quality-standard, quality-high: the same light in both tiers (sky environment light, physical lamps, contact
 //   shadows, physical materials, light probe grids, AgX); 'high' adds the selective bloom and a finer probe grid
 //   (QualityTier.probeSpacing): what each tier builds at load, nothing while idle (no pending work, a window of animation frames without a frame), an
@@ -12,8 +10,7 @@
 // - still: render quality 'still' (idle progressive path tracing).
 // - auto: render quality 'auto' (the default): steps down under an artificial frame cost once the view is idle,
 //   back up with fast frames after the (shortened) wait, no oscillation.
-// - bench (only with --only bench; CI runs it as a non-blocking job): the timing numbers. The mower map at the
-//   original 30 s + 16 s cadence (main-thread ms per refresh, long tasks; budget p90 <= 50 ms), frame time of
+// - bench (only with --only bench; CI runs it as a non-blocking job): the timing numbers. Frame time of
 //   40 forced frames per tier (budget high <= 2.5 x standard + 8 ms), one environment / contact build, one probe's bake,
 //   the probes per pass of each tier.
 //   bun scripts/perf-check.mjs [--only group,group] [--shard k/n] [--list]
@@ -25,7 +22,6 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? " – " + detail : ""}`);
   if (!ok) failures.push(name);
 };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const card = 'document.querySelector("floorplan3d-card-impl")';
 const sections = new Sections();
 
@@ -744,233 +740,6 @@ sections.add(
 
 // ---------- mower-map ----------
 
-const ROBOT_QUERY = {
-  model: "1",
-  view: "3d",
-  cards: "1",
-  robotmap: "1600",
-  debug: "1",
-};
-// the live map camera at refresh s, the mower found on its first picture
-async function mowerMapSetup(page, frames, refresh) {
-  const ev = (expr) => page.evaluate(expr);
-  await until(page, `!!${card}._view.model`, "the model");
-  await ev("window.__demoMowerPaused = true");
-  const n = await ev(`window.__robotFrames(${frames}, 0.3, 0.08)`);
-  await ev("window.__setRobotFrame(0)");
-  await ev(`(() => { const c = ${card}, l = c._layout; c._commit({ ...l, objects: { ...(l.objects || {}), mower: { entity: 'lawn_mower.robo' }, dock: { entity: 'lawn_mower.robo' } },
-    mower: { entity: 'lawn_mower.robo', source: 'image', floor_id: l.mower.floor_id, calibration: [],
-    overlay: { entity: 'camera.robo_live_map', x: 16.5, y: 1.5, rotation: 0, width: 17, opacity: 0.6, refresh: ${refresh} } } }); })()`);
-  const found = await until(
-    page,
-    `(() => { const r = ${card}._imageResult; return !!${card}._imageBlob && !!r && !r.missing && !r.error; })()`,
-    "the first detection",
-  );
-  return { n, found };
-}
-const MAP_STATS = `(() => { const c = ${card}, v = c._view, p = c._perf && c._perf.last; return { frames: v.stats.frames, shadow: v.stats.shadow, lights: v.stats.shadowLights, refreshAt: p ? p.at : 0 }; })()`;
-// a new picture (set: the demo camera's entity_picture) and the map refresh it causes (the card fetches a picture
-// when its URL changes), then quiet again, so the frames it caused (and nothing still settling from before, e.g. a
-// probe pass after the mower commit) land in its own count. -> true once refreshed
-async function showPicture(page, set) {
-  const at = (await page.evaluate(MAP_STATS)).refreshAt;
-  await page.evaluate(set);
-  const ok = await until(
-    page,
-    `(() => { const p = ${card}._perf && ${card}._perf.last; return !!p && p.at > ${at}; })()`,
-    "the map refresh",
-    30000,
-  );
-  await waitQuiet(page, "after a map refresh");
-  return ok;
-}
-
-const MOVE_STEPS = 5,
-  SAME_STEPS = 4;
-sections.add(
-  "mower-map",
-  {
-    group: "mower-map",
-    query: ROBOT_QUERY,
-    viewport: { width: 1200, height: 700 },
-  },
-  async ({ page, errors }) => {
-    const ev = (expr) => page.evaluate(expr);
-    await until(page, `!!${card}._view.model`, "the model");
-    const quality = await ev(
-      `${card}._view.look.renderOpt.quality + '/' + ${card}._view.look.quality()`,
-    );
-    check(
-      "the map runs at the default render quality (auto, at high)",
-      quality === "auto/high",
-      quality,
-    );
-    const { n, found } = await mowerMapSetup(page, MOVE_STEPS + 2, 2);
-    check("map frames rendered ahead", n === MOVE_STEPS + 2, String(n));
-    check(
-      "mower found on the 1600 px map",
-      found,
-      JSON.stringify(await ev(`${card}._imageResult`)),
-    );
-    await showPicture(page, "window.__setRobotFrame(1)"); // the worker, the static map, the template warm
-    const m0 = await ev(MAP_STATS);
-    let refreshed = 0;
-    for (let i = 2; i <= MOVE_STEPS + 1; i++)
-      refreshed += await showPicture(page, `window.__setRobotFrame(${i})`);
-    const m1 = await ev(MAP_STATS);
-    for (let i = 0; i < SAME_STEPS; i++)
-      refreshed += await showPicture(
-        page,
-        `window.__setRobotSame(${MOVE_STEPS + 1})`,
-      );
-    const m2 = await ev(MAP_STATS);
-    check(
-      "every picture refreshed the map",
-      refreshed === MOVE_STEPS + SAME_STEPS,
-      `${refreshed} of ${MOVE_STEPS + SAME_STEPS}`,
-    );
-    const moving = m1.frames - m0.frames,
-      same = m2.frames - m1.frames;
-    console.log(
-      `     frames: ${moving} over ${MOVE_STEPS} moving pictures, ${same} over ${SAME_STEPS} unchanged ones; shadow requests ${m2.shadow - m0.shadow}`,
-    );
-    check(
-      "the moving mower renders frames",
-      moving >= MOVE_STEPS,
-      `${moving} frames over ${MOVE_STEPS} pictures`,
-    );
-    check(
-      "an unchanged picture renders no frame",
-      same === 0,
-      `${same} over ${SAME_STEPS} vs ${moving} over ${MOVE_STEPS}`,
-    );
-    check(
-      "the moving mower requests no shadow-map updates",
-      m2.shadow - m0.shadow === 0 && m2.lights - m0.lights === 0,
-      `${m2.shadow - m0.shadow} / ${m2.lights - m0.lights}`,
-    );
-    // the overlay repaints on its own timer: until it shows the map stages
-    const dbgOk = await until(
-      page,
-      `(() => { const el = ${card}.shadowRoot.querySelector('.fp-debug'), t = el ? el.textContent : ''; return /fps/i.test(t) && /frame/i.test(t) && /decode/.test(t) && /worker/.test(t); })()`,
-      "the debug overlay's map stages",
-      15000,
-    );
-    const dbg = await ev(
-      `(() => { const el = ${card}.shadowRoot.querySelector('.fp-debug'); return el ? el.textContent : null; })()`,
-    );
-    check(
-      "debug overlay shows fps, frame ms, long task, map stages",
-      dbgOk,
-      String(dbg).slice(0, 300),
-    );
-    if (errors.length)
-      check(
-        "mower map demo without page errors",
-        false,
-        errors.slice(0, 3).join(" | "),
-      );
-  },
-);
-
-// ---------- bench (non-blocking in CI: timing numbers) ----------
-
-const MOVE_S = 30,
-  IDLE_S = 16,
-  REFRESH_MS = 2000;
-sections.add(
-  "mower-map",
-  {
-    group: "bench",
-    query: ROBOT_QUERY,
-    viewport: { width: 1200, height: 700 },
-  },
-  async ({ page }) => {
-    const ev = (expr) => page.evaluate(expr);
-    const { found } = await mowerMapSetup(
-      page,
-      (MOVE_S * 1000) / REFRESH_MS + 2,
-      REFRESH_MS / 1000,
-    );
-    if (!found) {
-      check("bench: mower found on the 1600 px map", false);
-      return;
-    }
-    await showPicture(page, "window.__setRobotSame(0)"); // warm-up: the worker, the static map, the template
-    // instrumentation: every render timed, long tasks observed, the card's per-refresh timing collected
-    await ev(`(() => {
-      const c = ${card}, v = c._view, r = v.renderer;
-      window.__bench = { renders: [], long: [], refresh: [], t0: performance.now() };
-      if (!r.__timed) { const orig = r.render.bind(r); r.render = (a, b) => { const t = performance.now(); orig(a, b); window.__bench.renders.push(performance.now() - t); }; r.__timed = true; }
-      try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__bench.long.push({ at: e.startTime, ms: e.duration }); }).observe({ type: 'longtask' }); } catch (e) { window.__bench.noLongtask = true; }
-      let last = null;
-      window.__benchPoll = setInterval(() => {
-        const p = c._perf && c._perf.last;
-        if (p && p !== last) { last = p; window.__bench.refresh.push({ main: p.main, max: p.max, decode: p.decode, worker: p.worker, apply: p.apply }); }
-      }, 50);
-    })()`);
-    const metric = async () => (await page.metrics()).TaskDuration * 1000;
-    // the page's own baseline (render loop ticks, timers) without any refresh, for comparison
-    const q0 = await metric();
-    await sleep(10000);
-    const quiet = ((await metric()) - q0) / (10000 / REFRESH_MS);
-    const task0 = await metric();
-    for (let i = 1; i <= (MOVE_S * 1000) / REFRESH_MS; i++) {
-      await ev(`window.__setRobotFrame(${i})`);
-      await sleep(REFRESH_MS);
-    }
-    const moving = await ev("JSON.parse(JSON.stringify(window.__bench))");
-    const task1 = await metric();
-    for (let i = 0; i < (IDLE_S * 1000) / REFRESH_MS; i++) {
-      await ev(`window.__setRobotSame(${(MOVE_S * 1000) / REFRESH_MS})`);
-      await sleep(REFRESH_MS);
-    }
-    const task2 = await metric();
-    await ev("clearInterval(window.__benchPoll)");
-    const ref = moving.refresh;
-    const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
-    const mainAvg = avg(ref.map((r) => r.main)),
-      mainMax = Math.max(0, ...ref.map((r) => r.max));
-    const rMax = Math.max(0, ...moving.renders),
-      rAvg = avg(moving.renders);
-    const longs = moving.long.filter((l) => l.ms > 50);
-    console.log(
-      `     refreshes measured: ${ref.length}; main-thread ms per refresh avg ${mainAvg.toFixed(1)}, longest card section ${mainMax.toFixed(1)} ms`,
-    );
-    if (ref.length && ref[0].decode !== undefined)
-      console.log(
-        `     stages (avg): decode ${avg(ref.map((r) => r.decode)).toFixed(1)} ms, worker ${avg(ref.map((r) => r.worker)).toFixed(1)} ms, apply ${avg(ref.map((r) => r.apply)).toFixed(1)} ms`,
-      );
-    const perRefresh = (task1 - task0) / ((MOVE_S * 1000) / REFRESH_MS),
-      perIdle = (task2 - task1) / ((IDLE_S * 1000) / REFRESH_MS);
-    console.log(
-      `     whole page main-thread busy per 2 s (CDP TaskDuration): ${perRefresh.toFixed(1)} ms moving, ${perIdle.toFixed(1)} ms unchanged picture, ${quiet.toFixed(1)} ms no refresh at all`,
-    );
-    console.log(
-      `     renders: ${moving.renders.length} in ${MOVE_S} s, avg ${rAvg.toFixed(1)} ms, max ${rMax.toFixed(1)} ms`,
-    );
-    console.log(
-      `     page long tasks > 50 ms while moving: ${longs.length}${longs.length ? ` (max ${Math.max(...longs.map((l) => l.ms)).toFixed(0)} ms)` : ""}${moving.noLongtask ? " (no longtask API)" : ""}`,
-    );
-    check("bench: refreshes measured", ref.length >= 10, String(ref.length));
-    // shared CI runners hiccup: p90 <= 50 ms, max <= 120 ms there (strict 50 ms max locally)
-    const sorted = ref.map((r) => r.max).sort((a, b) => a - b);
-    const p90 = sorted.length
-      ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.9) - 1)]
-      : 0;
-    const maxLimit = process.env.CI ? 120 : 50;
-    check(
-      `bench: main-thread map sections of the card: p90 <= 50 ms, max <= ${maxLimit} ms`,
-      p90 <= 50 && mainMax <= maxLimit,
-      `p90 ${p90.toFixed(1)}, max ${mainMax.toFixed(1)}`,
-    );
-    if (process.env.BENCH_JSON)
-      console.log(
-        JSON.stringify({ mainAvg, mainMax, rAvg, rMax, longs: longs.length }),
-      );
-  },
-);
-
 // frame time of 40 forced frames per tier (the same view, the sun fixed, settled first), and one build of each kind
 const frameTimes = {};
 for (const quality of ["standard", "high"])
@@ -1023,14 +792,7 @@ for (const quality of ["standard", "high"])
   );
 
 // group order: what a plain run does first
-sections.order([
-  "mower-map",
-  "quality-standard",
-  "quality-high",
-  "still",
-  "auto",
-  "bench",
-]);
+sections.order(["quality-standard", "quality-high", "still", "auto", "bench"]);
 const args = parseArgs(process.argv.slice(2));
 if (args.list) {
   for (const g of sections.groups)

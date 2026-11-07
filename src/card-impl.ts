@@ -34,10 +34,6 @@ import type { ModelBindings } from "./card/model-loader.ts";
 /** The card's colours from the HA theme (view.setTheme). */
 export interface CardTheme {
   dark: boolean;
-  floor: Color;
-  outdoor: Color;
-  wall: Color;
-  edge: Color;
   primary: Color;
 }
 
@@ -697,18 +693,12 @@ export class Floorplan3dCard extends HTMLElement {
 
   _applyTheme(): void {
     const bg = cssColor(this, "--card-background-color", "#ffffff");
-    const text = cssColor(this, "--primary-text-color", "#212121");
     const dark =
       this._hass.themes && typeof this._hass.themes.darkMode === "boolean"
         ? this._hass.themes.darkMode
         : luminance(bg) < 0.4;
-    const mix = (a: Color, c: Color, t: number): Color => a.clone().lerp(c, t);
     const theme: CardTheme = (this._theme = {
       dark,
-      floor: mix(bg, text, dark ? 0.09 : 0.05),
-      outdoor: mix(bg, new Color("#5a9e4b"), dark ? 0.22 : 0.3),
-      wall: mix(bg, text, dark ? 0.42 : 0.3),
-      edge: mix(bg, text, dark ? 0.3 : 0.22),
       primary: cssColor(this, "--primary-color", "#03a9f4"),
     });
     this._view.setTheme(theme);

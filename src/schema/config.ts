@@ -61,10 +61,9 @@ export const cardConfigSchema = object({
   layout_key: opt(removed("the layout is the YAML's layout: now")),
   height: withDefault(cssLength(), () => DEFAULT_HEIGHT),
   group_by: withDefault(literal("device", "entity"), () => "device" as const),
-  /** Cut-away display height of the walls (metres). */
-  wall_height: withDefault(
-    refine(numeric(), (n) => n > 0, "a positive number"),
-    () => 1.0,
+  /** Removed with the drawn walls: a model is cut at the top of its storey. */
+  wall_height: opt(
+    removed("no walls are drawn; a model is cut at its storey height"),
   ),
   /** Start mode. */
   view: withDefault(literal("3d", "top"), () => "3d" as const),
