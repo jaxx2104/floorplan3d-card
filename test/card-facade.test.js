@@ -18,6 +18,19 @@ describe("setConfig", () => {
     expect(c._store).not.toBe(store);
     expect(c._store.key).toBe("other");
   });
+  it("a YAML layout is read instead of the store, and replaced with the config", async () => {
+    const c = document.createElement("floorplan3d-card-impl");
+    c.setConfig({ layout: { hidden: ["device:a"] } });
+    const callWS = vi.fn(async () => ({
+      layout: { hidden: ["device:stored"] },
+    }));
+    c._hass = { callWS };
+    await c._load();
+    expect(callWS).not.toHaveBeenCalled();
+    expect(c._layout.hidden).toEqual(["device:a"]);
+    c.setConfig({ layout: { hidden: ["device:b"] } });
+    expect(c._layout.hidden).toEqual(["device:b"]);
+  });
 });
 
 describe("defineDelegates", () => {

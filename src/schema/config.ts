@@ -57,6 +57,8 @@ export const DEFAULT_HEIGHT = "520px";
 
 export const cardConfigSchema = object({
   type: withDefault(string(), () => "custom:floorplan3d-card"),
+  /** The layout itself (same shape as the stored JSON, see src/schema/layout.ts); wins over layout_key. */
+  layout: opt(owned()),
   /** Storage key of the layout (several cards can share one, or keep their own). */
   layout_key: withDefault(text(), () => "default"),
   height: withDefault(cssLength(), () => DEFAULT_HEIGHT),

@@ -8,6 +8,7 @@ import { Color } from "three";
 import { FloorplanView } from "./view.ts";
 import type { EditMode } from "./edit-mode.ts"; // loaded with import() on the first Edit (its own chunk)
 import { LayoutStore } from "./storage.ts";
+import { logLayoutWarnings, parseLayout } from "./schema/layout.ts";
 import "./mower-auto.ts"; // registers the auto-mode kernel with the map worker
 import { ObjectLayer } from "./objects/layer.ts";
 import { TapHints } from "./objects/hints.ts";
@@ -415,6 +416,9 @@ export class Floorplan3dCard extends HTMLElement {
     )
       this._store = new LayoutStore(this._config.layout_key);
     this._applyHeight();
+    // a YAML layout replaced on a running card (the first one is read by _load)
+    if (this._layout && this._config.layout !== undefined)
+      this._layout = this._inlineLayout(this._config.layout);
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
       this._view.setOcclusion(this._config.occlusion !== false);
@@ -604,11 +608,21 @@ export class Floorplan3dCard extends HTMLElement {
   async _load(): Promise<void> {
     this._loading = true;
     try {
-      this._layout = await this._store.load(this._hass);
+      this._layout =
+        this._config.layout !== undefined
+          ? this._inlineLayout(this._config.layout)
+          : await this._store.load(this._hass);
     } finally {
       this._loading = false;
       this._layoutLoaded();
     }
+  }
+
+  // The card YAML's layout: -> the current layout version (problems go to the console).
+  _inlineLayout(raw: unknown): Layout {
+    const p = parseLayout(raw);
+    logLayoutWarnings("card YAML layout:", p);
+    return p.value;
   }
 
   _render(): void {
