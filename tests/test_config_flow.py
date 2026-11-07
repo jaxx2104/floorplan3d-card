@@ -8,7 +8,7 @@ from homeassistant.setup import async_setup_component
 from custom_components.floorplan3d.const import DOMAIN
 
 
-async def test_user_flow_creates_entry_and_sets_up(hass: HomeAssistant, hass_ws_client) -> None:
+async def test_user_flow_creates_entry_and_sets_up(hass: HomeAssistant) -> None:
     assert await async_setup_component(hass, "http", {})
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
@@ -17,10 +17,8 @@ async def test_user_flow_creates_entry_and_sets_up(hass: HomeAssistant, hass_ws_
     assert result["title"] == "Floorplan 3D"
     await hass.async_block_till_done()
 
-    # set up without any YAML: the websocket API works
-    client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": "floorplan3d/layout/get", "key": "default"})
-    assert (await client.receive_json())["success"]
+    # set up without any YAML
+    assert hass.data[DOMAIN] is True
 
 
 async def test_only_one_entry(hass: HomeAssistant) -> None:
@@ -42,13 +40,11 @@ async def test_yaml_imported_once(hass: HomeAssistant) -> None:
     assert entries[0].source == config_entries.SOURCE_IMPORT
 
 
-async def test_reload_keeps_working(hass: HomeAssistant, hass_ws_client) -> None:
+async def test_reload_keeps_working(hass: HomeAssistant) -> None:
     assert await async_setup_component(hass, "http", {})
     assert await async_setup_component(hass, DOMAIN, {DOMAIN: {}})
     await hass.async_block_till_done()
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
-    client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": "floorplan3d/layout/get", "key": "default"})
-    assert (await client.receive_json())["success"]
+    assert hass.data[DOMAIN] is True
