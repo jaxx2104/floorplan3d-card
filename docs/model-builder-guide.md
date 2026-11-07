@@ -4,7 +4,7 @@ Instructions for whoever builds the house model. Hand this whole file to the mod
 session. The model describes **what exists**; Home Assistant decides **what it is connected to**
 (floors, areas, entities, actions). Home Assistant ids in the model are suggestions only: an
 object's `suggest.entity` lets the card bind it without setup, the user can change every binding
-in the card and re-exports never break that.
+in the card YAML's `layout:` and re-exports never break that.
 
 Full design: [specs/2026-10-01-model-contract-design.md](superpowers/specs/2026-10-01-model-contract-design.md).
 
@@ -115,7 +115,7 @@ house.userData.fp = { views: [
 ```
 
 - Listed in display order. `id`: same rules as tag ids, **stable forever** (the user's per-view
-  edits, saved cameras and linked HA floors are stored by view id).
+  overrides, cameras and linked HA floors in the card YAML are keyed by view id).
 - `show`: when present, the view starts from nothing and shows these; `hide` is applied after.
   Rules cascade to children, and a later rule wins over an earlier one.
 - `camera` (optional): `{ position, target }` in model world metres (Y up; the card applies the
@@ -128,7 +128,7 @@ house.userData.fp = { views: [
 - `section` (optional): `{ normal: [x, y, z], constant }`, the view's **Side section** cut as a
   three.js plane in model world (the side where `normal · p + constant ≥ 0` stays), e.g.
   `{ normal: [-1, 0, 0], constant: 7 }` keeps x ≤ 7 m. Without one the card keeps the west half,
-  cut through the middle of the storeys. Users can move it per view (Edit → Views → Side section).
+  cut through the middle of the storeys. Users can move it per view (`section` in the card YAML's `views:`).
   Use the prototype's presets as a starting point (see below).
 - A view that shows every storey and the roof is an **overview**: all devices are shown. In a
   storey view the top visible storey is the view's storey: devices of lower storeys are hidden,
@@ -138,16 +138,16 @@ house.userData.fp = { views: [
 
 Selectors:
 
-| selector                                       | matches                                                                                                    |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `all`                                          | the whole model                                                                                            |
-| `level:<id>`                                   | a level                                                                                                    |
-| `role:<storey\|basement\|exterior\|roof>`      | every level with that role                                                                                 |
-| `room:<id>` / `zone:<id>`                      | a room or zone                                                                                             |
-| `object:<id>` / `type:<type>` / `group:<name>` | objects by id, type or group                                                                               |
-| `tag:<name>`                                   | objects carrying the tag (Edit → Objects; by default the object's `group` and the HA labels of its entity) |
-| `layer:<name>`                                 | every node with that layer (below)                                                                         |
-| `node:<path>`                                  | a node by its name path from the root, `/`-separated; `*` matches within a name, `**` across levels        |
+| selector                                       | matches                                                                                                                      |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `all`                                          | the whole model                                                                                                              |
+| `level:<id>`                                   | a level                                                                                                                      |
+| `role:<storey\|basement\|exterior\|roof>`      | every level with that role                                                                                                   |
+| `room:<id>` / `zone:<id>`                      | a room or zone                                                                                                               |
+| `object:<id>` / `type:<type>` / `group:<name>` | objects by id, type or group                                                                                                 |
+| `tag:<name>`                                   | objects carrying the tag (`layout.objects` / `layout.tags`; by default the object's `group` and the HA labels of its entity) |
+| `layer:<name>`                                 | every node with that layer (below)                                                                                           |
+| `node:<path>`                                  | a node by its name path from the root, `/`-separated; `*` matches within a name, `**` across levels                          |
 
 Reference for view sets, camera presets (`fp.views[*].camera`), controls and lighting:
 [prototype-view-rules.md](prototype-view-rules.md) (the rules the prototype house uses: which
@@ -240,7 +240,7 @@ skipped with a warning (`bun run check-model` lists them).
 
 The sky environment (the fill light of every quality tier) has no walls: on its own it fills every surface as if it
 stood outdoors. So the card also bakes three's light probe grid (`LightProbeGridWebGL`)
-for each storey that has indoor rooms (the model's rooms with an outline and the drawn rooms; not
+for each storey that has indoor rooms (the model's rooms with an outline and the layout's `rooms`; not
 zones): a box over the storey's rooms from floor to ceiling with a probe every 0.5 m (1 m in `quality: standard`,
 about a quarter of the probes to bake), each a small
 cube view of the scene lit as now (the sun through the windows, the lamps that are on, the sky through
@@ -331,7 +331,7 @@ to an entity by itself (from `suggest.entity`), so a well-tagged model works wit
 
 What the card reads (everything else in `fp` is kept for later and ignored):
 
-- `id` (required, stable): the binding key. `label`: the name in the popup and the Objects tab.
+- `id` (required, stable): the binding key. `label`: the name in the popup.
 - `type`: one of the types below. Unknown types work as `generic` (more-info / state popup).
 - `glow`: name of the mesh inside the object that lights up or changes colour (bulb, glass, LED).
   Default `glow`. **One glow mesh per fixture**, with its own material: the card clones that
@@ -340,12 +340,12 @@ What the card reads (everything else in `fp` is kept for later and ignored):
 - `anchor`: optional local point used when there is no glow mesh (default: the object's box centre).
   With a glow mesh the light, popup and labels sit at the glow mesh centre.
 - `group`: fixtures of one circuit (all facade lamps) share a group name. They usually share one
-  entity; the user can also give the group a controller entity in the card (a relay). A fixture is
+  entity; the user can also give the group a controller entity in the card's `layout.tags` (a relay). A fixture is
   lit only while its own entity **and** the group controller are both on. A lit group gets one real
   light (at its middle fixture, 1.5 × brighter), not one per fixture.
 - `suggest.entity`: the exact entity id to bind to automatically, if it exists in Home Assistant.
-  Missing in HA: the object stays unbound and the Objects tab says "entity not found". There is no
-  guessing by area or domain; the user can rebind any object in the Objects tab.
+  Missing in HA: the object stays unbound. There is no guessing by area or domain; the user can
+  rebind any object in the card's `layout.objects`.
 - `hints`: see below. Invalid values fall back to the defaults.
 - `ui`: optional tap / hold actions and popup rows (see Actions).
 - Model each object at its real place and size. Keep moving parts as their own nodes.
@@ -415,7 +415,7 @@ don't flicker (z-fighting).
   (`{ "action": "navigate", "navigation_path": "/lovelace/lights" }`, `toggle`, `more-info`, `url`,
   `perform-action`, `assist`, `popup`, `none`; see the README's Actions). The older `ui.tap` /
   `ui.hold` strings (`"toggle"`, `"more-info"`, `"popup"`, `"none"`) still work. The type default
-  otherwise; the Objects tab and the card YAML `actions:` override the model.
+  otherwise; the card's `layout.objects.<id>.ui` and the card YAML `actions:` override the model.
   Toggle acts on the object's entity, else its group controller.
 - `ui.popup`: rows of the popup, in order: `toggle`, `brightness`, `color`, `state`, `battery`,
   `power`, `energy`, `temperature`, `mode`, `start_dock` (mower start / dock). Rows that don't apply
@@ -424,18 +424,18 @@ don't flicker (z-fighting).
   The list from the model (or the type) is extended automatically by the bound light's capabilities:
   `brightness`, `color`, `color_temp` and `effect` rows appear when the `light.*` entity supports them,
   so `"popup": ["toggle"]` on a smart bulb still gets the colour wheel, Kelvin slider and effect list.
-  A list set in the Objects tab or the card YAML is taken exactly as written.
+  A list set in `layout.objects` or the card YAML is taken exactly as written.
   Links at the bottom: `history`, `logbook`, `statistics` and `{ "label": "…", "navigate": "/…" }`
   or `{ "label": "…", "url": "https://…" }`.
 
 ## Re-exporting
 
 - Keep every `id`. Moving, resizing or remodelling an object is fine.
-- New object: new id. It appears in the card as unassigned.
-- Removed object: its assignment is kept in the card in case the id comes back.
+- New object: new id. It binds by its `suggest.entity`, else stays unbound.
+- Removed object: an entry for it in the card's `layout.objects` is unused, and applies again if the id comes back.
 - Do not rename levels or rooms casually; if you must, tell the user (they reassign once).
 - Keep view ids too; changing a view's `show` / `hide` / `camera` is fine. Keep the names of
-  groups the user may have hidden by clicking (they are stored as `node:` paths).
+  groups the user may hide in a view (view rules select them as `node:` paths).
 
 ## Checklist before handing over
 

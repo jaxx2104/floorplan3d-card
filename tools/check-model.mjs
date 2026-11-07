@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks a house model against docs/model-builder-guide.md before it is uploaded to the card.
+// Checks a house model against docs/model-builder-guide.md before it is copied to config/www for the card.
 //   node tools/check-model.mjs house.glb          human-readable report, exit 1 on errors
 //   node tools/check-model.mjs house.glb --json   JSON report, always exit 0 (read "ok")
 // No dependencies: reads the GLB's JSON chunk, accessor bounds and embedded image headers.
