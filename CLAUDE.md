@@ -22,7 +22,9 @@ the card.
   billboards from a Canvas 2D atlas: `src/view/billboards.ts`, `src/marker-sprite.ts`); icons are read from a
   hidden `<ha-state-icon>` / `<ha-icon>` (`src/view/icons.ts`). No DOM overlays in the scene.
 - Companion integration `custom_components/floorplan3d/`: serves the bundled card and registers it
-  (add_extra_js_url). No storage, no websocket commands.
+  (add_extra_js_url), and serves `<config>/floorplan3d/models/<key>.glb` read only to logged-in users
+  (`/api/floorplan3d/model/<key>`, fetched by the card with `hass.fetchWithAuth`). No storage, no
+  websocket commands, no upload.
 - Respect HA theme CSS vars (--card-background-color, --primary-color, --primary-text-color,
   --divider-color, --state-light-active-color). Light and dark themes must both look right.
 
@@ -53,7 +55,7 @@ The layout is part of the card config (`layout:`, parsed by `parseLayout`); a ne
 type: custom:floorplan3d-card
 height: 520px
 group_by: device          # device | entity
-model: /local/house.glb   # a file in config/www, cached by ETag / Last-Modified
+model: /api/floorplan3d/model/default   # or /local/house.glb (public); cached by ETag / Last-Modified
 model_position: [0, 0, 0]
 model_rotation: 0
 model_scale: 1

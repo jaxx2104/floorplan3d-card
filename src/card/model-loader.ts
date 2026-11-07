@@ -69,22 +69,37 @@ export class ModelLoader {
     this._modelEvicted = undefined; // headless checks
   }
 
+  // How the model URL is fetched: a Home Assistant API path (/api/..., e.g. the integration's
+  // /api/floorplan3d/model/<key>, served to logged-in users only) with the user's token, anything
+  // else (/local/..., another host) as it is.
+  _modelFetch(
+    path: string,
+    url: string,
+  ): (init?: RequestInit) => Promise<Response> {
+    const hass = this.card._hass;
+    if (
+      /^\/api\//.test(path) &&
+      hass &&
+      typeof hass.fetchWithAuth === "function"
+    )
+      return (init) => hass.fetchWithAuth(path, init);
+    return (init) => fetch(url, { credentials: "same-origin", ...init });
+  }
+
   // model: the YAML's model: url
   _loadModel(reload = false): void {
     const c = this.card._config;
     let opts: ModelOptions | null = null;
     if (c.model) {
       const url = new URL(String(c.model), location.href).href;
+      const get = this._modelFetch(String(c.model), url);
       opts = {
         url: String(c.model),
-        // versioned by the server's validators (HEAD), cached locally like an uploaded model
+        // versioned by the server's validators (HEAD), cached locally (only the body, under the plain URL)
         data: async () => {
           let version = null;
           try {
-            const h = await fetch(url, {
-              method: "HEAD",
-              credentials: "same-origin",
-            });
+            const h = await get({ method: "HEAD" });
             if (h.ok) version = headerVersion(h.headers);
           } catch (e) {
             /* offline or no HEAD: fetched below (and not cached) */
@@ -92,8 +107,7 @@ export class ModelLoader {
           const src: ModelSource = (this._modelSrc = {
             base: url,
             version,
-            fetchFn: ({ signal } = {}) =>
-              fetch(url, { credentials: "same-origin", signal }),
+            fetchFn: ({ signal } = {}) => get({ signal }),
           });
           return this._modelBytes(url, version, src.fetchFn);
         },

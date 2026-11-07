@@ -1,8 +1,8 @@
 """Floorplan 3D: serves floorplan3d-card so no manual Lovelace resource is needed.
 
 Added from Settings → Devices & services (or `floorplan3d:` in configuration.yaml, which is
-imported as a config entry). The layout is part of the card YAML (`layout:`) and the model a
-file under config/www (`model: /local/house.glb`), so nothing is stored here.
+imported as a config entry). The layout is part of the card YAML (`layout:`); a house model
+copied to <config>/floorplan3d/models/<key>.glb is served to logged-in users only (model.py).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CARD_FILENAME, CARD_URL_BASE, DOMAIN
+from .model import ModelView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,16 +35,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Register the card resource (once per HA run)."""
+    """Register the card resource and the model view (once per HA run)."""
     if DOMAIN in hass.data:
-        return True  # reloaded entry: the static path stays registered
+        return True  # reloaded entry: the views stay registered
     hass.data[DOMAIN] = True
+    hass.http.register_view(ModelView(hass))
     await _async_register_card(hass)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Nothing to tear down; the card stays until restart."""
+    """Nothing to tear down; the card and the model view stay until restart."""
     return True
 
 
