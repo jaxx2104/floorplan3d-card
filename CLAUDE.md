@@ -73,7 +73,7 @@ layout:
       - { src: [26000, 25000], plan: [12.12, 7.32] }
 ```
 
-Removed options (`layout_key`, `wall_height`, `model_floors`, `group_by`, `zoom_to`, `idle_orbit`, `occlusion`, `ao`) are reported in the console and ignored. Floors
+Removed options (`layout_key`, `wall_height`, `model_floors`, `group_by`, `zoom_to`, `idle_orbit`, `occlusion`, `ao`, `time_zone`) are reported in the console and ignored. Floors
 auto-sync from HA floors (`hass.floors`, elevation = level * 3); a room's floor defaults to the area's.
 
 ## Behaviour

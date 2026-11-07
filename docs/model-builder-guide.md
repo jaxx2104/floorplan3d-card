@@ -6,8 +6,6 @@ session. The model describes **what exists**; Home Assistant decides **what it i
 object's `suggest.entity` lets the card bind it without setup, the user can change every binding
 in the card YAML's `layout:` and re-exports never break that.
 
-Full design: [specs/2026-10-01-model-contract-design.md](superpowers/specs/2026-10-01-model-contract-design.md).
-
 ## Deliverable
 
 One file: **`house.glb`** (binary glTF 2.0), under ~20 MB. No separate layout JSON is needed:
@@ -143,10 +141,6 @@ Selectors:
 | `tag:<name>`                                   | objects carrying the tag (`layout.objects` / `layout.tags`; by default the object's `group` and the HA labels of its entity) |
 | `layer:<name>`                                 | every node with that layer (below)                                                                                           |
 | `node:<path>`                                  | a node by its name path from the root, `/`-separated; `*` matches within a name, `**` across levels                          |
-
-Reference for view sets, camera presets (`fp.views[*].camera`), controls and lighting:
-[prototype-view-rules.md](prototype-view-rules.md) (the rules the prototype house uses: which
-view shows which buckets, camera per view, what follows the view).
 
 ## Render recipe
 

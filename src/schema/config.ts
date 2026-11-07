@@ -94,7 +94,7 @@ export const cardConfigSchema = object({
   idle_orbit: opt(removed("no longer used")),
   /** Seconds. */
   idle_reset: opt(numeric()),
-  time_zone: opt(string()),
+  time_zone: opt(removed("no longer used")),
   debug: opt(boolean()),
   badges: opt(
     object({

@@ -1,12 +1,11 @@
-// Headless check of the GLB underlay and the export snippet:
+// Headless check of the GLB underlay:
 // - demo with ?model=1: model loads, level groups follow the floor chips, roof is cut away
 // - a missing model shows a notice instead of breaking the card
-// - tools/export-glb.js exports a named scene to a valid .glb without lights/helpers
 //   node scripts/model-check.mjs [--shard k/n] [--only group,group] [--jobs N] [--list]
 // Without --shard / --only the section groups run as parallel shards (--jobs, default 3).
 import fs from "node:fs";
 import path from "node:path";
-import { openDemo, newPage, root } from "./lib/demo-browser.mjs";
+import { openDemo, root } from "./lib/demo-browser.mjs";
 import { Sections, parseArgs, selectGroups } from "./lib/sections.mjs";
 import { transformPoint } from "../src/bindings.ts";
 import { alignModelPoint } from "../src/views.ts";
@@ -3405,45 +3404,6 @@ sections.add(
 );
 
 // 3. export snippet round trip
-sections.add("export", { group: "load", query: null }, async (s) => {
-  const { page, errors } = await newPage(s.browser);
-  await page.goto(`${s.base}/scripts/fixtures/export-test.html`);
-  await page.waitForFunction("window.ready === true");
-  // a real download would leave headless Chrome hanging on close
-  await page.evaluate(
-    "HTMLAnchorElement.prototype.click = function () { window.__downloaded = this.download; }",
-  );
-  await page.evaluate(
-    fs.readFileSync(path.join(root, "tools/export-glb.js"), "utf8"),
-  );
-  await page.waitForFunction("!!window.__floorplan3dGlb", { timeout: 10000 });
-  const glb = Buffer.from(
-    await page.evaluate("Array.from(new Uint8Array(window.__floorplan3dGlb))"),
-  );
-  check("export is a binary glTF", glb.toString("ascii", 0, 4) === "glTF");
-  check(
-    "download offered as house.glb",
-    (await page.evaluate("window.__downloaded")) === "house.glb",
-  );
-  const jsonLen = glb.readUInt32LE(12);
-  const gltf = JSON.parse(glb.toString("utf8", 20, 20 + jsonLen));
-  const names = gltf.nodes.map((n) => n.name);
-  check(
-    "floor groups exported",
-    names.includes("floor:ground") && names.includes("floor:first"),
-    names.join(", "),
-  );
-  check(
-    "lights, cameras and helpers dropped",
-    !gltf.extensions?.KHR_lights_punctual &&
-      !gltf.cameras &&
-      gltf.nodes.length === 4,
-    `${gltf.nodes.length} nodes`,
-  );
-  allErrors.push(...errors.filter((e) => !e.includes("GPU stall")));
-  await page.close();
-});
-
 // 5. final review fixes: no occlusion / shadow work for irrelevant state updates (I1), mower and
 // pins in an exterior-only view (I2), model view cameras follow the model alignment (I3)
 {

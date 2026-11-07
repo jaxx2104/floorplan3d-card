@@ -650,12 +650,7 @@ views:
   realigned later: adjust them afterwards.
 
 Model builders: [docs/model-builder-guide.md](docs/model-builder-guide.md) (format, selectors,
-layers) and [docs/prototype-view-rules.md](docs/prototype-view-rules.md) (reference view set,
-camera presets for `fp.views[*].camera`, controls).
-
-To export an existing Three.js design: add `window.scene = scene;` to its code, open it in the
-browser, paste [tools/export-glb.js](tools/export-glb.js) into the developer console. It drops
-lights and helpers, prints size and origin, and downloads `house.glb`.
+layers).
 
 ## Development
 
