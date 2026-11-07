@@ -896,54 +896,6 @@ export function viewCut(
   );
 }
 
-// ---------- edit mode: per-view rule edits, element tree, picks, order ----------
-
-type Rules = readonly (ViewRule | null | undefined)[] | null | undefined;
-export type RuleState = "shown" | "hidden" | "default";
-
-const selOf = (r: ViewRule | null | undefined): string | undefined =>
-  r ? (r.show ?? r.hide) : undefined;
-
-// 'shown' | 'hidden' | 'default' for a selector in a rule list (the last rule for it wins).
-export function ruleState(rules: Rules, sel: string): RuleState {
-  let s: RuleState = "default";
-  for (const r of rules || [])
-    if (r && selOf(r) === sel) s = r.show !== undefined ? "shown" : "hidden";
-  return s;
-}
-
-// True when the selector's last rule is a hide that keeps the model objects inside (keep_objects).
-export function ruleKeepsObjects(rules: Rules, sel: string): boolean {
-  let k = false;
-  for (const r of rules || [])
-    if (r && selOf(r) === sel)
-      k = r.show === undefined && r.keep_objects === true;
-  return k;
-}
-
-// Drop every rule for the selector, then append the new one ('default' appends nothing).
-// opts.keepObjects: a hide that keeps the objects inside visible ("Hide surfaces, keep devices").
-export function setRuleState(
-  rules: Rules,
-  sel: string,
-  state: RuleState,
-  { keepObjects = false } = {},
-): ViewRule[] {
-  const out = (rules || [])
-    .filter((r) => selOf(r) !== sel)
-    .map((r): ViewRule => ({ ...r }));
-  if (state === "shown") out.push({ show: sel });
-  else if (state === "hidden")
-    out.push(keepObjects ? { hide: sel, keep_objects: true } : { hide: sel });
-  return out;
-}
-
-const NEXT_EYE: Partial<Record<string, RuleState>> = {
-  default: "shown",
-  shown: "hidden",
-};
-export const nextEyeState = (s: string): RuleState => NEXT_EYE[s] || "default";
-
 const TAG_SEL: Partial<Record<string, string>> = {
   level: "level",
   room: "room",
@@ -1079,37 +1031,6 @@ export function viewTree(
   return { tree, layers, groups };
 }
 
-// Selector for a click in 3D: a tagged room/zone/object owner by its tag; otherwise (untagged, or
-// inside a level) the nearest named group with children above the hit node, not past the owning
-// level; a mesh directly in a level picks the mesh. hitIdx = index position of the hit node.
-export function pickSelector(
-  index: NodeIndex,
-  hitIdx: number,
-  owner: Pick<ManifestEntry, "node" | "kind" | "id"> | null | undefined,
-): { sel: string; idx: number } | null {
-  const nodes = index.nodes;
-  if (!(hitIdx >= 0 && hitIdx < nodes.length)) return null;
-  const ownerIdx =
-    owner && owner.node ? nodes.findIndex((n) => n.node === owner.node) : -1;
-  if (
-    owner &&
-    ownerIdx >= 0 &&
-    TAG_SEL[owner.kind] &&
-    (owner.kind !== "level" || ownerIdx === hitIdx)
-  ) {
-    return { sel: TAG_SEL[owner.kind] + ":" + owner.id, idx: ownerIdx };
-  }
-  for (
-    let p = nodes[hitIdx].parent;
-    p >= 0 && p !== ownerIdx;
-    p = nodes[p].parent
-  ) {
-    if (nodes[p].name && nodes[p].children.length)
-      return { sel: "node:" + nodes[p].path, idx: p };
-  }
-  return { sel: "node:" + nodes[hitIdx].path, idx: hitIdx };
-}
-
 // Views sorted by a stored id order; ids not in it keep their relative place after the ordered ones.
 export function orderViews<V extends { id: string }>(
   views: readonly V[] | null | undefined,
@@ -1123,54 +1044,6 @@ export function orderViews<V extends { id: string }>(
     .map((v, i): [V, number] => [v, pos.has(v.id) ? pos.get(v.id)! : n + i])
     .sort((a, b) => a[1] - b[1])
     .map((x) => x[0]);
-}
-
-export function nextViewId(ids: Iterable<string> | null | undefined): {
-  id: string;
-  n: number;
-} {
-  const used = new Set(ids || []);
-  let n = 1;
-  while (used.has("view_" + n)) n++;
-  return { id: "view_" + n, n };
-}
-
-// A level's legacy show mode (layout.model.levels[id].show) as layout rules: the same rules the
-// migration adds to generated views, put before each view's own layout rules. Used before the
-// "belongs to HA floor" dropdown drops the show mode. Returns layoutViews unchanged when there is none.
-export function legacyShowRules<L extends Record<string, LayoutView>>(
-  layoutViews: L | undefined,
-  views: readonly Pick<ResolvedView, "id" | "source">[] | null | undefined,
-  levelId: string,
-  savedLevels: SavedLevels | null | undefined,
-  levels: readonly ViewLevel[] | null | undefined,
-): L | Record<string, LayoutView> | undefined {
-  const b = (savedLevels || {})[levelId];
-  if (
-    !b ||
-    typeof b !== "object" ||
-    !["hidden", "always", "all-only", "only"].includes(b.show as string)
-  )
-    return layoutViews;
-  const one = { [levelId]: b };
-  const mig = migrateShowModes(one);
-  const out: Record<string, LayoutView> = { ...layoutViews };
-  let changed = false;
-  for (const v of views || []) {
-    if (v.source !== "generated") continue;
-    const add = migratedRules(v.id, mig, one, levels || []);
-    if (!add.length) continue;
-    const cur = obj(out[v.id]);
-    out[v.id] = {
-      ...cur,
-      rules: [
-        ...add.map((r) => ({ ...r })),
-        ...(Array.isArray(cur.rules) ? cur.rules : []),
-      ],
-    };
-    changed = true;
-  }
-  return changed ? out : layoutViews;
 }
 
 // ---------- side section: one vertical clipping plane ----------
@@ -1250,12 +1123,6 @@ export interface SectionDir {
   label: string;
   normal: Vec3;
 }
-export const SECTION_DIRS: readonly SectionDir[] = [
-  { id: "west", label: "Keep west half", normal: [-1, 0, 0] }, // -x + c >= 0: x <= c
-  { id: "east", label: "Keep east half", normal: [1, 0, 0] },
-  { id: "north", label: "Keep north half", normal: [0, 0, -1] }, // -z + c >= 0: plan y >= -c
-  { id: "south", label: "Keep south half", normal: [0, 0, 1] },
-];
 
 // Levels whose boxes frame the section (the house without garden / roof overhang).
 export const sectionLevels = <L extends ViewLevel>(
@@ -1277,54 +1144,6 @@ export function unionBox(
       }
   }
   return out;
-}
-
-export function sectionDir(normal: readonly number[]): SectionDir {
-  let best = SECTION_DIRS[0],
-    bd = -Infinity;
-  for (const d of SECTION_DIRS) {
-    const dot =
-      d.normal[0] * normal[0] +
-      d.normal[1] * normal[1] +
-      d.normal[2] * normal[2];
-    if (dot > bd) {
-      bd = dot;
-      best = d;
-    }
-  }
-  return best;
-}
-
-// Slider axis: east (x) for east-west normals, north (-z) for north-south ones.
-const axisOf = (normal: readonly number[]): Vec3 =>
-  Math.abs(normal[0]) >= Math.abs(normal[2]) ? [1, 0, 0] : [0, 0, -1];
-const dot3 = (a: readonly number[], b: readonly number[]): number =>
-  a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-// Slider position (metres east, or north) of a plane: where it crosses its axis.
-export function sectionPos(plane: SectionPlaneConfig): number {
-  const u = axisOf(plane.normal),
-    k = dot3(plane.normal, u);
-  return Math.abs(k) < 1e-9 ? 0 : z0(-plane.constant / k);
-}
-
-// The plane with this normal crossing its axis at pos.
-export function sectionAt(
-  normal: readonly number[],
-  pos: number,
-): SectionPlaneConfig {
-  const n = normSection({ normal, constant: 0 })!.normal; // callers pass a valid normal (it threw before)
-  return { normal: n, constant: z0(-pos * dot3(n, axisOf(n))) };
-}
-
-// Slider range: the box along the axis.
-export function sectionRange(
-  normal: readonly number[],
-  box: Box3Like,
-): [number, number] {
-  return axisOf(normal)[0]
-    ? [box.min[0], box.max[0]]
-    : [z0(-box.max[2]), z0(-box.min[2])];
 }
 
 // ---------- roomless markers (pins, live mower) ----------

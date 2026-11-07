@@ -30,14 +30,14 @@ export type {
   ModelAdapter,
 } from "./types/manifest.ts";
 
-/** A node's fp tag (extras.fp, an fp:<kind>:<id> name or a legacy top-level name). */
+/** A node's fp tag (extras.fp or an fp:<kind>:<id> name). */
 export interface FpTag {
   kind?: string;
   id?: unknown;
   type?: string;
   role?: string;
   label?: string;
-  source: "extras" | "name" | "legacy";
+  source: "extras" | "name";
   [key: string]: unknown;
 }
 
@@ -60,12 +60,10 @@ const isPoint = (p: unknown): p is number[] =>
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
-// Tag of one node: extras.fp, else an "fp:<kind|type>:<id>" name, else (top level only) the
-// legacy names "floor:<id>", "roof" and "site".
+// Tag of one node: extras.fp, else an "fp:<kind|type>:<id>" name.
 export function readTag(
   name: string | null | undefined,
   extras: Record<string, unknown> | null | undefined,
-  { topLevel = false }: { topLevel?: boolean } = {},
 ): FpTag | null {
   const fp = extras && extras.fp;
   if (fp && typeof fp === "object" && !Array.isArray(fp))
@@ -76,14 +74,6 @@ export function readTag(
     return KINDS.includes(k)
       ? { kind: k, id: m[2], source: "name" }
       : { kind: "object", type: k, id: m[2], source: "name" };
-  }
-  if (topLevel) {
-    const f = /^floor[:_](.+)$/.exec(name || "");
-    if (f) return { kind: "level", id: f[1], role: "storey", source: "legacy" };
-    if (name === "roof")
-      return { kind: "level", id: "roof", role: "roof", source: "legacy" };
-    if (name === "site")
-      return { kind: "level", id: "site", role: "exterior", source: "legacy" };
   }
   return null;
 }
@@ -121,14 +111,12 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
   };
 
   // an fp object without a kind (layer-only, views-only) is not a tag
-  const tagOf = (node: N, topLevel: boolean): FpTag | null => {
-    const t = readTag(adapter.name(node), adapter.extras(node), { topLevel });
-    return t && t.kind === undefined
-      ? readTag(adapter.name(node), null, { topLevel })
-      : t;
+  const tagOf = (node: N): FpTag | null => {
+    const t = readTag(adapter.name(node), adapter.extras(node));
+    return t && t.kind === undefined ? readTag(adapter.name(node), null) : t;
   };
   let tops = adapter.roots();
-  if (tops.length === 1 && !tagOf(tops[0], true)) {
+  if (tops.length === 1 && !tagOf(tops[0])) {
     tops = adapter.children(tops[0]); // a single untagged wrapper (e.g. "Scene")
   }
 
@@ -219,10 +207,7 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
       m.errors.push(`${path}: unknown kind "${tag.kind}"`);
       return null;
     }
-    if (
-      typeof tag.id !== "string" ||
-      (tag.source !== "legacy" && !ID_RE.test(tag.id))
-    ) {
+    if (typeof tag.id !== "string" || !ID_RE.test(tag.id)) {
       m.errors.push(
         `${path}: invalid id "${tag.id}" (use a-z, 0-9, _ and -, at most 64)`,
       );
@@ -314,15 +299,10 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
     return entry;
   };
 
-  const walk = (
-    node: N,
-    ctx: Ctx,
-    parentPath: string,
-    topLevel: boolean,
-  ): void => {
+  const walk = (node: N, ctx: Ctx, parentPath: string): void => {
     const name = adapter.name(node);
     const path = parentPath ? `${parentPath}/${name}` : name;
-    const tag = tagOf(node, topLevel);
+    const tag = tagOf(node);
     const fp = (adapter.extras(node) || {}).fp as
       { cutaway?: unknown } | undefined;
     if (fp && typeof fp === "object" && fp.cutaway !== undefined) {
@@ -337,9 +317,9 @@ export function buildManifest<N>(adapter: ModelAdapter<N>): Manifest<N> {
       else if (e && (e.kind === "room" || e.kind === "zone"))
         next = { ...ctx, room: e.id };
     }
-    for (const c of adapter.children(node)) walk(c, next, path, false);
+    for (const c of adapter.children(node)) walk(c, next, path);
   };
-  for (const t of tops) walk(t, { level: null, room: null }, "", true);
+  for (const t of tops) walk(t, { level: null, room: null }, "");
   if (adapter.position) {
     const position = adapter.position;
     const v3 = (a: unknown): a is number[] =>

@@ -14,7 +14,6 @@ import {
   numeric,
   object,
   optional,
-  record,
   refine,
   run,
   string,
@@ -80,8 +79,8 @@ export const cardConfigSchema = object({
   model_rotation: opt(numeric()),
   model_scale: opt(numeric()),
   model_opacity: opt(numeric()),
-  /** Older level -> HA floor map for a URL model ({ levelId: floorId | 'always' | 'hidden' }). */
-  model_floors: opt(record(string())),
+  /** Removed: level -> HA floor bindings are the layout's model.levels. */
+  model_floors: opt(removed("use layout: model: levels")),
   /** Merge static model parts (default true). */
   merge: opt(boolean()),
   /** Weather entity; 'none' / false: no weather. Unset: the first weather entity. */

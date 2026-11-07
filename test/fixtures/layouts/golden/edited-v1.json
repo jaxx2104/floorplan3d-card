@@ -1,14 +1,14 @@
 {
-  "from": 1,
   "warnings": [],
   "unknown": [
+    "version",
     "mower.overlay",
     "mower.image",
     "mower.static_entity",
     "mower.picture_entity"
   ],
   "value": {
-    "version": 2,
+    "version": 1,
     "floors": [
       {
         "id": "ground",

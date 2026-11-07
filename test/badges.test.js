@@ -5,7 +5,6 @@ import {
   platformOf,
   brandUrl,
   integrationName,
-  entityOptionLabel,
   batteryLevel,
   problemOn,
   statusKind,
@@ -159,18 +158,5 @@ describe("integration names and option labels", () => {
     expect(integrationName("my_custom_thing")).toBe("My Custom Thing");
     expect(integrationName("")).toBe("");
     expect(integrationName(null)).toBe("");
-  });
-  it("option label: friendly name plus integration, name only without a platform", () => {
-    const hass = {
-      states: {
-        "light.a": S("light.a", "on", { friendly_name: "Lamp" }),
-        "sensor.b": S("sensor.b", "1"),
-      },
-      entities: { "light.a": { platform: "sonoff" }, "sensor.b": {} },
-    };
-    expect(entityOptionLabel(hass, "light.a")).toBe("Lamp \u00b7 Sonoff");
-    expect(entityOptionLabel(hass, "sensor.b")).toBe("sensor.b");
-    expect(entityOptionLabel(hass, "nope.x")).toBe("nope.x");
-    expect(entityOptionLabel({}, "a.b")).toBe("a.b");
   });
 });

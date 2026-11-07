@@ -456,24 +456,6 @@ export function clampSunDir<V extends readonly number[] | null | undefined>(
   return [x * k, minY, z * k];
 }
 
-export function screenNearest(
-  points: readonly ScreenPoint[],
-  x: number,
-  y: number,
-  radius: number,
-): string | null {
-  let best: string | null = null,
-    bd = radius;
-  for (const p of points) {
-    const d = Math.hypot(p.x - x, p.y - y);
-    if (best === null ? d <= radius : d < bd) {
-      bd = d;
-      best = p.id;
-    }
-  }
-  return best;
-}
-
 // Ids of the points within radius px of (x, y), nearest first (ties keep their order).
 export function screenByDistance(
   points: readonly ScreenPoint[],
@@ -491,36 +473,6 @@ export function screenByDistance(
 // ---------- magnetic drag ----------
 const vec = (v: VecLike): XYZ =>
   Array.isArray(v) ? { x: v[0], y: v[1], z: v[2] } : (v as XYZ);
-export const SNAP_OFFSET = 0.05; // markers float 5 cm off the surface they stick to
-
-// A model surface hit ({ point, normal } in card world) -> plan pin 5 cm off the surface along its normal.
-export function snapPin(
-  hit: { point: VecLike; normal: VecLike },
-  floorElevation: number | null | undefined,
-  floorId: string,
-): { x: number; y: number; z: number; floor_id: string } {
-  const p = vec(hit.point),
-    n = vec(hit.normal);
-  const wx = p.x + n.x * SNAP_OFFSET,
-    wy = p.y + n.y * SNAP_OFFSET,
-    wz = p.z + n.z * SNAP_OFFSET;
-  return { x: wx, y: -wz, z: wy - (floorElevation || 0), floor_id: floorId };
-}
-
-// Offset (world metres, mm) of a plan position { x, y, z } on a floor at floorElevation from an anchor.
-export function attachOffset(
-  anchor: VecLike,
-  pos: XYZ,
-  floorElevation: number | null | undefined,
-): [number, number, number] {
-  const a = vec(anchor),
-    r = (v: number): number => Math.round(v * 1000) / 1000 || 0;
-  return [
-    r(pos.x - a.x),
-    r((floorElevation || 0) + pos.z - a.y),
-    r(-pos.y - a.z),
-  ];
-}
 
 // Plan position { x, y, z } of an attached marker: anchor + offset, z above floorElevation.
 export function attachedPosition(
@@ -541,17 +493,4 @@ export function attachedPosition(
     y: -(a.z + offset[2]),
     z: a.y + offset[1] - (floorElevation || 0),
   };
-}
-
-// The floor a model hit at world height y stands on: the highest floor with elevation <= y + tol, else null.
-export function floorAtHeight(
-  floors: readonly { id: string; elevation: number }[] | null | undefined,
-  y: number,
-  tol = 0.05,
-): string | null {
-  let best: { id: string; elevation: number } | null = null;
-  for (const f of floors || [])
-    if (f.elevation <= y + tol && (!best || f.elevation > best.elevation))
-      best = f;
-  return best ? best.id : null;
 }

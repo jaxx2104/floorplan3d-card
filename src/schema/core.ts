@@ -330,25 +330,3 @@ export function run<T>(
     unknown: ctx.unknown,
   };
 }
-
-/** Plain JSON: no undefined fields (JSON.stringify drops them anyway), a fresh copy. */
-export function toJson<T>(v: T): T {
-  return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
-}
-
-/** Deep structural equality of JSON values (key order ignored). */
-export function jsonEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a))
-    return (
-      Array.isArray(b) &&
-      a.length === b.length &&
-      a.every((x, i) => jsonEqual(x, b[i]))
-    );
-  if (isPlainObject(a) && isPlainObject(b)) {
-    const ka = Object.keys(a).filter((k) => a[k] !== undefined),
-      kb = Object.keys(b).filter((k) => b[k] !== undefined);
-    return ka.length === kb.length && ka.every((k) => jsonEqual(a[k], b[k]));
-  }
-  return false;
-}

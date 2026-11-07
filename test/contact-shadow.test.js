@@ -2,9 +2,7 @@ import { describe, it, expect } from "bun:test";
 import * as THREE from "three";
 import {
   contactTileSize,
-  contactDarkness,
   contactFloors,
-  CONTACT_HEIGHT_M,
   CONTACT_MAX_FLOORS,
   CONTACT_TILE_MIN,
   CONTACT_TILE_MAX,
@@ -21,13 +19,6 @@ describe("contact shadows", () => {
     expect(contactTileSize(14)).toBe(512);
     expect(contactTileSize(1)).toBe(CONTACT_TILE_MIN);
     expect(contactTileSize(200)).toBe(CONTACT_TILE_MAX);
-  });
-  it("darkness fades with height, full inside a solid", () => {
-    expect(contactDarkness(0)).toBe(1);
-    expect(contactDarkness(CONTACT_HEIGHT_M)).toBe(0);
-    expect(contactDarkness(CONTACT_HEIGHT_M / 2)).toBeCloseTo(0.25);
-    expect(contactDarkness(2)).toBe(0);
-    expect(contactDarkness(2, false)).toBe(1);
   });
   it("floors: lowest first, split levels and extra storeys dropped", () => {
     const f = (y) => ({ y, minX: 0, maxX: 1, minZ: 0, maxZ: 1 });

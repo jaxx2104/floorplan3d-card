@@ -1,8 +1,6 @@
 // test/bindings.test.js
 import { describe, it, expect } from "bun:test";
-import { parseLayout } from "../src/schema/layout.ts";
 import {
-  levelsFromFloorMap,
   resolveLevels,
   resolveRoomAreas,
   transformPoint,
@@ -28,40 +26,6 @@ const floors = [
   { id: "floor1", elevation: 0 },
   { id: "floor2", elevation: 3 },
 ];
-
-describe("legacy bindings", () => {
-  it("reads floor_map / model_floors", () => {
-    expect(
-      levelsFromFloorMap({ ground: "floor1", attic: "always", x: "hidden" }),
-    ).toEqual({
-      ground: { floor: "floor1" },
-      attic: { show: "always" },
-      x: { show: "hidden" },
-    });
-  });
-  it("migrates layout.model.floor_map into levels", () => {
-    const model = (m) => parseLayout({ model: m }).value.model;
-    expect(model({ version: "v", floor_map: { ground: "floor1" } })).toEqual({
-      version: "v",
-      levels: { ground: { floor: "floor1" } },
-    });
-    const m = { version: "v", levels: { a: { floor: "floor1" } } };
-    expect(model(m)).toEqual(m);
-    expect(model(null)).toBeNull();
-  });
-  it("levelsFromFloorMap ignores non-string values and non-object input", () => {
-    expect(levelsFromFloorMap("abc")).toEqual({});
-    expect(
-      levelsFromFloorMap({ good: "floor1", bad: 123, ugly: ["array"] }),
-    ).toEqual({ good: { floor: "floor1" } });
-    expect(levelsFromFloorMap(null)).toEqual({});
-  });
-  it("the floor_map migration ignores non-plain-object floor_map", () => {
-    const model = (m) => parseLayout({ model: m }).value.model;
-    expect(model({ version: "v", floor_map: "x" }).levels).toEqual({});
-    expect(model({ version: "v", floor_map: { x: 123 } }).levels).toEqual({});
-  });
-});
 
 describe("resolveLevels", () => {
   it("matches exact ids, then storeys bottom-up, exterior with the lowest, roof all-only", () => {

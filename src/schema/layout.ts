@@ -1,10 +1,5 @@
-// The stored layout contract (HA storage key `floorplan3d.layouts` via the companion integration,
-// frontend user data or localStorage, and exported JSON files). This is the user's real home setup:
-// every layout ever saved must keep loading. parseLayout never throws: it migrates older versions,
-// fills the defaults, drops what does not fit (warned) and keeps fields it does not know, so a newer
-// card's data survives a round trip through this one.
-//
-// Changing the shape: bump LAYOUT_VERSION and add a pure migration from the previous version below.
+// The layout contract: the card YAML's `layout:` (written by hand). parseLayout never throws: it fills
+// the defaults, drops what does not fit (warned) and keeps fields it does not know.
 // The types in src/types/layout.ts are derived from these schemas.
 
 import {
@@ -25,14 +20,10 @@ import {
   withDefault,
   isPlainObject,
   run,
-  toJson,
   type Infer,
   type Issue,
   type Schema,
 } from "./core.ts";
-
-/** The version this card writes. Older layouts are migrated on load; newer ones load as far as known. */
-export const LAYOUT_VERSION = 2;
 
 const opt = optional;
 /** null stored for "not set" (JSON of NaN / an emptied field): read as absent. */
@@ -194,7 +185,6 @@ export const badgesSchema = object({
 });
 
 export const layoutSchema = object({
-  version: withDefault(number(), () => LAYOUT_VERSION),
   /** Overrides of HA floors (elevation, height) and layout-only floors. */
   floors: withDefault(array(floorSchema), () => []),
   rooms: withDefault(array(roomSchema), () => []),
@@ -215,58 +205,17 @@ export const layoutSchema = object({
 
 export type NormalisedLayout = Infer<typeof layoutSchema>;
 
-// ---------- migrations ----------
-// MIGRATIONS[n] turns a version n layout into version n + 1. Pure, tolerant of any input shape (they
-// run before validation), and never drop data they do not understand.
 type Raw = Record<string, unknown>;
-type Migration = (l: Raw) => Raw;
-
-// v0.1.4 model.floor_map { levelId: haFloorId | 'always' | 'hidden' } -> model.levels (saved levels win).
-function foldFloorMap(m: unknown): unknown {
-  if (!isPlainObject(m) || !("floor_map" in m)) return m;
-  const { floor_map: fm, ...rest } = m;
-  const levels: Raw = {};
-  if (isPlainObject(fm)) {
-    for (const [id, v] of Object.entries(fm))
-      if (typeof v === "string")
-        levels[id] =
-          v === "always" || v === "hidden" ? { show: v } : { floor: v };
-  }
-  return {
-    ...rest,
-    levels: { ...levels, ...(isPlainObject(m.levels) ? m.levels : {}) },
-  };
-}
-
-const MIGRATIONS: Record<number, Migration> = {
-  // v1 -> v2: the legacy aliases readers had to understand are folded into their current form.
-  //   groups (pre-0.4.5)          -> tags (a tags entry wins)
-  //   model.floor_map (v0.1.4)    -> model.levels
-  1: (l) => {
-    const out: Raw = { ...l, version: 2 };
-    if ("groups" in out) {
-      const g = out.groups;
-      delete out.groups;
-      if (isPlainObject(g))
-        out.tags = { ...g, ...(isPlainObject(out.tags) ? out.tags : {}) };
-    }
-    if ("model" in out) out.model = foldFloorMap(out.model);
-    return out;
-  },
-};
 
 export interface LayoutParse {
   value: NormalisedLayout;
   /** Values that did not fit and were dropped / defaulted (path + message). */
   warnings: Issue[];
-  /** Paths of stored fields this card does not know (kept as they are). */
+  /** Paths of fields this card does not know (kept as they are). */
   unknown: string[];
-  /** The stored version before migration (1 when none was stored). */
-  from: number;
 }
 
-// Stored JSON (any shape: older versions, hand edits, imports) -> a valid layout of LAYOUT_VERSION
-// (or the stored version when it is newer). Never throws.
+// The YAML's layout (any shape) -> a valid layout. Never throws.
 export function parseLayout(input: unknown): LayoutParse {
   const warnings: Issue[] = [];
   let raw: Raw;
@@ -279,42 +228,18 @@ export function parseLayout(input: unknown): LayoutParse {
       });
     raw = {};
   }
-  const v = raw.version;
-  let from = 1;
-  if (typeof v === "number" && Number.isInteger(v) && v >= 1) from = v;
-  else if (v !== undefined)
-    warnings.push({
-      path: "version",
-      message: `expected a version number, got ${JSON.stringify(v)}; read as 1`,
-    });
-  if (from > LAYOUT_VERSION)
-    warnings.push({
-      path: "version",
-      message: `layout version ${from} is newer than this card (${LAYOUT_VERSION}); fields it does not know are kept`,
-    });
-  let l: Raw = { ...raw, version: from };
-  for (let n = from; n < LAYOUT_VERSION; n++) l = MIGRATIONS[n](l);
-  const r = run(layoutSchema, l);
+  const r = run(layoutSchema, raw);
   return {
     value: r.value ?? emptyLayout(),
     warnings: [...warnings, ...r.warnings],
     unknown: r.unknown,
-    from,
   };
 }
 
 /** A fresh empty layout of the current version. */
 export const emptyLayout = (): NormalisedLayout => run(layoutSchema, {}).value!; // {} always fits (all defaults)
 
-/** The JSON that is stored / exported: plain values only (no undefined), the version stamped. */
-export function serializeLayout(layout: NormalisedLayout): NormalisedLayout {
-  return toJson({
-    ...layout,
-    version: Math.max(LAYOUT_VERSION, Number(layout.version) || 0),
-  });
-}
-
-/** Log parse warnings once per load (unknown fields are expected from newer cards: not logged). */
+/** Log parse warnings once per load (unknown fields are kept and not logged). */
 export function logLayoutWarnings(
   where: string,
   p: Pick<LayoutParse, "warnings">,

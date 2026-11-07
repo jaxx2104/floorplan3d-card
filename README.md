@@ -112,12 +112,11 @@ The card is configured in YAML only (there is no visual editor); see [The layout
 | `render`         | `model`                  | With a model: `model` applies the model's render recipe (`fp.render`: exposure, camera, shadows, day / night light); `default` ignores it. Or an object: `{ recipe: model \| default, quality: auto (default) \| high \| standard, tone_mapping: aces \| agx \| neutral \| reinhard \| cineon \| linear \| none, materials: { '<selector>': glass \| floor \| fabric \| none } }`. Every quality has the same light; the tiers differ only in what it costs (see [Render quality](#render-quality)). `quality: auto` (the default) renders `high` and steps down to `standard` when the device cannot keep up. `materials` opts materials in or out: `{ 'material:Glass_*': glass, 'layer:rugs': fabric, 'node:**/Worktop': none }` (a material name with `*`, or any view selector: `layer:`, `node:`, `room:`, `zone:`, `level:`, `role:`, `all`), later keys winning, after the model's own `fp.render.materials` and a material's glTF extras `fp_surface`, applied at the next model load (see [the model builder guide](docs/model-builder-guide.md#physical-materials)). `tone_mapping` replaces AgX; another tone mapping than the recipe's gets the exposure that keeps mid grey where the recipe had it. Invalid values are logged to the browser console and fall back to the defaults. The visual card editor sets the recipe, `quality` and `tone_mapping` and keeps `materials` from YAML. |
 | `actions`        |                          | Tap / hold / double tap actions for objects and markers (see [Actions](#actions)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `badges`         | from the layout          | Device badges per card, overriding `layout.badges` per key: `{ integration: true, status: true, battery: true }` (each key optional).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `model_floors`   | auto                     | Which HA floor each model level belongs to, e.g. `{ground: floor1, attic: floor2}`. `layout.model.levels` wins over it per level.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `model_floors`   | –                        | Removed: `layout.model.levels` binds the levels. A card that still sets it gets a console warning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## The layout
 
-The plan is the card's `layout:`, written by hand in the card YAML. It has the same shape as the layout older versions stored and exported
-(schema: `src/schema/layout.ts`), so an exported layout JSON can be pasted under `layout:` as it is.
+The plan is the card's `layout:`, written by hand in the card YAML (schema: `src/schema/layout.ts`).
 Values that do not fit are dropped with a warning in the browser console
 (`floorplan3d: card YAML layout: <path>: ...`); keys the card does not know are kept. A changed
 `layout:` replaces the running card's layout.
@@ -175,7 +174,7 @@ doors: [[x, y]], outdoor }`. Normally rooms come from the model's tags (see
   not have. HA floors are picked up by themselves (Settings → Areas → Floors) with elevation =
   level × 3 m; with a model the heights come from the model.
 - `model`: the model's bindings. `levels.<level id>.floor`: the HA floor that shows a level
-  (`null`: no floor; wins over the card option `model_floors`); `rooms.<room or zone id>.area`:
+  (`null`: no floor); `rooms.<room or zone id>.area`:
   its HA area (`null`: none). Unset ones follow level order and the tag's suggested area, so most
   of it is automatic. Level ids are listed by `bun run check-model house.glb`; room, zone and
   object ids are the model's `fp.id` tags (see
@@ -257,8 +256,7 @@ With a model that has objects, `layout.objects.<object id>` overrides one object
 `label` and a `wash`: an object is lit only while its own entity and the controllers of all its
 tags are on; an unknown entity is ignored. Objects sharing a controller tag share the real-light
 budget like a model group, and views (`tag:<name>`) and `actions:` (`tag:<name>`) can select them.
-An object's own `wash` wins over its tags', a tag's over the model's. Layouts from before 0.4.5
-keep their group controllers (`groups:` loads as `tags:`). See [Lamps and objects](#lamps-and-objects).
+An object's own `wash` wins over its tags', a tag's over the model's. See [Lamps and objects](#lamps-and-objects).
 
 ## Robot mower
 
@@ -364,8 +362,7 @@ cached copy that fails to load is dropped and downloaded again once. Everything 
 browser; clearing site data removes it.
 
 Each level belongs to an HA floor and each room or zone to an HA area. Defaults follow level order
-and the tag's suggested area, so most of it is automatic; `layout.model.levels` / `.rooms` (or the
-card option `model_floors`) set the rest by id, so they survive re-exports (see
+and the tag's suggested area, so most of it is automatic; `layout.model.levels` / `.rooms` set the rest by id, so they survive re-exports (see
 [The layout](#the-layout)). A tagged model shows whole levels and is never clipped; only an
 untagged model is cut, at the top of the view's highest storey (its elevation + storey height,
 2.7 m when unknown; per view `cut: false` turns it off, see [Views](#views)).
@@ -692,7 +689,7 @@ bun lint
 bun check             # type check
 bun fmt               # format (bun fmt --check in CI)
 bun run check:all     # build + headless Chrome checks of the view and the model
-bun run check:model --only views,mower   # some model check groups (--list, --shard 1/3, --jobs N)
+bun run check:model --only look,mower    # some model check groups (--list, --shard 1/3, --jobs N)
 python -m pytest      # integration tests (pip install -r requirements-test.txt first)
 bun run deploy        # build and scp the integration to HA (settings in .env, see .env.example)
 ```
@@ -715,18 +712,17 @@ Layout: `src/placement.ts` (auto placement), `src/registry.ts` (HA registries to
 `src/layout.ts` (floors, positions), `src/view.ts` (Three.js; markers and labels:
 `src/view/billboards.ts`, `src/marker-sprite.ts`, `src/sprite-atlas.ts`), `src/mower.ts` (mower
 math), `custom_components/floorplan3d/` (integration, serves the card).
-`src/schema/` is the contract for the card YAML: the layout schema with its versioned migrations
+`src/schema/` is the contract for the card YAML: the layout schema
 (`layout.ts`, for `layout:`) and the card options (`config.ts`), built from small combinators
-(`core.ts`). The types in `src/types/layout.ts` and `config.ts` are derived from it. Changing the layout shape
-means bumping `LAYOUT_VERSION`, adding a migration and a fixture under `test/fixtures/layouts`
-(`UPDATE_GOLDEN=1 bun run test` rewrites the expected results in `golden/`).
+(`core.ts`). The types in `src/types/layout.ts` and `config.ts` are derived from it. The fixtures under
+`test/fixtures/layouts` pin the parse results (`UPDATE_GOLDEN=1 bun run test` rewrites them in `golden/`).
 
 ## Troubleshooting
 
 - **Card not found** after install: restart HA, then reload the browser (clear cache on mobile app).
-- The plan is empty after updating: the layout is no longer stored; copy it into the card's
-  `layout:` (an older version's Data → Export JSON pastes as it is). `layout_key` and `wall_height`
-  are ignored with a console warning.
+- The plan is empty after updating to 0.21 or later: the layout is no longer stored; write it
+  into the card's `layout:`. `layout_key`, `wall_height` and `model_floors` are ignored with a
+  console warning.
 - A device is missing: give it an area whose room is in the model (or in `layout.rooms`), or pin
   it; check `layout.hidden`. Diagnostic and configuration entities are never shown.
 - Mower not on the plan: GPS sources need at least one calibration point; compare the entity's

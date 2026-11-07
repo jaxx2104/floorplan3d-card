@@ -4,12 +4,12 @@
 //    created, add:   window.scene = scene;
 // 2. Open the design in the browser, open the developer console (F12 → Console), paste this
 //    whole file and press Enter.
-// 3. house.glb downloads. Copy it to /config/www/ and set  model: /local/house.glb  in the card.
+// 3. house.glb downloads. Copy it to <config>/floorplan3d/models/house.glb and set
+//    model: /api/floorplan3d/model/house  in the card (served to logged-in users only).
 //
 // Conventions the card understands (see docs/model-builder-guide.md): metres, Y up, plan x = east,
 // plan y = north = -Z. Tag levels, rooms and zones with  node.userData.fp = { kind: 'level', id: 'ground' }
-// (also kind 'room' / 'zone' with an outline); userData is exported as glTF extras. Legacy groups
-// named "floor:<id>" still work.
+// (also kind 'room' / 'zone' with an outline); userData is exported as glTF extras.
 (async () => {
   const SCALE = 1; // multiply into metres: 0.01 for centimetres, 0.001 for millimetres
   const FILE = "house.glb";

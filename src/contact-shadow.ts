@@ -55,14 +55,6 @@ export function contactTileSize(extent: number): number {
   );
 }
 
-// Darkness for a caster h metres above the floor: 1 at the floor, 0 at CONTACT_HEIGHT_M (squared fall-off);
-// 1 inside a solid (the first surface above is a back face).
-export function contactDarkness(h: number, frontFacing = true): number {
-  if (!frontFacing) return 1;
-  const t = Math.max(0, Math.min(1, h / CONTACT_HEIGHT_M));
-  return (1 - t) * (1 - t);
-}
-
 // Storeys to ground (at most CONTACT_MAX_FLOORS, lowest first): floors closer than CONTACT_HEIGHT_M to one
 // already kept are dropped (a split level would shade itself).
 export function contactFloors(floors: ContactFloor[]): ContactFloor[] {

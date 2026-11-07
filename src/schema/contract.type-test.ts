@@ -42,7 +42,6 @@ type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
 
 export type Checks = [
   // the parsed layout: the lists and maps every reader uses are present
-  Expect<Equal<Layout["version"], number>>,
   Expect<Equal<Layout["floors"], LayoutFloor[]>>,
   Expect<Equal<Layout["rooms"], LayoutRoom[]>>,
   Expect<Equal<Layout["pins"], Record<string, LayoutPin>>>,

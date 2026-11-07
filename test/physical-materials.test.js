@@ -7,8 +7,6 @@ import {
   ruleMatches,
 } from "../src/material-class.ts";
 import {
-  surfaceOf,
-  surfaceCounts,
   surfaceParams,
   surfacePlugin,
   SURFACE_LOOK,
@@ -460,7 +458,6 @@ describe("physical materials at load (GLTFLoader plugin)", () => {
     expect(c.sheenColor.r).toBeCloseTo(SURFACE_LOOK.fabric.sheenColor);
     const m = new THREE.MeshPhysicalMaterial(c);
     expect(m.sheenColor.r).toBeCloseTo(SURFACE_LOOK.fabric.sheenColor);
-    expect(surfaceOf(m)).toBe("fabric");
   });
 
   // one triangle in a GLB (the buffer in its BIN chunk, nothing fetched): GLTFLoader builds real materials
@@ -535,42 +532,6 @@ describe("physical materials at load (GLTFLoader plugin)", () => {
     return { out, root: gltf.scene };
   };
 
-  it("glass, floors and fabric are made physical once, KHR materials stay the file's", async () => {
-    const { out, root } = await load();
-    const glass = out["Window glass"];
-    expect(glass).toBeInstanceOf(THREE.MeshPhysicalMaterial);
-    expect(glass.roughness).toBe(SURFACE_LOOK.glass.roughness);
-    expect(glass.opacity).toBeCloseTo(0.3);
-    expect(glass.transparent).toBe(true);
-    expect(glass.transmission).toBe(0); // thin glass: no transmission pass
-    expect(glass.userData).toMatchObject({ fpSurface: "glass", fpGlass: true });
-    expect(out.Boards.clearcoat).toBe(SURFACE_LOOK.floor.clearcoat);
-    expect(out.Boards.userData.fp_surface).toBe("floor"); // the file's extras stay
-    expect(out["Sofa fabric"].sheen).toBe(SURFACE_LOOK.fabric.sheen);
-    expect(out.Glass).toBeInstanceOf(THREE.MeshPhysicalMaterial);
-    expect(out.Glass.transmission).toBe(1);
-    expect(surfaceOf(out.Glass)).toBe(null);
-    expect(out.Wall.type).toBe("MeshStandardMaterial");
-    expect(surfaceCounts(root)).toEqual({ glass: 1, floor: 1, fabric: 1 });
-    expect(glass.clone()).toBeInstanceOf(THREE.MeshPhysicalMaterial);
-  });
-  it("the model's fp.render.materials, render: default and the card's rules", async () => {
-    const extras = {
-      fp: { render: { materials: { "material:Wall": "glass" } } },
-    };
-    expect(surfaceOf((await load({}, extras)).out.Wall)).toBe("glass");
-    expect(
-      surfaceOf((await load({ modelRules: false }, extras)).out.Wall),
-    ).toBe(null);
-    const card = [{ sel: "material:Wall", surface: "fabric" }];
-    expect(surfaceOf((await load({ rules: card }, extras)).out.Wall)).toBe(
-      "fabric",
-    );
-    const none = [{ sel: "material:Window*", surface: "none" }];
-    expect((await load({ rules: none })).out["Window glass"].type).toBe(
-      "MeshStandardMaterial",
-    );
-  });
   it("thin glass is its own program variant of the cloud patch", async () => {
     const { out } = await load();
     const std = out.Wall,

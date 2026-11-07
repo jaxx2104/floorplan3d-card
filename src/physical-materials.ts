@@ -37,10 +37,6 @@ export const SURFACE_LOOK = Object.freeze({
   fabric: Object.freeze({ sheen: 1, sheenRoughness: 0.75, sheenColor: 0.25 }),
 });
 
-/** The class a material was made with (userData.fpSurface), or null. */
-export const surfaceOf = (m: THREE.Material): Surface | null =>
-  (m.userData && (m.userData.fpSurface as Surface | undefined)) || null;
-
 // The class's look added to GLTFLoader's material parameters (the file's pbrMetallicRoughness already in).
 export function surfaceParams(
   surface: Surface,
@@ -132,20 +128,3 @@ export const GLASS_FRESNEL = /* glsl */ `
 }
 #endif
 `;
-
-/** Per-class counts of the physical-class materials under root. */
-export function surfaceCounts(root: THREE.Object3D): Record<Surface, number> {
-  const out: Record<Surface, number> = { glass: 0, floor: 0, fabric: 0 },
-    seen = new Set<THREE.Material>();
-  root.traverse((o) => {
-    const mat = (o as THREE.Mesh).material;
-    if (!mat) return;
-    for (const m of ([] as THREE.Material[]).concat(mat)) {
-      if (seen.has(m)) continue;
-      seen.add(m);
-      const s = surfaceOf(m);
-      if (s) out[s]++;
-    }
-  });
-  return out;
-}

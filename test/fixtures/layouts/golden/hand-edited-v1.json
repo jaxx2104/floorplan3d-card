@@ -1,5 +1,4 @@
 {
-  "from": 1,
   "warnings": [
     {
       "path": "rooms[1].doors[1]",
@@ -144,7 +143,6 @@
     "my_extension": {
       "keep": ["me"]
     },
-    "version": 2,
     "model": null
   }
 }

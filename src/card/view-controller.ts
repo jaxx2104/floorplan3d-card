@@ -9,7 +9,6 @@ import {
   levelFloorOverrides,
   modelRooms,
   transformPoint,
-  levelsFromFloorMap,
 } from "../bindings.ts";
 import {
   mergeFloors,
@@ -379,12 +378,7 @@ export class ViewController {
       this.card._hass,
       manifest ? { floors: [] } : l,
     );
-    const savedLevels = {
-      ...(this.card._config.model
-        ? levelsFromFloorMap(this.card._config.model_floors)
-        : {}),
-      ...(l.model && l.model.levels),
-    };
+    const savedLevels = (l.model && l.model.levels) || {};
     const key = JSON.stringify([
       haFloors.map((f) => [f.id, f.name]),
       this.card._config.views || null,

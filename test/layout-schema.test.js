@@ -1,15 +1,10 @@
-// Golden tests of the stored layout contract (src/schema/layout.ts): every fixture under
-// test/fixtures/layouts (old versions, hand edits, newer cards) parses, migrates and round-trips.
+// Golden tests of the layout contract (src/schema/layout.ts): every fixture under test/fixtures/layouts
+// (layouts the card wrote, hand edits) parses to its golden result.
 // The expected results live in test/fixtures/layouts/golden; UPDATE_GOLDEN=1 rewrites them.
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "bun:test";
-import {
-  LAYOUT_VERSION,
-  parseLayout,
-  serializeLayout,
-  emptyLayout,
-} from "../src/schema/layout.ts";
+import { parseLayout, emptyLayout } from "../src/schema/layout.ts";
 import { DEMO_LAYOUT } from "../demo/layout.js";
 
 const dir = path.join(import.meta.dirname, "fixtures", "layouts");
@@ -26,9 +21,7 @@ describe("layout fixtures", () => {
       expect.arrayContaining([
         "demo-v1.json",
         "edited-v1.json",
-        "legacy-v1.json",
         "hand-edited-v1.json",
-        "future-v3.json",
       ]),
     );
   });
@@ -40,7 +33,6 @@ describe("layout fixtures", () => {
 
       it("matches its golden parse (value, warnings, unknown fields)", () => {
         const got = {
-          from: p.from,
           warnings: p.warnings,
           unknown: p.unknown,
           value: p.value,
@@ -55,21 +47,6 @@ describe("layout fixtures", () => {
         );
       });
 
-      it("migrates to the current version (a newer one is kept)", () => {
-        expect(p.value.version).toBe(
-          Math.max(LAYOUT_VERSION, raw.version || 1),
-        );
-      });
-
-      it("round-trips: parse(serialize(parse(x))) == parse(x), without new warnings", () => {
-        const stored = JSON.parse(JSON.stringify(serializeLayout(p.value)));
-        const again = parseLayout(stored);
-        expect(again.value).toEqual(p.value);
-        expect(again.warnings.filter((w) => w.path !== "version")).toEqual([]);
-        expect(again.unknown).toEqual(p.unknown);
-        expect(serializeLayout(again.value)).toEqual(stored);
-      });
-
       it("does not touch its input", () => {
         expect(raw).toEqual(read(f));
       });
@@ -79,32 +56,9 @@ describe("layout fixtures", () => {
 
 describe("what the fixtures pin down", () => {
   it("the layouts the card wrote load without a warning", () => {
-    for (const f of [
-      "demo-v1.json",
-      "claude-md-v1.json",
-      "edited-v1.json",
-      "legacy-v1.json",
-    ])
+    for (const f of ["demo-v1.json", "claude-md-v1.json", "edited-v1.json"])
       expect([f, parseLayout(read(f)).warnings]).toEqual([f, []]);
     expect(parseLayout(DEMO_LAYOUT).warnings).toEqual([]);
-  });
-
-  it("v1 -> v2: legacy aliases folded into their current form", () => {
-    const l = parseLayout(read("legacy-v1.json")).value;
-    expect(l.version).toBe(2);
-    expect("groups" in l).toBe(false);
-    expect(l.tags).toEqual({
-      facade: { entity: "switch.facade" },
-      garden: { entity: "switch.garden_new" },
-    }); // tags win
-    expect("floor_map" in l.model).toBe(false);
-    expect(l.model.levels).toEqual({
-      level0: { floor: "ground" },
-      level1: { floor: "first" },
-      roof: { show: "always" },
-    }); // saved levels win
-    expect(l.mower.stuck_minutes).toBe(10); // "10" read as a number
-    expect(l.pins["device:no_z"]).toEqual({ x: 1, y: 1, floor_id: "ground" }); // z: null (v1 NaN) read as absent
   });
 
   it("v1 setPin without a height (z NaN -> null) loads as a pin without z", () => {
@@ -168,44 +122,20 @@ describe("what the fixtures pin down", () => {
     expect(p.unknown).toEqual(["mower.overlay", "my_extension"]);
   });
 
-  it("a newer card's layout loads as far as known, keeps its version and its fields", () => {
-    const raw = read("future-v3.json");
-    const p = parseLayout(raw);
-    expect(p.from).toBe(3);
-    expect(p.warnings).toEqual([
-      {
-        path: "version",
-        message: expect.stringMatching(/newer than this card/),
-      },
-    ]);
-    expect(p.value.version).toBe(3);
-    expect(p.value.rooms[0].walls).toEqual({ thickness: 0.2 });
-    expect(p.value.pins["device:a"].anchor).toBe("ceiling");
-    expect(serializeLayout(p.value)).toEqual(raw);
-    expect(p.unknown).toEqual([
-      "rooms[0].walls",
-      "pins.device:a.anchor",
-      "lighting",
-    ]);
-  });
-
   it("not a layout at all: an empty layout, said so", () => {
     expect(parseLayout(null)).toEqual({
       value: emptyLayout(),
       warnings: [],
       unknown: [],
-      from: 1,
     });
     expect(parseLayout(undefined).warnings).toEqual([]);
     const p = parseLayout([1, 2]);
     expect(p.value).toEqual(emptyLayout());
     expect(p.warnings).toHaveLength(1);
-    expect(parseLayout({ version: "x" }).warnings[0].path).toBe("version");
   });
 
   it("the empty layout", () => {
     expect(emptyLayout()).toEqual({
-      version: LAYOUT_VERSION,
       floors: [],
       rooms: [],
       pins: {},
@@ -214,26 +144,6 @@ describe("what the fixtures pin down", () => {
       model: null,
     });
     expect(emptyLayout()).not.toBe(emptyLayout());
-  });
-
-  it("serializeLayout: plain JSON, no undefined fields, the version stamped", () => {
-    const l = {
-      ...emptyLayout(),
-      version: 1,
-      objects: undefined,
-      rooms: [{ id: "a", polygon: [], area_id: undefined }],
-    };
-    const s = serializeLayout(l);
-    expect(s).toEqual({
-      version: LAYOUT_VERSION,
-      floors: [],
-      rooms: [{ id: "a", polygon: [] }],
-      pins: {},
-      hidden: [],
-      mower: null,
-      model: null,
-    });
-    expect("objects" in s).toBe(false);
   });
 });
 
@@ -266,14 +176,6 @@ describe("parseLayout repairs", () => {
     ]);
   });
 
-  it("a version that is not a positive integer is reported and read as v1", () => {
-    for (const version of [1.5, 0, "x"]) {
-      const l = parseLayout({ version });
-      expect(l.value.version).toBe(LAYOUT_VERSION);
-      expect(l.warnings.map((w) => w.path)).toContain("version");
-    }
-  });
-
   it("pin fields of the wrong shape are dropped, the pin kept", () => {
     const l = parseLayout({
       pins: {
@@ -291,10 +193,9 @@ describe("parseLayout repairs", () => {
     ]);
   });
 
-  it("drops non-object objects / groups", () => {
-    const l = parseLayout({ objects: [1, 2], groups: "x" }).value;
+  it("drops non-object objects", () => {
+    const l = parseLayout({ objects: [1, 2] }).value;
     expect("objects" in l).toBe(false);
-    expect("groups" in l).toBe(false);
     expect(parseLayout({ objects: { a: {} } }).value.objects).toEqual({
       a: {},
     });
@@ -326,11 +227,6 @@ describe("parseLayout repairs", () => {
     const first = parseLayout(input);
     expect(first.warnings).toEqual([]);
     expect(first.value).toMatchObject(input);
-    const again = parseLayout(
-      JSON.parse(JSON.stringify(serializeLayout(first.value))),
-    );
-    expect(again.warnings).toEqual([]);
-    expect(again.value).toEqual(first.value);
     expect(
       paths({ mower: { track_width: "3", track_color: [1, 2, 3] } }),
     ).toEqual(["mower.track_width", "mower.track_color"]);
@@ -342,7 +238,6 @@ describe("parseLayout repairs", () => {
       parseLayout({ rooms: "x", pins: null, floors: [{ id: "g" }], extra: 1 })
         .value,
     ).toMatchObject({
-      version: 2,
       rooms: [],
       pins: {},
       floors: [{ id: "g" }],

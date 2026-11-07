@@ -31,7 +31,7 @@ interface ManifestBase<N> {
   label: string;
   node: N;
   path: string;
-  source?: "extras" | "name" | "legacy";
+  source?: "extras" | "name";
 }
 
 export interface ManifestLevel<N = unknown> extends ManifestBase<N> {

@@ -8,13 +8,9 @@ import {
   lightBudget,
   nightFactor,
   sunVector,
-  screenNearest,
   sunStrength,
   clampSunDir,
-  snapPin,
   attachedPosition,
-  attachOffset,
-  floorAtHeight,
   effectiveGroups,
   screenByDistance,
 } from "../src/objects/logic.ts";
@@ -486,24 +482,6 @@ describe("nightFactor / sunVector", () => {
   });
 });
 
-describe("screenNearest", () => {
-  const pts = [
-    { id: "a", x: 100, y: 100 },
-    { id: "b", x: 130, y: 100 },
-  ];
-  it("nearest within radius", () => {
-    expect(screenNearest(pts, 118, 100, 30)).toBe("b");
-    expect(screenNearest(pts, 300, 300, 52)).toBe(null);
-  });
-  it("exact tie: first point wins", () => {
-    const tied = [
-      { id: "first", x: 100, y: 100 },
-      { id: "second", x: 100, y: 100 },
-    ];
-    expect(screenNearest(tied, 100, 100, 10)).toBe("first");
-  });
-});
-
 describe("sun below the horizon", () => {
   it("sunStrength is 0 at -2 and below, 1 from +4", () => {
     expect(sunStrength(-10)).toBe(0);
@@ -523,47 +501,7 @@ describe("sun below the horizon", () => {
   });
 });
 
-describe("snapPin", () => {
-  const v = (x, y, z) => ({ x, y, z });
-  it("wall hit: 5 cm off the wall along the normal, height above the floor", () => {
-    // wall facing east (+x) at world x = 2, plan y = 3 (world z = -3), 1.4 m up on a floor at 3 m
-    const p = snapPin({ point: v(2, 4.4, -3), normal: v(1, 0, 0) }, 3, "upper");
-    expect(p.x).toBeCloseTo(2.05, 9);
-    expect(p.y).toBeCloseTo(3, 9);
-    expect(p.z).toBeCloseTo(1.4, 9);
-    expect(p.floor_id).toBe("upper");
-  });
-  it("wall facing north (world -z) moves the pin north in plan", () => {
-    const p = snapPin({ point: v(1, 1, -2), normal: v(0, 0, -1) }, 0, "g");
-    expect(p.y).toBeCloseTo(2.05, 9);
-    expect(p.x).toBeCloseTo(1, 9);
-  });
-  it("ceiling hit: just below the ceiling", () => {
-    const p = snapPin({ point: v(1, 2.7, -1), normal: v(0, -1, 0) }, 0, "g");
-    expect(p.z).toBeCloseTo(2.65, 9);
-    expect([p.x, p.y]).toEqual([1, 1]);
-  });
-  it("accepts arrays", () => {
-    const p = snapPin({ point: [0, 1, 0], normal: [0, 1, 0] }, 0, "g");
-    expect(p.z).toBeCloseTo(1.05, 9);
-  });
-});
-
 describe("attached pins", () => {
-  it("offset = marker world point - anchor (mm), round trip through attachedPosition", () => {
-    const anchor = { x: 1, y: 2.5, z: -2 };
-    const off = attachOffset(
-      anchor,
-      { x: 1.2, y: 2.1, z: 0.4, floorId: "g" },
-      0.3,
-    );
-    // marker world: (1.2, 0.3 + 0.4, -2.1)
-    expect(off).toEqual([0.2, -1.8, -0.1]);
-    const p = attachedPosition(anchor, off, 0.3);
-    expect(p.x).toBeCloseTo(1.2, 9);
-    expect(p.y).toBeCloseTo(2.1, 9);
-    expect(p.z).toBeCloseTo(0.4, 9);
-  });
   it("follows the anchor", () => {
     const p = attachedPosition({ x: 5, y: 1, z: -5 }, [0, 0.2, 0], 0);
     expect([p.x, p.y]).toEqual([5, 5]);
@@ -572,27 +510,6 @@ describe("attached pins", () => {
   it("bad offset -> null", () => {
     expect(attachedPosition({ x: 0, y: 0, z: 0 }, null, 0)).toBeNull();
     expect(attachedPosition(null, [0, 0, 0], 0)).toBeNull();
-  });
-});
-
-describe("floorAtHeight", () => {
-  const floors = [
-    { id: "g", elevation: 0 },
-    { id: "up", elevation: 3 },
-    { id: "cellar", elevation: -3 },
-  ];
-  it("highest floor at or below the hit", () => {
-    expect(floorAtHeight(floors, 1.2)).toBe("g");
-    expect(floorAtHeight(floors, 4.5)).toBe("up");
-    expect(floorAtHeight(floors, -1)).toBe("cellar");
-  });
-  it("5 cm tolerance: a hit just under a floor surface counts for that floor", () => {
-    expect(floorAtHeight(floors, 2.96)).toBe("up");
-    expect(floorAtHeight(floors, 2.9)).toBe("g");
-  });
-  it("none below -> null", () => {
-    expect(floorAtHeight(floors, -5)).toBeNull();
-    expect(floorAtHeight([], 1)).toBeNull();
   });
 });
 

@@ -12,7 +12,6 @@ import {
 import { actionTarget, popupRows } from "../src/objects/popup.ts";
 import { resolveActions } from "../src/actions.ts";
 import { parseSelector, matches } from "../src/views.ts";
-import { parseLayout } from "../src/schema/layout.ts";
 import { st } from "./helpers/hass.js";
 
 describe("objectTags", () => {
@@ -51,25 +50,13 @@ describe("objectTags", () => {
   });
 });
 
-describe("layoutTags (v1 layout.groups migrated on load)", () => {
+describe("layoutTags", () => {
   it("reads layout.tags", () => {
     expect(layoutTags({ tags: { b: { entity: "switch.c" } } })).toEqual({
       b: { entity: "switch.c" },
     });
     expect(layoutTags({})).toEqual({});
     expect(layoutTags(null)).toEqual({});
-  });
-  it("the v1 -> v2 migration merges old groups under tags, tags win", () => {
-    const l = parseLayout({
-      groups: { a: { entity: "switch.a" }, b: { entity: "switch.b" } },
-      tags: { b: { entity: "switch.c" } },
-    }).value;
-    expect(l.tags).toEqual({
-      a: { entity: "switch.a" },
-      b: { entity: "switch.c" },
-    });
-    expect("groups" in l).toBe(false);
-    expect(parseLayout({ tags: "x" }).value.tags).toBeUndefined();
   });
 });
 

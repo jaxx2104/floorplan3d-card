@@ -1,9 +1,8 @@
 {
-  "from": 1,
   "warnings": [],
-  "unknown": ["mower.overlay"],
+  "unknown": ["version", "mower.overlay"],
   "value": {
-    "version": 2,
+    "version": 1,
     "floors": [],
     "rooms": [
       {

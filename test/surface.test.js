@@ -2,19 +2,13 @@ import { describe, it, expect } from "bun:test";
 import {
   surfaceKind,
   chooseSurface,
-  needsStick,
-  nearestDistance,
-  rayGroups,
   nearPolygon,
   worldOf,
   planOf,
   HORIZONTAL_DIRS,
   SURFACE_OFFSET,
   WALL_RANGE,
-  CEILING_RANGE,
-  FLOOR_RANGE,
   surfaceKey,
-  stickSurface,
   surfaceSearch,
 } from "../src/surface.ts";
 
@@ -35,29 +29,6 @@ describe("surfaceKind", () => {
     expect(surfaceKind("binary_sensor", "smoke")).toBe("ceiling");
     expect(surfaceKind("vacuum")).toBe("floor");
     expect(surfaceKind("lawn_mower")).toBe("floor");
-  });
-});
-
-describe("rayGroups", () => {
-  it("8 unit horizontal directions", () => {
-    expect(HORIZONTAL_DIRS).toHaveLength(8);
-    for (const d of HORIZONTAL_DIRS) {
-      expect(d[1]).toBe(0);
-      expect(Math.hypot(...d)).toBeCloseTo(1);
-    }
-  });
-  it("per kind: walls horizontal 2.5 m, ceiling up 4 m, floor down 3 m; all = every ray", () => {
-    expect(rayGroups("wall")).toEqual([
-      { dirs: HORIZONTAL_DIRS, max: WALL_RANGE },
-    ]);
-    expect(rayGroups("ceiling")).toEqual([
-      { dirs: [[0, 1, 0]], max: CEILING_RANGE },
-    ]);
-    expect(rayGroups("floor")).toEqual([
-      { dirs: [[0, -1, 0]], max: FLOOR_RANGE },
-    ]);
-    expect(rayGroups("all")).toHaveLength(3);
-    expect(rayGroups(null)).toEqual([]);
   });
 });
 
@@ -185,47 +156,6 @@ describe("chooseSurface", () => {
       },
     ]);
     expect(close(s.point, [1, 0.05, 2])).toBe(true);
-  });
-});
-
-describe("needsStick / nearestDistance", () => {
-  it("nearest distance over all hits, Infinity without", () => {
-    expect(nearestDistance([{ distance: 2 }, { distance: 0.4 }])).toBe(0.4);
-    expect(nearestDistance([])).toBe(Infinity);
-    expect(nearestDistance(null)).toBe(Infinity);
-  });
-  it("only free pins farther than 15 cm from a surface found nearby", () => {
-    const pin = { x: 1, y: 1, z: 1.2, floor_id: "g" };
-    expect(needsStick(pin, 0.5)).toBe(true);
-    expect(needsStick(pin, 0.15)).toBe(false);
-    expect(needsStick(pin, 0.05)).toBe(false);
-    expect(needsStick(pin, Infinity)).toBe(false); // nothing to stick to
-    expect(needsStick({ ...pin, attach: "lamp" }, 0.5)).toBe(false); // follows its object
-    expect(needsStick(null, 0.5)).toBe(false);
-  });
-});
-
-describe("stickSurface", () => {
-  const wall = (dist) => h([dist, 1.5, 0], [-1, 0, 0], dist, [1, 0, 0]);
-  const ceiling = (dist) => h([0, 1.5 + dist, 0], [0, -1, 0], dist, [0, 1, 0]);
-  const floor = (dist) => h([0, 1.5 - dist, 0], [0, 1, 0], dist, [0, -1, 0]);
-  it("the type's surface when it is not much farther than the nearest one", () => {
-    expect(
-      stickSurface("ceiling", [wall(2), ceiling(0.3), floor(2)]).normal,
-    ).toEqual([0, -1, 0]);
-    expect(
-      stickSurface("wall", [wall(2), ceiling(1.2), floor(1.5)]).normal,
-    ).toEqual([-1, 0, 0]); // 2 <= 2 x 1.2
-  });
-  it("else the nearest surface (a floor lamp pinned in a corner sticks to the wall, not the ceiling)", () => {
-    expect(
-      stickSurface("ceiling", [wall(0.5), ceiling(1.1), floor(1.5)]).normal,
-    ).toEqual([-1, 0, 0]);
-    expect(stickSurface(null, [wall(0.5), floor(0.3)]).normal).toEqual([
-      0, 1, 0,
-    ]);
-    expect(stickSurface("wall", [floor(0.3)]).normal).toEqual([0, 1, 0]);
-    expect(stickSurface("wall", [])).toBe(null);
   });
 });
 

@@ -91,17 +91,6 @@ export function integrationName(platform: unknown): string {
     .join(" ");
 }
 
-// <datalist> option label: "<friendly name> · <Integration>" (just the name without a platform).
-export function entityOptionLabel(
-  hass: Hass | null | undefined,
-  eid: string,
-): string {
-  const st = hass && hass.states && hass.states[eid];
-  const name = (st && st.attributes && st.attributes.friendly_name) || eid;
-  const plat = platformOf(hass && hass.entities, eid);
-  return plat ? `${name} · ${integrationName(plat)}` : String(name);
-}
-
 export function brandUrl(platform: string, dark = false): string {
   return `https://brands.home-assistant.io/_/${encodeURIComponent(platform)}/${dark ? "dark_icon" : "icon"}.png`;
 }

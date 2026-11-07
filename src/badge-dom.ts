@@ -118,8 +118,3 @@ export function applyBadges(
     info && info.battery !== null ? `${info.battery} %` : "",
   );
 }
-
-export function resetBrandFailures(): void {
-  failed.clear();
-  darkFailed.clear();
-}

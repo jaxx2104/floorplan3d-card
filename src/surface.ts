@@ -33,7 +33,6 @@ export const SURFACE_OFFSET = 0.05; // markers float 5 cm off the surface
 export const WALL_RANGE = 2.5; // horizontal search for a wall (m)
 export const CEILING_RANGE = 4; // up
 export const FLOOR_RANGE = 3; // down
-export const STICK_DISTANCE = 0.15; // "Stick all": pins farther than this from any surface move
 const WALL_NY = 0.3; // |n.y| below: a wall
 const FLAT_NY = 0.7; // |n.y| above: a ceiling / floor
 
@@ -60,18 +59,6 @@ export function surfaceKind(
   return typeof r.z === "number" && Number.isFinite(r.z) && r.z < 0.5
     ? "floor"
     : null;
-}
-
-// The rays to cast for a kind ('all' = every direction, for the distance to any surface).
-export function rayGroups(kind: SearchKind | null | undefined): RayGroup[] {
-  const wall = { dirs: HORIZONTAL_DIRS, max: WALL_RANGE };
-  const up = { dirs: UP, max: CEILING_RANGE };
-  const down = { dirs: DOWN, max: FLOOR_RANGE };
-  if (kind === "wall") return [wall];
-  if (kind === "ceiling") return [up];
-  if (kind === "floor") return [down];
-  if (kind === "all" || kind === "any") return [wall, up, down];
-  return [];
 }
 
 const CEILING_START_BELOW = 1.0; // the upward ray starts 1 m below the computed point (≥ 0.5 m above the floor)
@@ -156,38 +143,6 @@ export function chooseSurface(
     best = { point, normal: n, distance: hit.distance };
   }
   return best;
-}
-
-export function nearestDistance(
-  hits: ({ distance: number } | null | undefined)[] | null | undefined,
-): number {
-  let d = Infinity;
-  for (const h of hits || [])
-    if (h && Number.isFinite(h.distance) && h.distance < d) d = h.distance;
-  return d;
-}
-
-// "Stick all to surfaces": a free (not attached) pin with a surface nearby, but not on it.
-export function needsStick(
-  pin: { attach?: unknown } | null | undefined,
-  nearest: number,
-  threshold = STICK_DISTANCE,
-): boolean {
-  return (
-    !!pin && !pin.attach && Number.isFinite(nearest) && nearest > threshold
-  );
-}
-
-// Where "Stick all" moves a pin: the surface its type sticks to when that is at most twice as far
-// as the nearest surface, else the nearest one (a floor lamp pinned in a corner goes to the wall,
-// not up to the ceiling). hits: every ray (rayGroups('all')).
-export function stickSurface(
-  kind: SearchKind | null | undefined,
-  hits: (SurfaceHit | null | undefined)[],
-): ChosenSurface | null {
-  const near = chooseSurface("any", hits);
-  const typed = kind && chooseSurface(kind, hits);
-  return typed && near && typed.distance <= 2 * near.distance ? typed : near;
 }
 
 export interface PlanXYZ {

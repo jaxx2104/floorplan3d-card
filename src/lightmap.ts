@@ -27,8 +27,6 @@ export interface LightmapSpec {
 
 /** UV sets a lightmap may use (three: uv, uv1, uv2, uv3). */
 export const LIGHTMAP_MAX_TEXCOORD = 3;
-/** Lightmap side (px) above which check-model warns, and above which it fails (many phones stop at 4096). */
-export const LIGHTMAP_WARN_PX = 2048;
 export const LIGHTMAP_MAX_PX = 4096;
 /** Share of a room's meshes (by their centre) that must be baked for the room to count as baked (light-probes.ts). */
 export const BAKED_ROOM_SHARE = 0.5;

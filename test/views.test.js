@@ -55,7 +55,10 @@ const ext = {
     { name: "lawn", extras: fp({ kind: "zone", id: "lawn", outline: sq }) },
   ],
 };
-const roof = { name: "roof" };
+const roof = {
+  name: "roof",
+  extras: fp({ kind: "level", id: "roof", role: "roof" }),
+};
 const adapter = tree([ground, attic, ext, roof]);
 const idx = nodeIndex(adapter, buildManifest(adapter));
 const at = (name) => idx.nodes.findIndex((n) => n.name === name);

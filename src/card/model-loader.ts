@@ -6,7 +6,6 @@ import { headerVersion, evictModel, loadModelBuffer } from "../model-cache.ts";
 import { nodeIndex, unmatchedSelectors } from "../views.ts";
 import { threeAdapter } from "../manifest.ts";
 import {
-  levelsFromFloorMap,
   resolveLevels,
   resolveRoomAreas,
   bindingDiff,
@@ -267,7 +266,7 @@ export class ModelLoader {
     };
   }
 
-  // Saved level/room bindings (layout.model; YAML model_floors for URL models) resolved
+  // Saved level/room bindings (layout.model) resolved
   // against the loaded model and the current HA floors and areas.
   modelBindings(): ModelBindings | null {
     const manifest = this.card._view && this.card._view.modelManifest();
@@ -291,12 +290,7 @@ export class ModelLoader {
   _computeBindings(manifest: ModelManifest): ModelBindings {
     const saved: LayoutModel =
       (this.card._layout && this.card._layout.model) || {};
-    const savedLevels = {
-      ...(this.card._config.model
-        ? levelsFromFloorMap(this.card._config.model_floors)
-        : {}),
-      ...saved.levels,
-    };
+    const savedLevels = saved.levels || {};
     const haFloors = mergeFloors(this.card._hass, this.card._layout || {}); // HA floors plus layout-only floors
     return {
       manifest,

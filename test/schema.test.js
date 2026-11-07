@@ -18,8 +18,6 @@ import {
   map,
   refine,
   unknownValue,
-  toJson,
-  jsonEqual,
 } from "../src/schema/core.ts";
 import {
   parseCardConfig,
@@ -113,15 +111,6 @@ describe("schema combinators", () => {
         -1,
       ).warnings[0].message,
     ).toBe("expected a positive number, got -1");
-  });
-
-  it("toJson / jsonEqual", () => {
-    expect(toJson({ a: undefined, b: [1, { c: undefined }] })).toEqual({
-      b: [1, {}],
-    });
-    expect(jsonEqual({ a: 1, b: [1, 2] }, { b: [1, 2], a: 1 })).toBe(true);
-    expect(jsonEqual({ a: 1 }, { a: 1, b: undefined })).toBe(true);
-    expect(jsonEqual([1], [1, 2])).toBe(false);
   });
 });
 

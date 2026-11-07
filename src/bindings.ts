@@ -2,7 +2,7 @@
 // which HA area each room/zone is. Saved choices live in layout.model.levels / .rooms; anything
 // not saved is derived here, so re-exports and HA changes never need manual repair.
 
-import type { Floor, PlanPoint, SavedLevelBinding } from "./types/layout.ts";
+import type { Floor, PlanPoint } from "./types/layout.ts";
 import type { ManifestLevel, ManifestRoom } from "./types/manifest.ts";
 
 export type ShowMode = "with" | "only" | "always" | "hidden" | "all-only";
@@ -69,18 +69,6 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 // manifest entries carry string ids
 const idsOf = (entries: unknown): string[] =>
   (Array.isArray(entries) ? entries : []).map((e: { id: string }) => e.id);
-
-export function levelsFromFloorMap(
-  map: unknown,
-): Record<string, SavedLevelBinding> {
-  if (!isPlainObject(map)) return {};
-  const out: Record<string, SavedLevelBinding> = {};
-  for (const [id, v] of Object.entries(map)) {
-    if (typeof v !== "string") continue;
-    out[id] = v === "always" || v === "hidden" ? { show: v } : { floor: v };
-  }
-  return out;
-}
 
 const byOrder = (a: LevelLike, b: LevelLike): number => {
   // legacy models without order/elevation: stack bottom-up by their lowest point
@@ -251,20 +239,6 @@ export function transformPoint(
     px * c - py * s + (position[0] || 0),
     px * s + py * c + (position[1] || 0),
   ];
-}
-
-// Inverse of transformPoint: world plan point -> model plan point.
-export function inverseTransformPoint(
-  [x, y]: readonly number[],
-  { position = [0, 0, 0], rotation = 0, scale = 1 }: Align = {},
-): PlanPoint {
-  const a = (rotation * Math.PI) / 180;
-  const c = Math.cos(a),
-    s = Math.sin(a);
-  const dx = x - (position[0] || 0),
-    dy = y - (position[1] || 0);
-  const k = scale || 1;
-  return [(dx * c + dy * s) / k, (-dx * s + dy * c) / k];
 }
 
 type RoomInput = Pick<ManifestRoom, "id" | "label"> & {

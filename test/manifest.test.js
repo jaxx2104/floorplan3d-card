@@ -36,25 +36,6 @@ describe("readTag", () => {
       id: "terrace_1",
     });
   });
-  it("reads legacy names only at the top level", () => {
-    expect(readTag("floor:floor1", {}, { topLevel: true })).toMatchObject({
-      kind: "level",
-      id: "floor1",
-      role: "storey",
-      source: "legacy",
-    });
-    expect(readTag("roof", {}, { topLevel: true })).toMatchObject({
-      kind: "level",
-      role: "roof",
-    });
-    expect(readTag("site", {}, { topLevel: true })).toMatchObject({
-      kind: "level",
-      id: "site",
-      role: "exterior",
-    });
-    expect(readTag("floor:x", {})).toBeNull();
-    expect(readTag("Mesh_12", {})).toBeNull();
-  });
 });
 
 describe("buildManifest", () => {
@@ -106,7 +87,10 @@ describe("buildManifest", () => {
     extras: fp({ kind: "level", id: "exterior", role: "exterior" }),
     children: [garden],
   };
-  const roof = { name: "roof" };
+  const roof = {
+    name: "roof",
+    extras: fp({ kind: "level", id: "roof", role: "roof" }),
+  };
 
   it("collects levels, rooms, zones and objects with their parents", () => {
     const m = buildManifest(tree([ground, exterior, roof]));
@@ -213,23 +197,6 @@ describe("buildManifest", () => {
     );
   });
 
-  it("treats an untagged legacy model as before", () => {
-    const m = buildManifest(
-      tree([
-        { name: "floor:ground" },
-        { name: "roof" },
-        { name: "site" },
-        { name: "Lamp" },
-      ]),
-    );
-    expect(m.levels.map((l) => [l.id, l.role])).toEqual([
-      ["ground", "storey"],
-      ["roof", "roof"],
-      ["site", "exterior"],
-    ]);
-    expect(m.errors).toEqual([]);
-  });
-
   it("summarizes", () => {
     expect(summarize(buildManifest(tree([ground, exterior])))).toEqual({
       levels: 2,
@@ -304,7 +271,9 @@ describe("manifest views", () => {
     expect(m.warnings.join("\n")).toMatch(/view "Bad Id": invalid id/);
   });
   it("has no views by default", () => {
-    expect(buildManifest(tree([{ name: "floor:ground" }])).views).toEqual([]);
+    expect(buildManifest(tree([{ name: "fp:level:ground" }])).views).toEqual(
+      [],
+    );
   });
 });
 
@@ -313,7 +282,7 @@ describe("layer-only tags", () => {
     const m = buildManifest(
       tree([
         { name: "Sofa", extras: fp({ layer: "furniture" }) },
-        { name: "floor:ground" },
+        { name: "fp:level:ground" },
       ]),
     );
     expect(m.errors).toEqual([]);
@@ -321,23 +290,15 @@ describe("layer-only tags", () => {
 });
 
 describe("kindless fp keeps name tags", () => {
-  it("layer-only fp on a legacy-named top-level node", () => {
+  it("layer-only / views-only fp on an fp:level:<id> named node keeps the name tag", () => {
     const m = buildManifest(
       tree([
-        { name: "floor:ground", extras: fp({ layer: "x" }) },
-        { name: "roof" },
+        { name: "fp:level:ground", extras: fp({ layer: "x" }) },
+        { name: "fp:level:attic", extras: { fp: { views: [{ id: "v1" }] } } },
       ]),
     );
     expect(m.errors).toEqual([]);
-    expect(m.levels.map((l) => l.id)).toEqual(["ground", "roof"]);
-  });
-  it("views-only fp on a single legacy-named root", () => {
-    const m = buildManifest(
-      tree([
-        { name: "floor:ground", extras: { fp: { views: [{ id: "v1" }] } } },
-      ]),
-    );
-    expect(m.levels.map((l) => l.id)).toEqual(["ground"]);
+    expect(m.levels.map((l) => l.id)).toEqual(["ground", "attic"]);
     expect(m.views.map((v) => v.id)).toEqual(["v1"]);
   });
   it("layer-only fp on an fp:<type>:<id> named node", () => {
@@ -345,7 +306,9 @@ describe("kindless fp keeps name tags", () => {
       name: "fp:light:lamp_1",
       extras: fp({ layer: "decoration" }),
     };
-    const m = buildManifest(tree([{ name: "floor:ground", children: [lamp] }]));
+    const m = buildManifest(
+      tree([{ name: "fp:level:ground", children: [lamp] }]),
+    );
     expect(m.errors).toEqual([]);
     expect(m.objects).toMatchObject([{ id: "lamp_1", type: "light" }]);
   });

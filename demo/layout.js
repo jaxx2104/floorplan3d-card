@@ -7,7 +7,6 @@ const rect = (x0, y0, x1, y1) => [
 ];
 
 export const DEMO_LAYOUT = {
-  version: 2,
   floors: [],
   rooms: [
     {

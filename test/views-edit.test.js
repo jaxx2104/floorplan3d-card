@@ -1,17 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import {
   nodeIndex,
-  ruleState,
-  ruleKeepsObjects,
-  setRuleState,
-  nextEyeState,
   viewTree,
-  pickSelector,
   orderViews,
-  nextViewId,
   parseSelector,
   matches,
-  legacyShowRules,
 } from "../src/views.ts";
 import { buildManifest } from "../src/manifest.ts";
 import { tree, fp } from "./helpers/manifest.js";
@@ -80,68 +73,6 @@ const man = buildManifest(adapter);
 const idx = nodeIndex(adapter, man);
 const at = (name) => idx.nodes.findIndex((n) => n.name === name);
 
-describe("rule list edits", () => {
-  it("reads the state of a selector from the layout rules (last one wins)", () => {
-    expect(ruleState([], "level:ground")).toBe("default");
-    expect(ruleState([{ hide: "level:ground" }], "level:ground")).toBe(
-      "hidden",
-    );
-    expect(
-      ruleState(
-        [{ hide: "level:ground" }, { show: "level:ground" }],
-        "level:ground",
-      ),
-    ).toBe("shown");
-    expect(ruleState([{ show: "layer:x" }], "level:ground")).toBe("default");
-    expect(ruleState([{ hide: "zone:d", keep_objects: true }], "zone:d")).toBe(
-      "hidden",
-    );
-    expect(
-      ruleKeepsObjects([{ hide: "zone:d", keep_objects: true }], "zone:d"),
-    ).toBe(true);
-    expect(
-      ruleKeepsObjects(
-        [{ hide: "zone:d", keep_objects: true }, { hide: "zone:d" }],
-        "zone:d",
-      ),
-    ).toBe(false);
-    expect(
-      setRuleState([{ hide: "zone:d" }], "zone:d", "hidden", {
-        keepObjects: true,
-      }),
-    ).toEqual([{ hide: "zone:d", keep_objects: true }]);
-    expect(
-      setRuleState([{ hide: "zone:d", keep_objects: true }], "zone:d", "shown"),
-    ).toEqual([{ show: "zone:d" }]);
-    expect(ruleState(null, "all")).toBe("default");
-  });
-  it("replaces earlier rules for the selector and appends the new one", () => {
-    const r = [
-      { hide: "level:ground" },
-      { show: "layer:x" },
-      { show: "level:ground" },
-    ];
-    expect(setRuleState(r, "level:ground", "hidden")).toEqual([
-      { show: "layer:x" },
-      { hide: "level:ground" },
-    ]);
-    expect(setRuleState(r, "level:ground", "shown")).toEqual([
-      { show: "layer:x" },
-      { show: "level:ground" },
-    ]);
-    expect(setRuleState(r, "level:ground", "default")).toEqual([
-      { show: "layer:x" },
-    ]);
-    expect(setRuleState(undefined, "all", "hidden")).toEqual([{ hide: "all" }]);
-    expect(r).toHaveLength(3); // not mutated
-  });
-  it("cycles default -> shown -> hidden -> default", () => {
-    expect(nextEyeState("default")).toBe("shown");
-    expect(nextEyeState("shown")).toBe("hidden");
-    expect(nextEyeState("hidden")).toBe("default");
-  });
-});
-
 describe("viewTree", () => {
   const t = viewTree(idx, { "level:ground": "Ground floor" });
   it("lists levels, their rooms/zones and objects under each", () => {
@@ -176,53 +107,7 @@ describe("viewTree", () => {
   });
 });
 
-describe("pickSelector", () => {
-  const owner = (name) => {
-    const e = man.byNode.get(idx.nodes[at(name)].node);
-    return e;
-  };
-  it("uses the tag of a tagged room/zone/object owner", () => {
-    expect(pickSelector(idx, at("slab"), owner("kitchen"))).toEqual({
-      sel: "room:kitchen",
-      idx: at("kitchen"),
-    });
-    expect(pickSelector(idx, at("lawn"), owner("lawn"))).toEqual({
-      sel: "zone:lawn",
-      idx: at("lawn"),
-    });
-  });
-  it("walks up to the nearest named group with children (not past the owning level)", () => {
-    expect(pickSelector(idx, at("chair1"), owner("kitchen"))).toEqual({
-      sel: "room:kitchen",
-      idx: at("kitchen"),
-    });
-    expect(pickSelector(idx, at("m"), owner("ground"))).toEqual({
-      sel: "node:ground/deep/deeper/deepest",
-      idx: at("deepest"),
-    });
-    expect(pickSelector(idx, at("leaves"), null)).toEqual({
-      sel: "node:Props/Tree",
-      idx: at("Tree"),
-    });
-  });
-  it("a mesh directly in a level picks the mesh itself", () => {
-    expect(pickSelector(idx, at("mesh_177"), owner("ground"))).toEqual({
-      sel: "node:ground/mesh_177",
-      idx: at("mesh_177"),
-    });
-  });
-  it("the level node itself picks the level", () => {
-    expect(pickSelector(idx, at("attic"), owner("attic"))).toEqual({
-      sel: "level:attic",
-      idx: at("attic"),
-    });
-  });
-  it("returns null without a node", () => {
-    expect(pickSelector(idx, -1, null)).toBeNull();
-  });
-});
-
-describe("orderViews / nextViewId", () => {
+describe("orderViews", () => {
   const vs = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "all" }];
   it("sorts by the stored order; unknown ids keep their relative place after", () => {
     expect(orderViews(vs, ["c", "a"]).map((v) => v.id)).toEqual([
@@ -243,13 +128,6 @@ describe("orderViews / nextViewId", () => {
       "a",
       "c",
     ]);
-  });
-  it("picks the first free view_<n>", () => {
-    expect(nextViewId(["a", "view_1", "view_3"])).toEqual({
-      id: "view_2",
-      n: 2,
-    });
-    expect(nextViewId([])).toEqual({ id: "view_1", n: 1 });
   });
 });
 
@@ -327,51 +205,5 @@ describe("tree parents", () => {
       "level:ground",
     );
     expect(t.tree.find((r) => r.sel === "room:kitchen").children).toBe(1);
-  });
-});
-
-describe("legacyShowRules", () => {
-  const levels = [
-    { id: "g", role: "storey", order: 0 },
-    { id: "f", role: "storey", order: 1 },
-    { id: "ext", role: "exterior" },
-  ];
-  const views = [
-    { id: "g", source: "generated" },
-    { id: "f", source: "generated" },
-    { id: "all", source: "generated" },
-    { id: "x", source: "added" },
-  ];
-  it("moves a level's legacy show mode into the views' layout rules (before existing ones)", () => {
-    const saved = {
-      ext: { show: "hidden", floor: "ground" },
-      f: { show: "only", floor: "first" },
-    };
-    const lv = { g: { rules: [{ show: "layer:a" }], camera: null } };
-    expect(legacyShowRules(lv, views, "ext", saved, levels)).toEqual({
-      g: { rules: [{ hide: "level:ext" }, { show: "layer:a" }], camera: null },
-      f: { rules: [{ hide: "level:ext" }] },
-      all: { rules: [{ hide: "level:ext" }] },
-    });
-    expect(legacyShowRules({}, views, "f", saved, levels)).toEqual({
-      g: { rules: [{ hide: "level:f" }] },
-    });
-    expect(
-      legacyShowRules({}, views, "g", { g: { show: "all-only" } }, levels),
-    ).toEqual({ f: { rules: [{ hide: "level:g" }] } });
-    expect(
-      legacyShowRules({}, views, "g", { g: { show: "always" } }, levels),
-    ).toEqual({
-      g: { rules: [{ show: "level:g" }] },
-      f: { rules: [{ show: "level:g" }] },
-      all: { rules: [{ show: "level:g" }] },
-    });
-  });
-  it("returns the same object when there is no legacy mode", () => {
-    const lv = {};
-    expect(legacyShowRules(lv, views, "g", { g: { floor: "x" } }, levels)).toBe(
-      lv,
-    );
-    expect(legacyShowRules(lv, views, "g", {}, levels)).toBe(lv);
   });
 });
