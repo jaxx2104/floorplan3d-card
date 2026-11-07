@@ -120,7 +120,6 @@ describe("card config (YAML)", () => {
       value: {
         type: "custom:floorplan3d-card",
         height: DEFAULT_HEIGHT,
-        group_by: "device",
         view: "3d",
       },
       warnings: [],
@@ -132,12 +131,12 @@ describe("card config (YAML)", () => {
       type: "t",
       height: 400,
       model_position: ["1", 0, 2],
-      idle_orbit: "3",
+      idle_reset: "60",
     }).value;
     expect(c).toMatchObject({
       height: "400px",
       model_position: [1, 0, 2],
-      idle_orbit: 3,
+      idle_reset: 60,
     });
   });
 
@@ -154,12 +153,11 @@ describe("card config (YAML)", () => {
       future_option: { a: 1 },
     });
     expect(p.value).toMatchObject({
-      group_by: "device",
       view: "3d",
       future_option: { a: 1 },
     });
     expect(
-      ["zoom_to", "model_position", "merge", "weather"].filter(
+      ["group_by", "zoom_to", "model_position", "merge", "weather"].filter(
         (k) => k in p.value,
       ),
     ).toEqual([]);

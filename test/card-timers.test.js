@@ -64,36 +64,6 @@ describe("idle_reset", () => {
   });
 });
 
-describe("idle_orbit", () => {
-  afterEach(() => vi.useRealTimers());
-  it("starts after the idle reset in 3D and a touch stops it", () => {
-    vi.useFakeTimers();
-    const host = {
-      isConnected: true,
-      _config: { idle_reset: 10, idle_orbit: 3 },
-      _sunTime: null,
-      _popup: { close: vi.fn() },
-      _view: { startOrbit: vi.fn(), stopOrbit: vi.fn() },
-    };
-    const v = new ViewController(host);
-    Object.assign(v, {
-      _views: [{ id: "g" }],
-      _viewId: "g",
-      _mode: "3d",
-      _stateFor: () => ({ floors: [] }),
-      _setView: vi.fn(),
-      _setMode: vi.fn(),
-      _resetCamera: vi.fn(),
-    });
-    v._armIdleReset();
-    vi.advanceTimersByTime(10000);
-    expect(host._view.startOrbit).toHaveBeenCalledWith(3);
-    v._armIdleReset();
-    expect(host._view.stopOrbit).toHaveBeenCalled();
-    v.dispose();
-  });
-});
-
 describe("night_markers", () => {
   afterEach(() => vi.useRealTimers());
   const sky = (config, daylight) => {

@@ -59,7 +59,7 @@ export const cardConfigSchema = object({
   /** Removed: the layout is written in the YAML (layout:), nothing is stored. */
   layout_key: opt(removed("the layout is the YAML's layout: now")),
   height: withDefault(cssLength(), () => DEFAULT_HEIGHT),
-  group_by: withDefault(literal("device", "entity"), () => "device" as const),
+  group_by: opt(removed("markers are one per device")),
   /** Removed with the drawn walls: a model is cut at the top of its storey. */
   wall_height: opt(
     removed("no walls are drawn; a model is cut at its storey height"),
@@ -69,7 +69,7 @@ export const cardConfigSchema = object({
   /** Start floor (HA floor id). */
   floor: opt(string()),
   view_id: opt(string()),
-  zoom_to: opt(literal("center", "cursor")),
+  zoom_to: opt(removed("no longer used")),
   room_labels: opt(literal("size", "name", "none")),
   /** Model URL (instead of an uploaded model) and its alignment. */
   model: opt(string()),
@@ -87,12 +87,11 @@ export const cardConfigSchema = object({
   weather: opt(union(string(), literal(false))),
   /** Cloud shadows, rain and snow (default true). */
   clouds: opt(boolean()),
-  occlusion: opt(boolean()),
+  occlusion: opt(removed("markers behind the model are always dimmed")),
   sky_bodies: opt(boolean()),
   lights: opt(literal("auto", "off")),
   night_markers: opt(literal("show", "hide")),
-  /** Degrees a second. */
-  idle_orbit: opt(numeric()),
+  idle_orbit: opt(removed("no longer used")),
   /** Seconds. */
   idle_reset: opt(numeric()),
   time_zone: opt(string()),

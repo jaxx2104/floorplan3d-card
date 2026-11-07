@@ -110,7 +110,6 @@ const VIEW_METHODS = [
   "_resolveViewList",
   "_stateFor",
   "currentView",
-  "_applyZoomTo",
   "viewIndex",
   "_applyViewVisibility",
   "_applyMarkerStates",
@@ -368,7 +367,6 @@ export class Floorplan3dCard extends HTMLElement {
     this._layoutLoaded();
     if (this.isConnected && !this._view) this.connectedCallback();
     else if (this._view) {
-      this._view.setOcclusion(this._config.occlusion !== false);
       this._view.setRenderOption(this._config.render);
       this._view.setBackground(this._config.background);
       this._view.setFurniture(this._config.furniture);
@@ -381,7 +379,6 @@ export class Floorplan3dCard extends HTMLElement {
       if (this._view.model) this._applySky(true); // sky_bodies
       this._skyCtl.resetWeather(); // option weather may have changed
       this._applyWeather();
-      this._applyZoomTo();
       this._loadModel();
       this._updateObjects(); // lights: auto | off
       this._syncDebug();
@@ -522,7 +519,6 @@ export class Floorplan3dCard extends HTMLElement {
     for (const t of ["pointerdown", "wheel", "keydown"])
       if (onActivity)
         this.removeEventListener(t, onActivity, { capture: true });
-    if (this._view) this._view.stopOrbit();
     this._viewCtl.dispose(); // idle reset timer
     if (this._view) this._view.stop();
     if (this._loadUI) this._loadUI.dispose();
@@ -623,7 +619,6 @@ export class Floorplan3dCard extends HTMLElement {
       this._popup.position();
       this._objectInput._hintsNear();
     };
-    this._view.setOcclusion(this._config.occlusion !== false);
     this._view.setRenderOption(this._config.render);
     this._view.setBackground(this._config.background);
     this._view.setFurniture(this._config.furniture);

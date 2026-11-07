@@ -366,9 +366,6 @@ export class FloorplanView {
 
   // --- facade: camera (camera.js) ---
 
-  setZoomTo(mode: CamArgs<"setZoomTo">[0]) {
-    return this.cam.setZoomTo(mode);
-  }
   pivotPoint(
     clientX: CamArgs<"pivotPoint">[0],
     clientY: CamArgs<"pivotPoint">[1],
@@ -437,12 +434,6 @@ export class FloorplanView {
   }
   resize(w: CamArgs<"resize">[0], h: CamArgs<"resize">[1]) {
     return this.cam.resize(w, h);
-  }
-  startOrbit(speed: CamArgs<"startOrbit">[0]) {
-    return this.cam.startOrbit(speed);
-  }
-  stopOrbit() {
-    return this.cam.stopOrbit();
   }
 
   // --- facade: model (model.js) ---
@@ -644,9 +635,6 @@ export class FloorplanView {
 
   // --- facade: occlusion (occlusion.js) ---
 
-  setOcclusion(on: unknown) {
-    return this.occlusion.setOcclusion(on);
-  }
   pointHidden(world: THREE.Vector3, own?: THREE.Object3D | null) {
     return this.occlusion.pointHidden(world, own);
   }
@@ -906,7 +894,6 @@ export class FloorplanView {
       sky._driftClouds();
       look._stepScreens();
       look._stepSway();
-      cam._stepOrbit();
       if (!this.dirty) {
         // render quality 'auto': a level change waits for this
         this.auto.frame(ts, false, 0);

@@ -54,7 +54,6 @@ The layout is part of the card config (`layout:`, parsed by `parseLayout`); a ne
 ```yaml
 type: custom:floorplan3d-card
 height: 520px
-group_by: device          # device | entity
 model: /api/floorplan3d/model/default   # or /local/house.glb (public); cached by ETag / Last-Modified
 model_position: [0, 0, 0]
 model_rotation: 0
@@ -74,7 +73,7 @@ layout:
       - { src: [26000, 25000], plan: [12.12, 7.32] }
 ```
 
-Removed options (`layout_key`, `wall_height`, `ao`) are reported in the console and ignored. Floors
+Removed options (`layout_key`, `wall_height`, `model_floors`, `group_by`, `zoom_to`, `idle_orbit`, `occlusion`, `ao`) are reported in the console and ignored. Floors
 auto-sync from HA floors (`hass.floors`, elevation = level * 3); a room's floor defaults to the area's.
 
 ## Behaviour

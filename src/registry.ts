@@ -56,9 +56,7 @@ export function registrySignature(hass: Hass): unknown[] {
 export function buildMarkers(
   hass: Hass,
   layout: Pick<Layout, "hidden">,
-  opts: { group_by?: string } = {},
 ): Marker[] {
-  const groupBy = opts.group_by || "device";
   const hidden = new Set(layout.hidden || []);
   const ents = hass.entities || {};
   const devs = hass.devices || {};
@@ -78,10 +76,9 @@ export function buildMarkers(
     if (!st) continue;
     const dev = e.device_id ? devs[e.device_id] : null;
     const areaId = e.area_id || (dev && dev.area_id) || null;
+    // one marker per device; an entity with an area of its own stands alone
     const id =
-      groupBy === "device" && e.device_id && !e.area_id
-        ? "device:" + e.device_id
-        : "entity:" + eid;
+      e.device_id && !e.area_id ? "device:" + e.device_id : "entity:" + eid;
     if (hidden.has(id) || hidden.has(eid)) continue;
     const dc = st.attributes.device_class;
     const cand: MarkerEntity = {

@@ -154,33 +154,6 @@ describe("CameraRig", () => {
     expect(view.dirty).toBe(true);
   });
 
-  it("idle orbit: waits a frame, turns at speed degrees a second, stops in top view and on a drag", () => {
-    const tick = clock();
-    const view = rigView();
-    view.camera = { position: { x: 2, y: 5, z: 0 } };
-    const rig = new CameraRig(view);
-    rig.controls = { target: { x: 1, y: 0, z: 0 }, update: vi.fn() };
-    rig.startOrbit(90);
-    rig._stepOrbit();
-    expect(view.dirty).toBe(false); // first frame only starts the clock
-    tick(20);
-    rig._stepOrbit();
-    expect(view.dirty).toBe(false); // under the 50 ms frame interval
-    tick(980);
-    rig._stepOrbit(); // 0.5 s at most per step: 45 degrees
-    expect(view.dirty).toBe(true);
-    expect(rig.controls.update).toHaveBeenCalledTimes(1);
-    expect(
-      Math.hypot(view.camera.position.x - 1, view.camera.position.z),
-    ).toBeCloseTo(1);
-    expect(view.camera.position.z).toBeCloseTo(-Math.SQRT1_2);
-    view.mode = "top";
-    rig._stepOrbit();
-    expect(rig._orbit.frameAt).toBe(0);
-    rig.stopOrbit();
-    expect(rig._orbit).toBe(null);
-  });
-
   it("a top-view tween is dropped once the view left top", () => {
     const view = rigView();
     const rig = new CameraRig(view);
@@ -198,13 +171,8 @@ describe("MarkerOcclusion", () => {
     ...o,
   });
 
-  it("the model hides markers in the 3D view only, with the option on and a model that is not see-through", () => {
+  it("the model hides markers in the 3D view only, with a model that is not see-through", () => {
     const occ = new MarkerOcclusion(occView());
-    expect(occ.active()).toBe(true);
-    occ.setOcclusion(false);
-    expect(occ.active()).toBe(false);
-    expect(occ.view.dirty).toBe(true);
-    occ.setOcclusion(undefined); // the default: on
     expect(occ.active()).toBe(true);
     expect(new MarkerOcclusion(occView({ mode: "top" })).active()).toBe(false);
     expect(new MarkerOcclusion(occView({ model: null })).active()).toBe(false);

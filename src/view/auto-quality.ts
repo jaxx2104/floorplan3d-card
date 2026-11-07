@@ -127,10 +127,7 @@ export class AutoQualityView {
     const cam = this.view.cam,
       c = cam.controls as unknown as { state?: number };
     if (typeof c.state === "number" && c.state !== -1) return false; // OrbitControls: -1 = no pointer action
-    return (
-      !cam._tween &&
-      (!!cam._orbit || now - (cam._camMovedAt || 0) >= AUTO_IDLE_MS)
-    );
+    return !cam._tween && now - (cam._camMovedAt || 0) >= AUTO_IDLE_MS;
   }
 
   _apply(change: AutoChange, now: number): void {

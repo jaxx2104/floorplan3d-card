@@ -10,7 +10,6 @@ import { recipeFar } from "../render-recipe.ts";
 import { depthRange, depthChanged } from "../render-rules.ts";
 import {
   planToWorld,
-  frameInterval,
   isMesh,
   type CameraPose,
   type TopCameraPose,
@@ -40,7 +39,6 @@ export interface SceneBounds {
 
 const TOOLBAR_PX = 48; // plan is framed below the card's toolbar
 const MAX_FRAME_MESH_M = 60; // meshes larger than this are left out when framing the model
-const ORBIT_FRAME_MS = 50; // idle orbit: at most 20 frames a second (wall tablets)
 const SKY_FRAME_MARGIN_M = 1; // top view: margin around a visible sun / moon disc
 
 // Turn a camera position around the target's vertical axis by angle radians (counter-clockwise from above).
@@ -68,8 +66,6 @@ export class CameraRig {
   _minDistance: number | null;
   _orthoHalf: number | null;
   _lastCam3d: CameraPose | null;
-  _zoomTo: "center" | "cursor";
-  _orbit: { speed: number; frameAt: number } | null;
   _bounds: SceneBounds | null;
   _onWheel: () => void;
 
@@ -81,8 +77,6 @@ export class CameraRig {
     this._minDistance = null; // zoom limit from the last fit()
     this._orthoHalf = null; // top view: half height (m) at zoom 1
     this._lastCam3d = null; // the 3D camera before switching to Top
-    this._zoomTo = "center"; // zoom pivot: 'center' (controls target) or 'cursor'
-    this._orbit = null; // idle orbit { speed, frameAt }
     this._bounds = null; // { house: Box3, centre: Vector3, radius } for the depth range
     this._onWheel = () => {
       this.view.dirty = true;
@@ -99,7 +93,6 @@ export class CameraRig {
     c.enableDamping = true;
     c.dampingFactor = 0.05;
     c.screenSpacePanning = true;
-    c.zoomToCursor = this._zoomTo === "cursor";
     if (this.view.mode === "top") {
       c.enableRotate = false;
       c.mouseButtons = {
@@ -119,17 +112,10 @@ export class CameraRig {
     });
     c.addEventListener("start", () => {
       this._tween = null;
-      this.stopOrbit();
     });
     if (this.controls) c.enabled = this.controls.enabled;
     if (prevTarget) c.target.copy(prevTarget);
     this.controls = c;
-  }
-
-  // Zoom pivot: 'cursor' zooms towards the pointer, 'center' (default) zooms and rotates around the target.
-  setZoomTo(mode: string): void {
-    this._zoomTo = mode === "cursor" ? "cursor" : "center";
-    this.controls.zoomToCursor = this._zoomTo === "cursor";
   }
 
   // Rotation centre under a screen point: the model surface, else the horizontal plane at height y.
@@ -574,47 +560,6 @@ export class CameraRig {
     this.view.persp.aspect = w / (h + TOOLBAR_PX);
     this.view.persp.setViewOffset(w, h + TOOLBAR_PX, 0, 0, w, h);
     this._updateOrtho();
-    this.view.dirty = true;
-  }
-
-  // Idle orbit (card option idle_orbit): the 3D camera turns around its target at speed degrees a second,
-  // after any camera tween, while the card is on screen and the page visible. A drag stops it.
-  startOrbit(speed: unknown): void {
-    const v = Number(speed);
-    this._orbit = v ? { speed: v, frameAt: 0 } : null;
-  }
-
-  stopOrbit(): void {
-    this._orbit = null;
-  }
-
-  _stepOrbit(): void {
-    const o = this._orbit;
-    if (!o) return;
-    if (
-      this.view.mode === "top" ||
-      this._tween ||
-      !this.view.onScreen ||
-      (typeof document !== "undefined" && document.visibilityState === "hidden")
-    ) {
-      o.frameAt = 0;
-      return;
-    }
-    const now = performance.now();
-    if (!o.frameAt) {
-      o.frameAt = now;
-      return;
-    }
-    if (now - o.frameAt < frameInterval(ORBIT_FRAME_MS, this.view._maxFps))
-      return;
-    const dt = Math.min(0.5, (now - o.frameAt) / 1000);
-    o.frameAt = now;
-    orbitStep(
-      this.view.camera.position,
-      this.controls.target,
-      (o.speed * dt * Math.PI) / 180,
-    );
-    this.controls.update();
     this.view.dirty = true;
   }
 }

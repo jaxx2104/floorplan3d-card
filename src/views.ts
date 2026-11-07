@@ -11,7 +11,6 @@ import type {
   ViewCamera,
   ViewRule,
 } from "./types/layout.ts";
-import type { CardConfig } from "./types/config.ts";
 import type {
   Manifest,
   ManifestEntry,
@@ -89,7 +88,6 @@ export type Visibility = boolean[] & {
 export type ViewLevel = Pick<ManifestLevel, "id"> &
   Partial<Pick<ManifestLevel, "role" | "order" | "minY" | "label" | "node">>;
 
-export type ZoomTo = "center" | "cursor";
 export type ViewSource = "floors" | "model" | "generated" | "added";
 
 /** A view after merging model / generated views with layout and card YAML overrides. */
@@ -107,7 +105,6 @@ export interface ResolvedView {
   section: SectionPlaneConfig | null;
   modelSection: SectionPlaneConfig | null;
   camera_top: TopCamera | null;
-  zoom_to: ZoomTo | null;
 }
 
 /** Axis-aligned box in card world. */
@@ -516,17 +513,6 @@ export function normTopCamera(c: unknown): TopCamera | null {
   return { center: [t.center[0], t.center[1]], zoom: t.zoom };
 }
 
-export const ZOOM_TO: readonly ZoomTo[] = ["center", "cursor"];
-const zoomOk = (z: unknown): ZoomTo | null =>
-  (ZOOM_TO as readonly unknown[]).includes(z) ? (z as ZoomTo) : null;
-
-// Zoom pivot: the view's zoom_to, else the card option, else 'center' (zoom and rotate around the target).
-export const zoomToFor = (
-  view: { zoom_to?: unknown } | null | undefined,
-  config: Pick<CardConfig, "zoom_to"> | null | undefined,
-): ZoomTo =>
-  zoomOk(view && view.zoom_to) || zoomOk(config && config.zoom_to) || "center";
-
 const cm = (x: number): number => Math.round(x * 100) / 100 + 0;
 
 // Rotation centre: target moves to point, the camera by the same delta (same angle and distance).
@@ -684,7 +670,6 @@ export function resolveViews({
       b.source === "model"
         ? "model"
         : "card";
-    const zoom_to = zoomOk(y.zoom_to) || zoomOk(l.zoom_to);
     // label / cut are taken as written in the layout / YAML (not validated)
     return {
       id: b.id,
@@ -700,7 +685,6 @@ export function resolveViews({
       section,
       modelSection: normSection(b.section),
       camera_top,
-      zoom_to,
     };
   });
 }

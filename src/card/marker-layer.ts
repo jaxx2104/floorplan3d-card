@@ -133,12 +133,12 @@ export class MarkerLayer {
     const h = this.card._hass,
       l = this.card._layout!; // from _update / model and mower refreshes (layout loaded)
     // a device bound to a model object has no marker: the object is the control (glow sprite too).
-    // With group_by: device the marker stands for the device's primary entity, so a bound primary
-    // light hides the whole device marker (its other entities, e.g. a power sensor, included).
+    // The marker stands for the device's primary entity, so a bound primary light hides the whole
+    // device marker (its other entities, e.g. a power sensor, included).
     const bound = this.card._boundEntities;
-    this._markers = buildMarkers(h, l, {
-      group_by: this.card._config.group_by,
-    }).filter((m: Marker) => !bound.has(m.entityId));
+    this._markers = buildMarkers(h, l).filter(
+      (m: Marker) => !bound.has(m.entityId),
+    );
     const positions: Map<string, MarkerPosition> = (this._positions =
       markerPositions(
         this._markers,

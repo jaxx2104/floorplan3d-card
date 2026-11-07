@@ -5,7 +5,8 @@
     "mower.overlay",
     "mower.image",
     "mower.static_entity",
-    "mower.picture_entity"
+    "mower.picture_entity",
+    "views.view_2.zoom_to"
   ],
   "value": {
     "version": 1,

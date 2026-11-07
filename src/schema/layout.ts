@@ -175,7 +175,6 @@ export const viewSchema = object({
   section: opt(unknownValue()),
   floors: opt(array(string())),
   cut: opt(nullable(boolean())),
-  zoom_to: opt(string()),
 });
 
 export const badgesSchema = object({

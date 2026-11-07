@@ -28,7 +28,6 @@ import {
   primaryLevel,
   defaultFloors,
   isOverview,
-  zoomToFor,
   viewCut,
   shownHere,
   exteriorShown,
@@ -273,7 +272,6 @@ export class ViewController {
     if (viewsChanged) this._floorOnly = null;
     const cur = this.currentView();
     this._viewState = cur ? this._stateFor(cur) : null;
-    this._applyZoomTo();
     this._pushStructure();
     if (!this._floorOnly) this._applyViewVisibility();
     this.card._empty.hidden = roomList.length > 0;
@@ -315,7 +313,6 @@ export class ViewController {
     this._floorOnly = null;
     const cur = this.currentView();
     this._viewState = cur ? this._stateFor(cur) : null;
-    this._applyZoomTo();
     if (this._labelKeyNow() !== this._labelKey) this._pushStructure();
     this._applyViewVisibility();
     this._applyMarkerStates();
@@ -457,14 +454,6 @@ export class ViewController {
 
   currentView(): ResolvedView | null {
     return this._views.find((v) => v.id === this._viewId) || null;
-  }
-
-  // Zoom pivot of the active view (view zoom_to > card zoom_to > centre).
-  _applyZoomTo(): void {
-    if (this.card._view)
-      this.card._view.setZoomTo(
-        zoomToFor(this.currentView(), this.card._config),
-      );
   }
 
   viewIndex(): ModelIndex | null {
@@ -620,7 +609,6 @@ export class ViewController {
     this._applyViewVisibility();
     if (this._labelKeyNow() !== this._labelKey) this._pushStructure();
     this._applyMarkerStates();
-    this._applyZoomTo();
     if (this._mode === "top") {
       // top view: its own camera when saved, else keep the current one (no model: frame the floor)
       if (v.camera_top)
@@ -653,8 +641,6 @@ export class ViewController {
   _armIdleReset(): void {
     clearTimeout(this._idleTimer ?? undefined);
     this._idleTimer = null;
-    if (this.card._view && this.card._view.stopOrbit)
-      this.card._view.stopOrbit(); // a touch ends the idle orbit
     const sec = (this.card._config && this.card._config.idle_reset) || 0;
     if (!(sec > 0) || !this.card.isConnected) return;
     this._idleTimer = setTimeout(() => this._idleReset(), sec * 1000);
@@ -678,9 +664,6 @@ export class ViewController {
     const startMode = this.card._config.view === "top" ? "top" : "3d";
     if (startMode !== this._mode) this._setMode(startMode);
     this._resetCamera();
-    // option idle_orbit (degrees a second): then turn slowly around the start view's target until touched
-    const orbit = this.card._config.idle_orbit;
-    if (orbit && startMode === "3d") this.card._view.startOrbit(orbit);
   }
 
   // Reset view: the view's saved camera (3D incl. its rotation centre; top: camera_top), else frame it.

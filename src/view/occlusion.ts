@@ -15,32 +15,19 @@ interface Occluder {
 
 export class MarkerOcclusion {
   view: FloorplanView;
-  _occlusion: boolean;
   _occBoxes: Occluder[] | null;
   _tapRay: THREE.Raycaster | null;
 
   constructor(view: FloorplanView) {
     this.view = view;
-    this._occlusion = true; // dim markers behind model walls
     this._occBoxes = null; // [{ mesh, box }] world boxes of occluding model meshes (cached per placement)
     this._tapRay = null; // pointHidden's raycaster, created on first use
   }
 
-  // Card option `occlusion`: markers behind model walls are dimmed.
-  setOcclusion(on: unknown): void {
-    this._occlusion = on !== false;
-    this.view.dirty = true;
-  }
-
-  /** The model hides markers now: option on, 3D view, a model that is not see-through. */
+  /** The model hides markers now: 3D view, a model that is not see-through. */
   active(): boolean {
     const v = this.view;
-    return (
-      this._occlusion &&
-      v.mode === "3d" &&
-      !!v.model &&
-      (v.model.opacity ?? 1) >= 0.6
-    );
+    return v.mode === "3d" && !!v.model && (v.model.opacity ?? 1) >= 0.6;
   }
 
   // World boxes of the model meshes that can hide a point (not glass / see-through), cached.

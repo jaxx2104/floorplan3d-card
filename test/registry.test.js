@@ -117,12 +117,6 @@ describe("buildMarkers", () => {
     );
     expect(ids).toEqual(["device:d2"]);
   });
-
-  it("groups by entity when asked", () => {
-    const ids = buildMarkers(hass, {}, { group_by: "entity" }).map((m) => m.id);
-    expect(ids).toContain("entity:switch.plug");
-    expect(ids).toContain("entity:sensor.plug_temp");
-  });
 });
 
 describe("helpers", () => {

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
   normTopCamera,
-  zoomToFor,
   pivotCamera,
   rayPlaneY,
   orthoZoom,
@@ -31,24 +30,6 @@ describe("normTopCamera", () => {
     ]) {
       expect(normTopCamera(c)).toBeNull();
     }
-  });
-});
-
-describe("zoomToFor", () => {
-  it("defaults to center", () => {
-    expect(zoomToFor(null, {})).toBe("center");
-    expect(zoomToFor({}, undefined)).toBe("center");
-  });
-  it("view wins over the card option; invalid values are ignored", () => {
-    expect(zoomToFor({}, { zoom_to: "cursor" })).toBe("cursor");
-    expect(zoomToFor({ zoom_to: "center" }, { zoom_to: "cursor" })).toBe(
-      "center",
-    );
-    expect(zoomToFor({ zoom_to: "cursor" }, {})).toBe("cursor");
-    expect(zoomToFor({ zoom_to: "mouse" }, { zoom_to: "cursor" })).toBe(
-      "cursor",
-    );
-    expect(zoomToFor({ zoom_to: "mouse" }, { zoom_to: "x" })).toBe("center");
   });
 });
 
@@ -87,45 +68,42 @@ describe("top zoom <-> ortho zoom", () => {
   });
 });
 
-describe("resolveViews camera_top / zoom_to", () => {
+describe("resolveViews camera_top", () => {
   const haFloors = [{ id: "g", name: "Ground" }];
   it("YAML > layout, validated and copied", () => {
     const ct = { center: [1, 2], zoom: 1.5 };
     const r = resolveViews({
       manifest: null,
       haFloors,
-      layoutViews: { g: { camera_top: ct, zoom_to: "cursor" } },
+      layoutViews: { g: { camera_top: ct } },
       yamlViews: {},
       savedLevels: {},
     });
     const g = r.find((v) => v.id === "g");
     expect(g.camera_top).toEqual(ct);
     expect(g.camera_top.center).not.toBe(ct.center);
-    expect(g.zoom_to).toBe("cursor");
     const y = resolveViews({
       manifest: null,
       haFloors,
-      layoutViews: { g: { camera_top: ct, zoom_to: "cursor" } },
+      layoutViews: { g: { camera_top: ct } },
       yamlViews: {
-        g: { camera_top: { center: [5, 5], zoom: 3 }, zoom_to: "center" },
+        g: { camera_top: { center: [5, 5], zoom: 3 } },
       },
       savedLevels: {},
     }).find((v) => v.id === "g");
     expect(y.camera_top).toEqual({ center: [5, 5], zoom: 3 });
-    expect(y.zoom_to).toBe("center");
   });
   it("null when missing or invalid", () => {
     const g = resolveViews({
       manifest: null,
       haFloors,
       layoutViews: {
-        g: { camera_top: { center: [1, 2], zoom: 0 }, zoom_to: "x" },
+        g: { camera_top: { center: [1, 2], zoom: 0 } },
       },
       yamlViews: {},
       savedLevels: {},
     }).find((v) => v.id === "g");
     expect(g.camera_top).toBeNull();
-    expect(g.zoom_to).toBeNull();
   });
   it("falls back to the model view camera_top", () => {
     const manifest = {
