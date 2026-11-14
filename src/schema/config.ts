@@ -118,6 +118,7 @@ export const cardConfigSchema = object({
   furniture: opt(owned()),
   city_lights: opt(owned()),
   surround_light: opt(owned()),
+  night_fill: opt(owned()),
   sway: opt(owned()),
 });
 

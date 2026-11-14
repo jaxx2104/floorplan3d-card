@@ -526,6 +526,9 @@ export class FloorplanView {
   setSurroundLight(opt: LookArgs<"setSurroundLight">[0]) {
     return this.look.setSurroundLight(opt);
   }
+  setNightFill(opt: LookArgs<"setNightFill">[0]) {
+    return this.look.setNightFill(opt);
+  }
   setBokeh(opt: LookArgs<"setBokeh">[0]) {
     return this.look.setBokeh(opt);
   }

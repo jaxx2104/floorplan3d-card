@@ -12,6 +12,8 @@ import {
   backgroundAt,
   BACKGROUND_DEFAULTS,
   normSurroundLight,
+  normNightFill,
+  NIGHT_FILL_DEFAULTS,
   surroundLight,
   SURROUND_DEFAULTS,
   SURROUND_COLORS,
@@ -266,6 +268,23 @@ describe("surround light", () => {
       day: 4,
       night: 0,
     });
+  });
+  it("normNightFill: off unless asked for; a number is the intensity; values clamped, colours parsed", () => {
+    for (const v of [undefined, null, false, 0, "yes", Number.NaN])
+      expect(normNightFill(v)).toBe(null);
+    expect(normNightFill(true)).toEqual({ ...NIGHT_FILL_DEFAULTS });
+    expect(normNightFill(0.3)).toEqual({
+      ...NIGHT_FILL_DEFAULTS,
+      intensity: 0.3,
+    });
+    expect(normNightFill({ intensity: 9, color: "#112233" })).toEqual({
+      intensity: 4,
+      color: 0x112233,
+      ground: NIGHT_FILL_DEFAULTS.ground,
+    });
+    expect(normNightFill({ color: "nope" }).color).toBe(
+      NIGHT_FILL_DEFAULTS.color,
+    );
   });
   it("surroundLight: day / night colours and intensity, none when off", () => {
     const s = { day: 0.5, night: 0.1 };

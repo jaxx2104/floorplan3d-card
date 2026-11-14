@@ -421,6 +421,44 @@ export function normSurroundLight(opt: unknown): DayNight | null {
   return { day: val("day"), night: val("night") };
 }
 
+// Card option night_fill: a faint moonlight over everything at night, the rooms included, so a dark room still
+// shows its shape (day-for-night: dark and blue, shadows readable, not black). The sky's environment and the
+// probe grids light the rooms only through their windows and lamps, so an unlit room is black without it.
+// A number (the intensity) | { intensity, color, ground } -> settings or null (off). Faded in with the night.
+export const NIGHT_FILL_DEFAULTS = Object.freeze({
+  intensity: 0.4,
+  color: 0x9eaac2,
+  ground: 0x2a2f3a,
+});
+export interface NightFill {
+  intensity: number;
+  color: number;
+  ground: number;
+}
+export function normNightFill(opt: unknown): NightFill | null {
+  if (opt === undefined || opt === null || opt === false) return null;
+  const o: Obj =
+    opt === true
+      ? {}
+      : typeof opt === "number"
+        ? { intensity: opt }
+        : typeof opt === "object"
+          ? (opt as Obj)
+          : { intensity: Number.NaN };
+  const v =
+    o.intensity === undefined
+      ? NIGHT_FILL_DEFAULTS.intensity
+      : Number(o.intensity);
+  if (!Number.isFinite(v)) return null;
+  const intensity = Math.min(4, Math.max(0, v));
+  if (intensity === 0) return null;
+  return {
+    intensity,
+    color: parseHex(o.color) ?? NIGHT_FILL_DEFAULTS.color,
+    ground: parseHex(o.ground) ?? NIGHT_FILL_DEFAULTS.ground,
+  };
+}
+
 // Settings (or null) and night 0..1 -> { sky, ground (hex), intensity }.
 export function surroundLight(
   settings: DayNight | null,

@@ -19,6 +19,8 @@ import {
   backgroundAt,
   normSurroundLight,
   surroundLight,
+  normNightFill,
+  type NightFill,
   normCityLights,
   cityLitFor,
   cityLightsOn,
@@ -98,6 +100,7 @@ export class RenderLook {
   _sway: SwaySettings | null;
   _swayClock: { at: number } | null;
   _surround: DayNight | null;
+  _nightFill: NightFill | null;
   _finishOpts: FinishSettings | null;
   _finish: ScreenFinish | null;
   _depthPass: DepthPrepass | null;
@@ -131,6 +134,7 @@ export class RenderLook {
     this._sway = null; // card option sway (normalised) or null
     this._swayClock = null; // { at }: last sway frame
     this._surround = null; // card option surround_light (normalised) or null
+    this._nightFill = null; // card option night_fill (normalised) or null
     this._finishOpts = null; // { bokeh, grade } (normalised)
     this._finish = null; // ScreenFinish or null
     this._depthPass = null; // DepthPrepass for the finish, created on first use
@@ -298,7 +302,13 @@ export class RenderLook {
     const L = cloudLight(this.view.skyLayer.weather.applied || 0, t);
     // with a model the sky's environment light is the fill (indoors the probe grids): the hemisphere light (the plan's
     // light without a model) on top lit every surface a second time, unoccluded, closed rooms included
-    hemi.intensity = 0;
+    // except the card option night_fill: a faint moonlight at night over everything, so unlit rooms keep their shape
+    const fill = this._nightFill;
+    hemi.intensity = fill ? fill.intensity * t : 0;
+    if (fill) {
+      hemi.color.setHex(fill.color);
+      hemi.groundColor.setHex(fill.ground);
+    }
     sun.color.setHex(k.sunColor);
     // cloud shadows on: the sun keeps its clear-sky strength (the patches and the rooms' shade dim it)
     sun.intensity =
@@ -508,6 +518,17 @@ export class RenderLook {
     const next = normSurroundLight(opt);
     if (JSON.stringify(next) === JSON.stringify(this._surround || null)) return;
     this._surround = next;
+    if (!this.view.model) return;
+    this._applyLights();
+    this.view.dirty = true;
+  }
+
+  // Card option night_fill (a number or { intensity, color, ground }): moonlight over the rooms at night.
+  setNightFill(opt: unknown): void {
+    const next = normNightFill(opt);
+    if (JSON.stringify(next) === JSON.stringify(this._nightFill || null))
+      return;
+    this._nightFill = next;
     if (!this.view.model) return;
     this._applyLights();
     this.view.dirty = true;
