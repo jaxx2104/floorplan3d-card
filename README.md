@@ -353,6 +353,12 @@ markers. Format and examples: [docs/model-builder-guide.md](docs/model-builder-g
 Untagged models still load and show whole. Check a model before copying it with
 `bun run check-model house.glb`.
 
+Smaller download: `bun tools/compress-model.mjs house.glb house.min.glb --check` compresses the
+geometry with EXT_meshopt_compression (the card decodes it; typically a third of the geometry bytes).
+Nodes, tags, materials and textures stay as they are, and the geometry decodes to the same float data
+within 0.1 mm on a 2 m part, so everything the card reads from the model is unchanged. Keep the
+uncompressed file as the source: a compressed one is not compressed again.
+
 Loading: the browser keeps the model file (Cache Storage, or IndexedDB when HA is served over plain http),
 so the next load skips the download until the file's ETag / Last-Modified changes. While the model
 loads, a line drawing of the floor plan replaces the stage (it blocks taps and camera input until

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { rememberColor } from "../furniture.ts";
 import { collectScreens } from "../screens.ts";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import {
   mergeGeometries,
   deinterleaveAttribute,
@@ -635,9 +636,11 @@ export class ModelLayer {
       };
       // glass, floors and fabric become physical materials as the loader builds them (physical-materials.ts): the
       // model's fp.render.materials (unless render: default), then the card's render.materials; KHR_lights_punctual
-      // lamps become plain nodes the light objects read (objects/model-lamps.ts), never lights of their own
+      // lamps become plain nodes the light objects read (objects/model-lamps.ts), never lights of their own.
+      // EXT_meshopt_compression (tools/compress-model.mjs) decodes in the loader, before any of this sees it
       const look = this.view.look;
       const loader = new GLTFLoader()
+        .setMeshoptDecoder(MeshoptDecoder)
         .register(
           surfacePlugin({
             rules: look.renderOpt.materials || [],

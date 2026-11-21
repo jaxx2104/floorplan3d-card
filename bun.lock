@@ -11,6 +11,7 @@
         "@mdi/js": "7.4.47",
         "@types/three": "0.187.0",
         "happy-dom": "21.0.4",
+        "meshoptimizer": "1.1.1",
         "puppeteer-core": "25.12.0",
       },
     },

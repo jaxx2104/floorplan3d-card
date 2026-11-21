@@ -17,6 +17,7 @@
     "check:perf": "bun scripts/perf-check.mjs",
     "check:all": "bun scripts/build.mjs && bun scripts/screenshot.mjs && bun scripts/model-check.mjs",
     "check-model": "bun tools/check-model.mjs",
+    "compress-model": "bun tools/compress-model.mjs",
     "deploy": "bun scripts/deploy.mjs",
     "make-demo-model": "bun scripts/make-demo-model.mjs"
   },
@@ -28,6 +29,7 @@
     "@mdi/js": "7.4.47",
     "@types/three": "0.187.0",
     "happy-dom": "21.0.4",
+    "meshoptimizer": "1.1.1",
     "puppeteer-core": "25.12.0"
   }
 }
